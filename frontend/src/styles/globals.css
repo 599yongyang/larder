@@ -132,3 +132,12 @@
     @apply bg-background text-foreground;
   }
 }
+
+
+
+
+
+:where(a, button):not([data-slot]):focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}

@@ -285,7 +285,29 @@ func (s *Service) Scan(ctx context.Context) (model.ScanResult, error) {
 	roots := s.paths.DefaultRoots(home)
 	settings, _ := s.Settings(ctx)
 	var projectRoots []string
+	var projectIssues []model.ScanIssue
+	projectIssue := func(kind, path string, err error) {
+		projectIssues = append(projectIssues, model.ScanIssue{Kind: kind, Path: path, Message: err.Error(), Recoverable: true, At: time.Now()})
+	}
 	for _, workspace := range settings.ProjectWorkspaces {
+		if _, err := os.ReadDir(workspace); err != nil {
+			kind := "scan_failure"
+			if platform.IsPermissionError(err) {
+				kind = "permission"
+			}
+			projectIssue(kind, workspace, err)
+		} else {
+			for _, name := range []string{".agents", ".claude", ".codex", ".cursor"} {
+				path := filepath.Join(workspace, name)
+				if _, err := os.Stat(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+					kind := "scan_failure"
+					if platform.IsPermissionError(err) {
+						kind = "permission"
+					}
+					projectIssue(kind, path, err)
+				}
+			}
+		}
 		projectSpecs := s.paths.ProjectRoots(workspace)
 		for _, spec := range projectSpecs {
 			roots = append(roots, spec)
@@ -311,20 +333,29 @@ func (s *Service) Scan(ctx context.Context) (model.ScanResult, error) {
 	}
 	result, scanErr := s.scanner.Scan(ctx, skills.Options{Roots: visibleRoots, LockfilePath: s.paths.LockfilePath(home)})
 	result.ProjectRoots = projectRoots
+	if len(projectIssues) > 0 {
+		result.Issues = append(result.Issues, projectIssues...)
+		if result.Status == model.ScanComplete {
+			result.Status = model.ScanPartial
+		}
+	}
 	cliItems, cliIssues := s.cliScanner.Scan(ctx, clis.Options{Dirs: s.paths.PathDirs(home), Home: home})
 	result.CLIs = cliItems
 	result.Issues = append(result.Issues, cliIssues...)
+	s.mu.Lock()
+	nextUpdates := model.UpdateReport{CheckedAt: s.updates.CheckedAt}
+	s.mu.Unlock()
 	if scanErr == nil && s.store != nil {
 		if err := s.store.SaveScan(ctx, result); err != nil {
 			return result, err
 		}
-		if err := s.store.SaveUpdates(ctx, model.UpdateReport{}); err != nil {
+		if err := s.store.SaveUpdates(ctx, nextUpdates); err != nil {
 			return result, err
 		}
 	}
 	s.mu.Lock()
 	s.latest = result
-	s.updates = model.UpdateReport{}
+	s.updates = nextUpdates
 	s.mu.Unlock()
 	return result, scanErr
 }

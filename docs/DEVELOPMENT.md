@@ -58,6 +58,25 @@ t.Setenv("LARDER_HOME", home)
 - Dialog inputs stay compact: 30px high, 11px text.
 - See [UI_RULES.md](UI_RULES.md) before adding a new page.
 
+## 发布
+
+`main` 是本地开发分支，保留完整开发历史。
+
+公开仓库的 `main` 使用干净快照：
+
+```sh
+./scripts/publish.sh "Larder 0.0.1"
+```
+
+脚本会：
+
+- 检查工作区是否干净
+- 以 `origin/main` 为父提交
+- 用当前 `main` 的 tree 创建一个新 commit
+- 推送到公开 `main`
+
+公开历史不会包含本地开发过程。
+
 ## 提交前
 
 ```sh

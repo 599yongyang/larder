@@ -15,7 +15,8 @@ func PlanCLICommand(cli model.CLIInfo, uninstall bool, latest string) (model.Pla
 	plan := model.Plan{
 		Operation:        "cli_update",
 		Title:            "更新 CLI",
-		Summary:          fmt.Sprintf("使用 %s 更新 %s（%s）", cli.Owner, cli.OwnerDetail, cli.Name),
+		TitleMessage:     planTitle("plan.updateCli.title", "更新 CLI"),
+		SummaryMessage:   planMessage("plan.summary.cliUpdate", "使用 {owner} 更新 {name}（{detail}）", map[string]string{"owner": cli.Owner, "name": cli.Name, "detail": cli.OwnerDetail}),
 		RequiresSnapshot: true,
 		Executable:       true,
 		Impact:           []string{},
@@ -83,11 +84,11 @@ func PlanCLICommand(cli model.CLIInfo, uninstall bool, latest string) (model.Pla
 	default:
 		return model.Plan{}, fmt.Errorf("unsupported CLI owner: %s", cli.Owner)
 	}
-	plan.Warnings = append(plan.Warnings, "命令由包管理器执行；应用不会直接删除文件。")
+	addWarning(&plan, "plan.warning.packageManagerExec", "命令由包管理器执行；应用不会直接删除文件。", nil)
 	if uninstall {
-		plan.Warnings = append(plan.Warnings, "卸载可能需要管理员权限；当前版本只记录命令与旧版本，不提供自动回滚。")
+		addWarning(&plan, "plan.warning.uninstallAdmin", "卸载可能需要管理员权限；当前版本只记录命令与旧版本，不提供自动回滚。", nil)
 	} else {
-		plan.Warnings = append(plan.Warnings, "更新由包管理器决定；旧版本不一定能自动恢复。")
+		addWarning(&plan, "plan.warning.updatePackageManager", "更新由包管理器决定；旧版本不一定能自动恢复。", nil)
 	}
 	return plan, nil
 }

@@ -1,8 +1,10 @@
 import { useEffect } from 'react'
-import { FileText, History, LayoutList, Search, Server, Settings as SettingsIcon, Terminal } from 'lucide-react'
+import { FileText, History, LayoutList, RefreshCw, Search, Server, Settings as SettingsIcon, Sun, Terminal } from 'lucide-react'
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandShortcut } from '@/components/ui/command'
 import { SkillIcon } from './SkillIcon'
 import type { CLIInfo, InstructionFile, MCPServer, Skill, View } from '../types'
+import { t } from '../i18n'
+import { shortcutLabel } from '../lib/platform'
 
 type Props = {
   open: boolean
@@ -16,18 +18,20 @@ type Props = {
   onCLI: (cli: CLIInfo) => void
   onMCP: (mcp: MCPServer) => void
   onInstruction: () => void
+  onScan: () => void
+  onCheckUpdates: () => void
+  onToggleAppearance: () => void
 }
 
-const views = [
-  { view: 'skills' as View, label: 'Skills', icon: LayoutList },
-  { view: 'cli' as View, label: 'CLI', icon: Terminal },
-  { view: 'mcp' as View, label: 'MCP', icon: Server },
-  { view: 'instructions' as View, label: '指令', icon: FileText },
-  { view: 'history' as View, label: '历史', icon: History },
-  { view: 'settings' as View, label: '设置', icon: SettingsIcon },
-]
-
-export function CommandPalette({ open, onOpenChange, skills, clis, mcps, instructions, onView, onSkill, onCLI, onMCP, onInstruction }: Props) {
+export function CommandPalette({ open, onOpenChange, skills, clis, mcps, instructions, onView, onSkill, onCLI, onMCP, onInstruction, onScan, onCheckUpdates, onToggleAppearance }: Props) {
+  const views = [
+    { view: 'skills' as View, label: t('common.skills'), icon: LayoutList },
+    { view: 'cli' as View, label: 'CLI', icon: Terminal },
+    { view: 'mcp' as View, label: 'MCP', icon: Server },
+    { view: 'instructions' as View, label: t('common.instructions'), icon: FileText },
+    { view: 'history' as View, label: t('common.history'), icon: History },
+    { view: 'settings' as View, label: t('common.settings'), icon: SettingsIcon },
+  ]
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key.toLowerCase() === 'k' && (event.metaKey || event.ctrlKey)) {
@@ -39,12 +43,17 @@ export function CommandPalette({ open, onOpenChange, skills, clis, mcps, instruc
     return () => window.removeEventListener('keydown', onKey)
   }, [onOpenChange])
 
-  return <CommandDialog open={open} onOpenChange={onOpenChange} title="搜索与跳转" description="搜索 Skill、CLI、MCP、指令或页面">
-    <CommandInput placeholder="搜索 Skill、CLI、MCP、指令…" />
+  return <CommandDialog open={open} onOpenChange={onOpenChange} title={t("command.searchAndJump")} description={t("command.searchSkillsClisMcpsInstructionsOrPages")}>
+    <CommandInput placeholder={t("command.searchSkillsClisMcpsInstructions")} aria-label={t("command.searchAndJump")} />
     <CommandList>
-      <CommandEmpty>没有匹配结果。</CommandEmpty>
-      <CommandGroup heading="页面">
-        {views.map((item) => <CommandItem key={item.view} value={`页面 ${item.label}`} onSelect={() => { onView(item.view); onOpenChange(false) }}>
+      <CommandEmpty>{t('command.noMatchingResults')}</CommandEmpty>
+      <CommandGroup heading={t('command.actions')}>
+        <CommandItem value={t('command.scanMachine')} onSelect={() => { onScan(); onOpenChange(false) }}><RefreshCw /><span>{t('command.scanMachine')}</span><CommandShortcut>{shortcutLabel('R')}</CommandShortcut></CommandItem>
+        <CommandItem value={t('command.checkUpdates')} onSelect={() => { onCheckUpdates(); onOpenChange(false) }}><RefreshCw /><span>{t('command.checkUpdates')}</span></CommandItem>
+        <CommandItem value={t('command.toggleAppearance')} onSelect={() => { onToggleAppearance(); onOpenChange(false) }}><Sun /><span>{t('command.toggleAppearance')}</span></CommandItem>
+      </CommandGroup>
+      <CommandGroup heading={t("command.pages")}>
+        {views.map((item) => <CommandItem key={item.view} value={`${t("command.pages")} ${item.label}`} onSelect={() => { onView(item.view); onOpenChange(false) }}>
           <item.icon /><span>{item.label}</span>
         </CommandItem>)}
       </CommandGroup>
@@ -58,7 +67,7 @@ export function CommandPalette({ open, onOpenChange, skills, clis, mcps, instruc
           <Server className="text-muted-foreground" /><span>{mcp.name}</span><CommandShortcut>{mcp.transport}</CommandShortcut>
         </CommandItem>)}
       </CommandGroup>}
-      {instructions.length > 0 && <CommandGroup heading="指令">
+      {instructions.length > 0 && <CommandGroup heading={t("common.instructions")}>
         {instructions.map((file) => <CommandItem key={file.id} value={`${file.name} ${file.agent} ${file.path}`} onSelect={() => { onInstruction(); onOpenChange(false) }}>
           <FileText className="text-muted-foreground" /><span>{file.name}</span><CommandShortcut>{file.agent}</CommandShortcut>
         </CommandItem>)}
@@ -68,8 +77,8 @@ export function CommandPalette({ open, onOpenChange, skills, clis, mcps, instruc
           <SkillIcon skill={skill} className="size-5" /><span>{skill.name}</span>{skill.source && <CommandShortcut>{skill.source}</CommandShortcut>}
         </CommandItem>)}
       </CommandGroup>}
-      <CommandGroup heading="提示">
-        <CommandItem disabled><Search /><span>输入名称、来源、路径或页面名</span><CommandShortcut>⌘K</CommandShortcut></CommandItem>
+      <CommandGroup heading={t("command.tips")}>
+        <CommandItem disabled><Search /><span>{t('command.typeANameSourcePathOrPageName')}</span><CommandShortcut>{shortcutLabel('K')}</CommandShortcut></CommandItem>
       </CommandGroup>
     </CommandList>
   </CommandDialog>

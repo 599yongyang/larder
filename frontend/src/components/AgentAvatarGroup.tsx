@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { AgentIcon } from './AgentIcon'
 import styles from '../App.module.css'
+import { t } from '../i18n'
 import type { Root } from '../types'
 
 const AVATAR_SIZE = 22
@@ -35,7 +36,7 @@ export function AgentAvatarGroup({ roots }: { roots: Root[] }) {
   if (roots.length === 0) return <span className={styles.visibilityNone}>—</span>
   const shown = roots.slice(0, visibleCount)
   const rest = roots.length - shown.length
-  return <div ref={ref} className={styles.agentAvatarGroup} title={roots.map((root) => root.label).join('、')} aria-label={`可发现：${roots.map((root) => root.label).join('、')}`}>
+  return <div ref={ref} className={styles.agentAvatarGroup} title={roots.map((root) => root.label).join('、')} aria-label={t('common.discoverable', { list: roots.map((root) => root.label).join('、') })}>
     {shown.map((root) => <span key={root.id} className={styles.agentAvatar}><AgentIcon name={root.logicalAgent || root.label} className="size-3.5" /></span>)}
     {rest > 0 && <span className={styles.agentAvatarMore}>+{rest}</span>}
   </div>

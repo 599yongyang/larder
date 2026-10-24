@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { BookOpen, Bug, Cpu, Palette, Puzzle, Search, Sparkles, Terminal, Workflow, Wrench, type LucideIcon } from 'lucide-react'
 import { backend } from '../backend'
 import type { Skill } from '../types'
@@ -102,29 +102,29 @@ function glyphFor(name: string, description: string): LucideIcon {
   return Sparkles
 }
 
-export function preloadSkillIcons(skills: Skill[]) {
-  const owners = new Set<string>()
-  for (const skill of skills) {
-    const icon = skill.icon?.trim()
-    if (icon && !/^(https?:|data:)/.test(icon) && (icon.includes('/') || icon.includes('.'))) {
-      void loadLocalIcon(skill.id, icon)
-      continue
-    }
-    const owner = skill.source?.includes('/') ? skill.source.split('/')[0].trim() : ''
-    if (owner) owners.add(owner)
-  }
-  for (const owner of owners) void loadOwnerAvatar(owner)
-}
 
 export function SkillIcon({ skill, className = 'size-7', loading = 'lazy' }: { skill: Skill; className?: string; loading?: 'lazy' | 'eager' }) {
   const owner = skill.source?.includes('/') ? skill.source.split('/')[0].trim() : ''
   const iconKey = `${skill.id}:${skill.icon?.trim() ?? ''}`
+  const hostRef = useRef<HTMLElement | null>(null)
+  const [inView, setInView] = useState(loading === 'eager')
+  useEffect(() => {
+    if (loading === 'eager' || inView) return
+    const node = hostRef.current
+    if (!node || typeof IntersectionObserver === 'undefined') { setInView(true); return }
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) { setInView(true); observer.disconnect() }
+    }, { rootMargin: '240px' })
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [inView, loading])
   const [custom, setCustom] = useState<string | undefined>(() => localIconCache.get(iconKey) ?? (skill.icon && !/^(https?:|data:)/.test(skill.icon) && !skill.icon.includes('/') && !skill.icon.includes('.') ? skill.icon : undefined))
   const [failed, setFailed] = useState(false)
   const [ownerFailed, setOwnerFailed] = useState(false)
   const [avatar, setAvatar] = useState<string | undefined>(() => owner ? avatarCache.get(owner) : undefined)
   const [avatarAttempt, setAvatarAttempt] = useState(0)
   useEffect(() => {
+    if (!inView) return
     let live = true
     setFailed(false)
     setOwnerFailed(false)
@@ -145,8 +145,9 @@ export function SkillIcon({ skill, className = 'size-7', loading = 'lazy' }: { s
     setCustom(undefined)
     void loadLocalIcon(skill.id, icon).then((value) => { if (live && value) setCustom(value) })
     return () => { live = false }
-  }, [skill.id, skill.icon])
+  }, [inView, skill.id, skill.icon])
   useEffect(() => {
+    if (!inView) return
     setAvatarAttempt(0)
     if (!owner) { setAvatar(undefined); return }
     const cached = avatarCache.get(owner)
@@ -154,22 +155,22 @@ export function SkillIcon({ skill, className = 'size-7', loading = 'lazy' }: { s
     let live = true
     void loadOwnerAvatar(owner).then((value) => { if (live && value) setAvatar(value) })
     return () => { live = false }
-  }, [owner])
+  }, [inView, owner])
 
   if (custom && !failed) {
     if (/^(https?:|data:)/.test(custom)) {
-      return <img src={custom} alt="" aria-hidden="true" loading={loading} decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} className={`${className} shrink-0 rounded-md border border-line object-cover`} />
+      return <img ref={(node) => { hostRef.current = node }} src={custom} alt="" aria-hidden="true" loading={loading} decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} className={`${className} shrink-0 rounded-md border border-line object-cover`} />
     }
-    return <span className={`${className} inline-flex shrink-0 items-center justify-center rounded-md bg-muted text-[58%] leading-none`} aria-hidden="true">{custom}</span>
+    return <span ref={(node) => { hostRef.current = node }} className={`${className} inline-flex shrink-0 items-center justify-center rounded-md bg-muted text-[58%] leading-none`} aria-hidden="true">{custom}</span>
   }
 
-  if (owner && !ownerFailed) {
+  if (inView && owner && !ownerFailed) {
     const urls = githubAvatarUrls(owner)
     const src = avatar || urls[avatarAttempt]
-    return <img src={src} alt="" aria-hidden="true" loading={loading} decoding="async" referrerPolicy="no-referrer" onError={() => { if (avatarAttempt + 1 < urls.length) setAvatarAttempt(avatarAttempt + 1); else setOwnerFailed(true) }} className={`${className} shrink-0 rounded-md border border-line object-cover`} />
+    return <img ref={(node) => { hostRef.current = node }} src={src} alt="" aria-hidden="true" loading={loading} decoding="async" referrerPolicy="no-referrer" onError={() => { if (avatarAttempt + 1 < urls.length) setAvatarAttempt(avatarAttempt + 1); else setOwnerFailed(true) }} className={`${className} shrink-0 rounded-md border border-line object-cover`} />
   }
 
   const Icon = glyphFor(skill.name, skill.description ?? '')
   const hash = [...skill.name].reduce((sum, char) => sum + char.codePointAt(0)!, 0)
-  return <span className={`${className} inline-flex shrink-0 items-center justify-center rounded-md ${palettes[hash % palettes.length]}`} aria-hidden="true"><Icon className="size-[58%]" strokeWidth={1.8} /></span>
+  return <span ref={(node) => { hostRef.current = node }} className={`${className} inline-flex shrink-0 items-center justify-center rounded-md ${palettes[hash % palettes.length]}`} aria-hidden="true"><Icon className="size-[58%]" strokeWidth={1.8} /></span>
 }

@@ -114,6 +114,12 @@ export interface MCPServer {
     "agents": MCPAgent[] | null;
 }
 
+export interface Message {
+    "code"?: string;
+    "params"?: { [_ in string]?: string } | null;
+    "fallback"?: string;
+}
+
 export interface Operation {
     "id": string;
     "planId": string;
@@ -129,6 +135,9 @@ export interface Plan {
     "id": string;
     "operation": string;
     "title": string;
+    "titleMessage"?: Message;
+    "summaryMessage"?: Message;
+    "warningMessages"?: Message[] | null;
     "summary": string;
     "skillId"?: string;
     "skillName"?: string;

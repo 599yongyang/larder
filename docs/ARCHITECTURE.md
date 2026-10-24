@@ -122,3 +122,18 @@ Wails embeds the production frontend build. TypeScript bindings are generated wi
 ```sh
 wails3 generate bindings -clean -ts
 ```
+
+
+## Localized messages
+
+User-facing text generated in Go is returned as `Message` values:
+
+```go
+type Message struct {
+    Code     string
+    Params   map[string]string
+    Fallback string
+}
+```
+
+The frontend resolves `Code + Params` through i18next. Plans use this for titles and warnings. New backend-facing copy should follow the same shape instead of returning a hard-coded sentence.

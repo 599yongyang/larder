@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 	"larder/cmd/larder"
 )
 
@@ -35,7 +36,7 @@ func main() {
 			Handler: application.AssetFileServerFS(assets),
 		},
 		Mac: application.MacOptions{
-			ApplicationShouldTerminateAfterLastWindowClosed: true,
+			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
 	})
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
@@ -52,9 +53,17 @@ func main() {
 			TitleBar:                application.MacTitleBarHiddenInset,
 		},
 	})
+	window.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
+		window.Hide()
+		e.Cancel()
+	})
 	tray := app.SystemTray.New()
 	tray.SetIcon(trayIcon)
 	tray.SetTooltip("Larder")
+	tray.OnClick(func() {
+		window.Show()
+		window.Focus()
+	})
 	trayMenu := app.NewMenu()
 	trayMenu.Add("打开 Larder").OnClick(func(_ *application.Context) {
 		window.Show()

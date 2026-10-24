@@ -15,6 +15,7 @@ Larder 是一个本地优先的桌面应用，面向同时使用多个 AI Agent 
 - **CLI 工具**：查看已安装命令、所属包管理器、重复安装和可用更新；通过包管理器更新或卸载。
 - **指令文件**：扫描 `AGENTS.md`、`CLAUDE.md`、Cursor rules 和 Copilot instructions；支持 Markdown 预览、原文查看、编辑和新建。
 - **项目**：在一个页面里看到项目自己的 Skills、MCP 和指令文件。
+- **语言**：在设置中切换中文和英文；首次启动会跟随系统语言。
 
 ![MCP 页面](docs/screenshots/mcp.png)
 

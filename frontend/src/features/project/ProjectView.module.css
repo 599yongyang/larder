@@ -32,3 +32,7 @@
 .emptyState span{font-size:10.5px}
 .columns.singleColumn{grid-template-columns:1fr}
 .assetDescription{margin:0;color:var(--ink-soft);font-size:11px;line-height:1.65}
+
+.accessState{display:flex;flex-direction:column;align-items:center;gap:8px}
+.accessState>svg{color:var(--text-muted)}
+.accessState code{max-width:620px;overflow:hidden;color:var(--text-muted);font-size:10px;text-overflow:ellipsis;white-space:nowrap}

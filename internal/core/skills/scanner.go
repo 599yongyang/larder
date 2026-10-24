@@ -655,9 +655,9 @@ func ptrIssue(value model.ScanIssue) *model.ScanIssue { return &value }
 
 func copyReason(drift bool) string {
 	if drift {
-		return "副本内容与中央库不同"
+		return "副本内容与共享库不同"
 	}
-	return "副本内容与中央库一致"
+	return "副本内容与共享库一致"
 }
 
 // dedupeBrokenAgentLocalSkills collapses the same broken target reported by

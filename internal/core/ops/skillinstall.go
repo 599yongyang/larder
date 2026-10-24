@@ -27,7 +27,8 @@ func PlanInstallSkill(repo, skillPath, target string) (model.Plan, error) {
 		ID:               "plan:install:" + repo + ":" + skillPath,
 		Operation:        "install_skill",
 		Title:            "安装 Skill",
-		Summary:          fmt.Sprintf("从 %s 安装 %s 到中央库；会先确认目标不存在。", repo, filepath.Base(target)),
+		TitleMessage:     planTitle("plan.installSkill.title", "安装 Skill"),
+		SummaryMessage:   planMessage("plan.summary.install", "从 {repo} 安装 {name} 到共享库；会先确认目标不存在。", map[string]string{"repo": repo, "name": filepath.Base(target)}),
 		SourceURL:        "https://codeload.github.com/" + repo + "/tar.gz/HEAD",
 		SourcePath:       skillPath,
 		TargetPath:       target,
@@ -36,7 +37,7 @@ func PlanInstallSkill(repo, skillPath, target string) (model.Plan, error) {
 		CreatedAt:        time.Now(),
 	}
 	plan.Changes = []model.PlanChange{{Action: "install_skill", Source: repo, Target: target, Reason: "来源 " + repo + " · " + skillPath}}
-	plan.Warnings = append(plan.Warnings, "安装会从来源 HEAD 下载并写入中央库；不会自动链接到 Agent 目录。")
+	addWarning(&plan, "plan.warning.installFromHead", "安装会从来源 HEAD 下载并写入共享库；不会自动链接到 Agent 目录。", nil)
 	return plan, nil
 }
 
@@ -95,7 +96,7 @@ func ApplyInstallSkill(ctx context.Context, plan model.Plan, snapshotRoot string
 	_ = os.RemoveAll(staging)
 	op.Status = "success"
 	op.Changes = []string{"installed:" + plan.TargetPath}
-	op.Message = "已安装到中央库；未自动链接 Agent"
+	op.Message = "已安装到共享库；未自动链接 Agent"
 	return op, nil
 }
 
@@ -110,7 +111,8 @@ func PlanInstallCatalogSkill(repo, skillID, target string) (model.Plan, error) {
 		ID:               "plan:install:" + repo + ":" + skillID,
 		Operation:        "install_skill",
 		Title:            "安装 Skill",
-		Summary:          fmt.Sprintf("从 %s 安装 %s 到中央库；会先确认目标不存在。", repo, skillID),
+		TitleMessage:     planTitle("plan.installSkill.title", "安装 Skill"),
+		SummaryMessage:   planMessage("plan.summary.install", "从 {repo} 安装 {name} 到共享库；会先确认目标不存在。", map[string]string{"repo": repo, "name": skillID}),
 		SourceURL:        "https://codeload.github.com/" + repo + "/tar.gz/HEAD",
 		TargetPath:       target,
 		SkillSlug:        skillID,
@@ -119,7 +121,7 @@ func PlanInstallCatalogSkill(repo, skillID, target string) (model.Plan, error) {
 		CreatedAt:        time.Now(),
 	}
 	plan.Changes = []model.PlanChange{{Action: "install_skill", Source: repo, Target: target, Reason: "来源 " + repo + " · " + skillID}}
-	plan.Warnings = append(plan.Warnings, "安装会从来源 HEAD 下载并写入中央库；不会自动链接到 Agent 目录。")
+	addWarning(&plan, "plan.warning.installFromHead", "安装会从来源 HEAD 下载并写入共享库；不会自动链接到 Agent 目录。", nil)
 	return plan, nil
 }
 
@@ -187,7 +189,8 @@ func PlanUninstallSkill(skill model.Skill) (model.Plan, error) {
 		ID:               "plan:uninstall:" + skill.ID,
 		Operation:        "uninstall_skill",
 		Title:            "卸载 Skill",
-		Summary:          fmt.Sprintf("从中央库移除 %s；会先快照整个文件夹。", skill.Name),
+		TitleMessage:     planTitle("plan.uninstallSkill.title", "卸载 Skill"),
+		SummaryMessage:   planMessage("plan.summary.uninstall", "从共享库移除 {name}；会先快照整个文件夹。", map[string]string{"name": skill.Name}),
 		SkillID:          skill.ID,
 		SkillName:        skill.Name,
 		TargetPath:       skill.Path,
@@ -197,7 +200,7 @@ func PlanUninstallSkill(skill model.Skill) (model.Plan, error) {
 		Impact:           []string{},
 	}
 	plan.Changes = []model.PlanChange{{Action: "uninstall_skill", Target: skill.Path, Reason: "删除前快照，可回滚"}}
-	plan.Warnings = append(plan.Warnings, "会移除共享版本目录；已链接的 Agent 会变成失效链接，请先确认影响面。")
+	addWarning(&plan, "plan.warning.removeSharedVersion", "会移除共享版本目录；已链接的 Agent 会变成失效链接，请先确认影响面。", nil)
 	return plan, nil
 }
 
@@ -236,6 +239,6 @@ func ApplyUninstallSkill(ctx context.Context, plan model.Plan, snapshotRoot stri
 	}
 	op.Status = "success"
 	op.Changes = []string{"uninstalled:" + plan.TargetPath}
-	op.Message = "已从中央库移除；快照可回滚"
+	op.Message = "已从共享库移除；快照可回滚"
 	return op, nil
 }

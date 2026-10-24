@@ -46,7 +46,8 @@ func PlanMCPAdd(name, transport, command string, args []string, url string, env 
 		ID:               "plan:mcp-add:" + name + ":" + fmt.Sprint(time.Now().UnixNano()),
 		Operation:        "mcp_add",
 		Title:            "添加 MCP Server",
-		Summary:          fmt.Sprintf("向选中的 Agent 写入 %s；写入前会备份配置文件。", name),
+		TitleMessage:     planTitle("plan.addMcp.title", "添加 MCP Server"),
+		SummaryMessage:   planMessage("plan.summary.mcpAdd", "向选中的 Agent 写入 {name}；写入前会备份配置文件。", map[string]string{"name": name}),
 		MCPName:          name,
 		Command:          command,
 		Args:             args,
@@ -60,7 +61,8 @@ func PlanMCPAdd(name, transport, command string, args []string, url string, env 
 	for _, agent := range agents {
 		plan.Changes = append(plan.Changes, model.PlanChange{Action: "add_mcp_entry", RootID: agent.Label, RootLabel: agent.Label, Target: agent.Path, Reason: "写入该 Agent 的 MCP 配置"})
 	}
-	plan.Warnings = append(plan.Warnings, "只写入 MCP 配置，不会安装命令或启动 Server。", "执行前会备份原配置，可在历史中回滚。")
+	addWarning(&plan, "plan.warning.mcpConfigOnly", "只写入 MCP 配置，不会安装命令或启动 Server。", nil)
+	addWarning(&plan, "plan.warning.configBackedUp", "执行前会备份原配置，可在历史中回滚。", nil)
 	return plan, nil
 }
 

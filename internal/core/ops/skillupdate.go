@@ -34,7 +34,8 @@ func PlanSkillUpdate(skill model.Skill, repo string) (model.Plan, error) {
 		ID:               "plan:skill-update:" + skill.ID,
 		Operation:        "skill_update",
 		Title:            "更新 Skill",
-		Summary:          fmt.Sprintf("用 %s 的来源 HEAD 替换本地 %s；会先快照。", repo, skill.Name),
+		TitleMessage:     planTitle("plan.updateSkill.title", "更新 Skill"),
+		SummaryMessage:   planMessage("plan.summary.skillUpdate", "用 {repo} 的来源 HEAD 替换本地 {name}；会先快照。", map[string]string{"repo": repo, "name": skill.Name}),
 		SkillID:          skill.ID,
 		SkillName:        skill.Name,
 		SourceURL:        "https://codeload.github.com/" + repo + "/tar.gz/HEAD",
@@ -44,7 +45,7 @@ func PlanSkillUpdate(skill model.Skill, repo string) (model.Plan, error) {
 		Executable:       true,
 		CreatedAt:        time.Now(),
 	}
-	plan.Warnings = append(plan.Warnings, "会用来源 HEAD 覆盖本地 Skill 文件夹；本地未提交修改请先确认。")
+	addWarning(&plan, "plan.warning.overwriteLocalSkill", "会用来源 HEAD 覆盖本地 Skill 文件夹；本地未提交修改请先确认。", nil)
 	plan.Changes = append(plan.Changes, model.PlanChange{Action: "update_skill", Source: repo, Target: skill.Path, Reason: "来源 " + repo + " · " + skillPath})
 	return plan, nil
 }

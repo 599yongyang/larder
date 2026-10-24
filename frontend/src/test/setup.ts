@@ -2,6 +2,8 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
 import { afterEach } from 'vitest'
 
+localStorage.setItem('larder.language', 'zh')
+
 afterEach(() => cleanup())
 
 // Radix Select probes these DOM APIs, which jsdom does not implement.

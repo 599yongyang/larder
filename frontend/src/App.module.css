@@ -77,7 +77,7 @@
 .definition{font-size:11px;line-height:1.6}
 .visibilityRow{min-height:32px;font-size:12px}
 .skillDescription{margin:3px 0 0;max-width:520px;color:var(--text-muted);font-size:11px;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.skillGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.skillGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}.skillsMore{display:flex;align-items:center;justify-content:center;padding:14px 0 2px;margin-top:10px;border-top:1px solid var(--line)}
 .skillCard{display:flex;flex-direction:column;gap:10px;min-width:0;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--panel);text-align:left;transition:border-color 120ms ease,background 120ms ease}
 .skillCard:hover{border-color:var(--line-strong);background:var(--brand-soft)}
 .skillCardSelected{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand)}
@@ -182,18 +182,18 @@
 /* Let the description and visibility columns grow with the window. */
 .skillDescription{max-width:none;width:100%}
 .groupedColumns,.groupedRow{grid-template-columns:minmax(320px,2.8fr) minmax(130px,1fr) minmax(180px,1.3fr) 72px 40px}
-.tableWrap th:nth-child(1){width:44%}
-.tableWrap th:nth-child(2){width:15%}
-.tableWrap th:nth-child(3){width:19%;min-width:180px}
-.tableWrap td:nth-child(3){min-width:180px}
+.skillsTable th:nth-child(1){width:44%}
+.skillsTable th:nth-child(2){width:15%}
+.skillsTable th:nth-child(3){width:19%;min-width:180px}
+.skillsTable td:nth-child(3){min-width:180px}
 @media (min-width:1400px){
   .groupedColumns,.groupedRow{grid-template-columns:minmax(440px,3.4fr) minmax(160px,1fr) minmax(230px,1.5fr) 76px 40px}
-  .tableWrap th:nth-child(1){width:48%}
-  .tableWrap th:nth-child(3){width:21%;min-width:220px}
-  .tableWrap td:nth-child(3){min-width:220px}
+  .skillsTable th:nth-child(1){width:48%}
+  .skillsTable th:nth-child(3){width:21%;min-width:220px}
+  .skillsTable td:nth-child(3){min-width:220px}
 }
 .skillCardFoot .agentAvatarGroup{width:auto;flex:1;min-width:0}
-.skillCardFoot > small{flex:none;white-space:nowrap;font-size:10px}
+.skillCardFoot > small{flex:none;white-space:nowrap;font-size:10px}.skillCardToken{display:inline-flex;align-items:center;gap:3px;flex:none;padding-top:2px;color:var(--text-muted);font:9px var(--font-mono);font-variant-numeric:tabular-nums}.skillCardDelete{color:var(--text-muted)!important;opacity:.55}.skillCard:hover .skillCardDelete,.skillCardDelete:focus-visible{opacity:1;color:var(--red)!important}
 
 .detailHeroDescription{margin:10px 0 0;color:var(--ink-soft);font-size:12px;line-height:1.6}
 .detailPath{font-size:10px;line-height:1.5;overflow-wrap:anywhere}
@@ -307,22 +307,22 @@
 .planIcon_brand{color:var(--brand);background:var(--brand-soft);border-color:color-mix(in srgb,var(--brand) 22%,var(--line))}
 .planIcon_neutral{color:var(--ink-soft);background:var(--paper)}
 .planHeading{min-width:0;padding-top:1px}
-.planTitle{font-size:17px;font-weight:650;line-height:1.25;letter-spacing:-.02em}
+.planTitle{font-size:17px;font-weight:650;line-height:1.25;letter-spacing:-.02em}.planSummaryText{margin:5px 0 0;color:var(--text-muted);font-size:10.5px;line-height:1.5}
 .planBody{padding:0 26px 18px}
 .planWarning{display:flex;gap:8px;margin:0 0 14px;padding:10px 11px;border-radius:8px;background:var(--status-warn-bg);color:var(--amber);font-size:10.5px;line-height:1.5}
 .planWarning svg{flex:none;margin-top:1px}
 .planWarning p{margin:0}
 .planWarning p+p{margin-top:4px}
-.planConfirm{display:flex;align-items:flex-start;gap:10px;margin-top:16px;padding:0;border:0;background:transparent;color:var(--ink-soft);font-size:11.5px;line-height:1.5}
-.planConfirm small{display:block;margin-top:2px;color:var(--text-muted);font-size:10.5px}
+.planConfirm{display:flex;align-items:center;gap:9px;margin-top:16px;padding:0;border:0;background:transparent;color:var(--ink-soft);font-size:11.5px;line-height:1.4}.planConfirmLabel{min-width:0}.planConfirmInfo{flex:none;color:var(--text-muted)}
+
 .planFooter{border-top:1px solid var(--line);background:color-mix(in srgb,var(--paper) 42%,transparent);padding:14px 26px}
 
 .planFlat{padding:4px 0 14px;color:var(--ink-soft);font-size:11.5px;line-height:1.6}
 .planFlatList{display:grid;gap:3px;margin:0;padding:0;list-style:none}
 .planFlatList li{display:flex;align-items:baseline;gap:8px}
 .planFlatList span{color:var(--ink);font-weight:550}
-.planFlatList em{color:var(--text-muted);font-style:normal}
-.planFlat p{margin:4px 0 0}
+.planFlatList em{color:var(--text-muted);font-style:normal}.planFlatList small{margin-left:auto;max-width:48%;overflow:hidden;color:var(--text-muted);font:9.5px var(--font-mono);text-overflow:ellipsis;white-space:nowrap}
+.planSummary{display:flex;gap:10px;margin-bottom:8px;color:var(--text-muted);font:9px var(--font-mono);letter-spacing:.02em}.planFlat p{margin:4px 0 0}
 .planFlatCommand code{color:var(--ink-soft);font-size:10px;overflow-wrap:anywhere}
 
 
@@ -394,7 +394,7 @@
 .settingsRow>span{display:grid;gap:2px;min-width:0}
 .settingsRow strong{color:var(--ink-soft);font-size:11px;font-weight:550}
 .settingsRow small{color:var(--text-muted);font-size:9.5px;line-height:1.45}
-.themeOptions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;max-width:560px}
+.themeOptions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;max-width:560px}.scaleOptions{grid-template-columns:repeat(3,minmax(0,1fr));max-width:280px}
 .themeOption{display:flex;align-items:center;justify-content:center;gap:5px;height:32px;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink-soft);font-size:10.5px;cursor:pointer}
 .themeOption:hover{border-color:var(--line-strong)}
 .themeOptionActive{border-color:var(--brand);background:var(--brand-soft);color:var(--ink)}
@@ -538,7 +538,7 @@
 .assetSearch{display:flex;align-items:center;gap:6px;width:220px;height:32px;padding:0 9px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--text-muted)}
 .assetSearch:focus-within{border-color:var(--brand)}
 .assetSearch>svg{flex:none}
-.assetSearchInput{height:30px!important;min-width:0;flex:1;padding:0!important;border:0!important;box-shadow:none!important;background:transparent!important;font-size:11px}
+.assetSearchInput{height:30px!important;min-width:0;flex:1;padding:0!important;border:0!important;outline:none!important;box-shadow:none!important;background:transparent!important;font-size:11px}
 
 .historyToolbarActions .assetSearch{width:190px}
 .filterLeft,.filterRight{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -578,3 +578,33 @@
 .emptyActions{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:14px}
 .emptyAction{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap}
 .brandWordmark{font-family:"Space Grotesk",var(--font-sans);font-size:18px;font-weight:600;letter-spacing:-.025em;color:var(--ink)}
+
+.skeletonBar{display:block;height:10px;border-radius:5px;background:linear-gradient(90deg,var(--line) 20%,var(--line-strong) 45%,var(--line) 70%);background-size:220% 100%;animation:skeleton-shimmer 1.2s ease-in-out infinite}
+.skeletonFilter{width:180px;height:32px;border-radius:7px}
+.skeletonFilterShort{width:104px;height:32px;border-radius:7px}
+.skeletonRows{padding:14px 20px;display:grid;gap:1px;background:var(--line)}
+.skeletonRow{display:grid;grid-template-columns:1.4fr 1fr 1fr .5fr;gap:24px;align-items:center;min-height:46px;padding:0 16px;background:var(--panel)}
+@keyframes skeleton-shimmer{0%{background-position:100% 0}100%{background-position:-100% 0}}
+@media(prefers-reduced-motion:reduce){.skeletonBar{animation:none}}
+
+.metric strong,.tokenValue,.resultCount,.planSummary{font-variant-numeric:tabular-nums}
+
+.instructionTable th:nth-child(2),.instructionTable td:nth-child(2){width:112px;white-space:nowrap}
+.instructionTable th:nth-child(3),.instructionTable td:nth-child(3){width:82px;white-space:nowrap}
+.instructionTable th:nth-child(5),.instructionTable td:nth-child(5){width:76px;white-space:nowrap}
+.instructionTable th:nth-child(6),.instructionTable td:nth-child(6){width:118px;white-space:nowrap}
+.instructionTable td:nth-child(4) code{max-width:360px}
+
+.shortcutList{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden;max-width:560px}
+.shortcutRow{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:32px;padding:0 11px;background:var(--panel);color:var(--ink-soft);font-size:10.5px}
+.shortcutKbd{height:20px;min-width:20px;padding:0 6px;border:1px solid var(--line);border-bottom-color:var(--line-strong);border-radius:4px;background:var(--paper);color:var(--text-muted);font:9.5px var(--font-mono);white-space:nowrap}
+
+.settingsGroupHead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+.settingsGroupHead h2{margin:0}
+.aboutIdentity{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 10px;padding:0 0 10px;border-bottom:1px solid var(--line)}
+.aboutIdentity strong{display:block;color:var(--ink);font-size:14px;font-weight:650;letter-spacing:-.01em}
+.aboutIdentity small{display:block;margin-top:2px;color:var(--text-muted);font-size:10px}
+
+
+.aboutDefinition{margin:2px 0 0;gap:10px 14px}
+.aboutUpdate{margin-top:10px;padding-top:12px;padding-bottom:3px;border-top:1px solid var(--line)!important}

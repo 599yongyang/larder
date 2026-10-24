@@ -37,7 +37,8 @@ func PlanMCPUpdate(server model.MCPServer, newName, command string, args []strin
 		ID:               "plan:mcp-update:" + server.ID + ":" + fmt.Sprint(time.Now().UnixNano()),
 		Operation:        "mcp_update",
 		Title:            "编辑 MCP Server",
-		Summary:          fmt.Sprintf("更新 %s 的命令或 URL；会先备份配置文件。", server.Name),
+		TitleMessage:     planTitle("plan.editMcp.title", "编辑 MCP Server"),
+		SummaryMessage:   planMessage("plan.summary.mcpUpdate", "更新 {name} 的命令或 URL；会先备份配置文件。", map[string]string{"name": server.Name}),
 		MCPName:          server.Name,
 		MCPNewName:       newName,
 		Command:          command,
@@ -55,7 +56,8 @@ func PlanMCPUpdate(server model.MCPServer, newName, command string, args []strin
 		}
 		plan.Changes = append(plan.Changes, model.PlanChange{Action: "update_mcp_entry", RootID: agent.Label, RootLabel: agent.Label, Target: agent.Path, Reason: "更新该 Agent 的 MCP 配置"})
 	}
-	plan.Warnings = append(plan.Warnings, "只修改 MCP 配置，不会安装命令或启动 Server。", "现有环境变量的值会保留；执行前会备份配置。")
+	addWarning(&plan, "plan.warning.mcpConfigOnly", "只修改 MCP 配置，不会安装命令或启动 Server。", nil)
+	addWarning(&plan, "plan.warning.envValuesKept", "现有环境变量的值会保留；执行前会备份配置。", nil)
 	return plan, nil
 }
 

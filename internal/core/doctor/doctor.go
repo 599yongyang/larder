@@ -63,7 +63,7 @@ func RunWithUpdates(result model.ScanResult, updateReport model.UpdateReport) []
 			if link.Drift {
 				findings = append(findings, model.Finding{
 					ID: "copy-drift-" + link.SkillID + "-" + link.RootID, Rule: "copy_drift", Severity: model.SeverityWarn,
-					Title: "副本漂移", Message: "Agent 目录中的副本与中央库内容不同。", Path: link.Path, SkillID: link.SkillID, RootID: link.RootID,
+					Title: "副本漂移", Message: "Agent 目录中的副本与共享库内容不同。", Path: link.Path, SkillID: link.SkillID, RootID: link.RootID,
 					Evidence: []string{link.ContentHash}, Remediation: "M2 再由用户选择保留副本、覆盖副本或回收副本。",
 				})
 			}
@@ -98,7 +98,7 @@ func RunWithUpdates(result model.ScanResult, updateReport model.UpdateReport) []
 		if _, ok := seenCentral[name]; !ok {
 			findings = append(findings, model.Finding{
 				ID: "orphan-lock-" + name, Rule: "orphan_skill", Severity: model.SeverityWarn,
-				Title: "lockfile 孤儿", Message: fmt.Sprintf("lockfile 记录 %q，但中央库中没有对应目录。", name), SkillID: name,
+				Title: "lockfile 孤儿", Message: fmt.Sprintf("lockfile 记录 %q，但共享库中没有对应目录。", name), SkillID: name,
 				Evidence: []string{lock.SourceURL, lock.SkillPath}, Remediation: "确认 Skill 是否被移除或 lockfile 是否过期。",
 			})
 		}

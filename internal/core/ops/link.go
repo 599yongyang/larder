@@ -47,6 +47,7 @@ func PlanLink(req LinkRequest, filesystem platform.FileSystem) (model.Plan, erro
 		ID:               planID(req),
 		Operation:        "link_skill",
 		Title:            "修复链接",
+		TitleMessage:     planTitle("plan.repairLinks.title", "修复链接"),
 		SkillID:          req.SkillID,
 		SkillName:        req.SkillName,
 		RequiresSnapshot: true,
@@ -65,7 +66,7 @@ func PlanLink(req LinkRequest, filesystem platform.FileSystem) (model.Plan, erro
 		case statErr != nil:
 			change.Action = "error"
 			change.Reason = statErr.Error()
-			plan.Warnings = append(plan.Warnings, fmt.Sprintf("%s：无法读取目标 %s", target.RootLabel, statErr))
+			addWarning(&plan, "plan.warning.targetUnreadable", fmt.Sprintf("%s：无法读取目标 %s", target.RootLabel, statErr), map[string]string{"root": target.RootLabel})
 		default:
 			change.Exists = true
 			if existing.Mode()&iofs.ModeSymlink != 0 {
@@ -80,21 +81,21 @@ func PlanLink(req LinkRequest, filesystem platform.FileSystem) (model.Plan, erro
 					} else if _, statErr := filesystem.Stat(filepath.Clean(link)); statErr != nil {
 						change.Action = "replace_link"
 						change.Reason = "现有链接已失效，可以修复"
-						plan.Warnings = append(plan.Warnings, fmt.Sprintf("%s：现有链接已失效，修复时会替换它", target.RootLabel))
+						addWarning(&plan, "plan.warning.existingLinkBroken", fmt.Sprintf("%s：现有链接已失效，修复时会替换它", target.RootLabel), map[string]string{"root": target.RootLabel})
 					} else {
 						change.Action = "conflict"
 						change.Reason = "已有有效链接指向其他位置，不自动替换"
-						plan.Warnings = append(plan.Warnings, fmt.Sprintf("%s：目标已有有效链接，不会覆盖", target.RootLabel))
+						addWarning(&plan, "plan.warning.validLinkKept", fmt.Sprintf("%s：目标已有有效链接，不会覆盖", target.RootLabel), map[string]string{"root": target.RootLabel})
 					}
 				} else {
 					change.Action = "error"
 					change.Reason = linkErr.Error()
-					plan.Warnings = append(plan.Warnings, fmt.Sprintf("%s：无法读取现有链接", target.RootLabel))
+					addWarning(&plan, "plan.warning.existingLinkUnreadable", fmt.Sprintf("%s：无法读取现有链接", target.RootLabel), map[string]string{"root": target.RootLabel})
 				}
 			} else {
 				change.Action = "conflict"
 				change.Reason = "目标路径已存在且不是链接"
-				plan.Warnings = append(plan.Warnings, fmt.Sprintf("%s：目标已存在，不会覆盖", target.RootLabel))
+				addWarning(&plan, "plan.warning.targetExists", fmt.Sprintf("%s：目标已存在，不会覆盖", target.RootLabel), map[string]string{"root": target.RootLabel})
 			}
 		}
 		plan.Changes = append(plan.Changes, change)
@@ -120,7 +121,7 @@ func PlanLink(req LinkRequest, filesystem platform.FileSystem) (model.Plan, erro
 		plan.Title = "调整可见性"
 		plan.Summary = fmt.Sprintf("为 %s 添加 %d 个链接、修复 %d 个失效链接；确认后才会执行。", req.SkillName, created, repaired)
 	}
-	plan.Warnings = append(plan.Warnings, "执行前会先写快照；只创建缺失链接或修复失效链接，不覆盖正常链接。")
+	addWarning(&plan, "plan.warning.snapshotRepairOnly", "执行前会先写快照；只创建缺失链接或修复失效链接，不覆盖正常链接。", nil)
 	return plan, nil
 }
 
@@ -143,6 +144,7 @@ func PlanDisableLink(req LinkRequest, filesystem platform.FileSystem) (model.Pla
 		ID:               planID(LinkRequest{SkillID: "disable:" + req.SkillID, SkillName: req.SkillName, SourcePath: req.SourcePath, Targets: req.Targets}),
 		Operation:        "disable_link",
 		Title:            "停用可见性",
+		TitleMessage:     planTitle("plan.disableVisibility.title", "停用可见性"),
 		SkillID:          req.SkillID,
 		SkillName:        req.SkillName,
 		RequiresSnapshot: true,
@@ -168,7 +170,7 @@ func PlanDisableLink(req LinkRequest, filesystem platform.FileSystem) (model.Pla
 		plan.Impact = append(plan.Impact, target.RootLabel+" · "+target.Path)
 	}
 	plan.Summary = fmt.Sprintf("从 %d 个 Agent 目录移除 %s 的链接；不会删除共享版本或副本。", len(req.Targets), req.SkillName)
-	plan.Warnings = append(plan.Warnings, "执行前会快照现有链接；回滚可以恢复。")
+	addWarning(&plan, "plan.warning.snapshotRollback", "执行前会快照现有链接；回滚可以恢复。", nil)
 	return plan, nil
 }
 
@@ -191,6 +193,7 @@ func PlanSyncCopy(req LinkRequest, filesystem platform.FileSystem) (model.Plan, 
 		ID:               planID(LinkRequest{SkillID: "sync:" + req.SkillID, SkillName: req.SkillName, SourcePath: req.SourcePath, Targets: req.Targets}),
 		Operation:        "sync_copy",
 		Title:            "同步内容",
+		TitleMessage:     planTitle("plan.syncContent.title", "同步内容"),
 		SkillID:          req.SkillID,
 		SkillName:        req.SkillName,
 		RequiresSnapshot: true,
@@ -204,10 +207,10 @@ func PlanSyncCopy(req LinkRequest, filesystem platform.FileSystem) (model.Plan, 
 		}
 		plan.Changes = append(plan.Changes, model.PlanChange{Action: "sync_copy", RootID: target.RootID, RootLabel: target.RootLabel, Source: req.SourcePath, Target: target.Path, Exists: true, Reason: "复制一份快照，然后用共享版本覆盖副本"})
 		plan.Impact = append(plan.Impact, target.RootLabel+" · "+target.Path)
-		plan.Warnings = append(plan.Warnings, fmt.Sprintf("%s：副本会被共享版本内容替换", target.RootLabel))
+		addWarning(&plan, "plan.warning.copyReplaced", fmt.Sprintf("%s：副本会被共享版本内容替换", target.RootLabel), map[string]string{"root": target.RootLabel})
 	}
 	plan.Summary = fmt.Sprintf("把 %s 的 %d 个副本同步为共享版本内容；确认后才会执行。", req.SkillName, len(req.Targets))
-	plan.Warnings = append(plan.Warnings, "执行前会先写快照；不会创建或删除共享版本。")
+	addWarning(&plan, "plan.warning.snapshotNoShared", "执行前会先写快照；不会创建或删除共享版本。", nil)
 	return plan, nil
 }
 
@@ -231,6 +234,7 @@ func PlanCopyToLink(req LinkRequest, filesystem platform.FileSystem) (model.Plan
 		ID:               planID(LinkRequest{SkillID: "copy:" + req.SkillID, SkillName: req.SkillName, SourcePath: req.SourcePath, Targets: req.Targets}),
 		Operation:        "replace_copy",
 		Title:            "改用共享版本",
+		TitleMessage:     planTitle("plan.useSharedVersion.title", "改用共享版本"),
 		SkillID:          req.SkillID,
 		SkillName:        req.SkillName,
 		RequiresSnapshot: true,
@@ -252,10 +256,10 @@ func PlanCopyToLink(req LinkRequest, filesystem platform.FileSystem) (model.Plan
 		change.Reason = "目录副本将被快照，然后替换为 symlink"
 		plan.Changes = append(plan.Changes, change)
 		plan.Impact = append(plan.Impact, target.RootLabel+" · "+target.Path)
-		plan.Warnings = append(plan.Warnings, fmt.Sprintf("%s：副本会被替换为链接，执行前会快照", target.RootLabel))
+		addWarning(&plan, "plan.warning.copyReplacedWithLink", fmt.Sprintf("%s：副本会被替换为链接，执行前会快照", target.RootLabel), map[string]string{"root": target.RootLabel})
 	}
 	plan.Summary = fmt.Sprintf("把 %s 的 %d 个副本替换为指向共享版本的链接；确认后才会执行写入。", req.SkillName, len(req.Targets))
-	plan.Warnings = append(plan.Warnings, "执行前必须生成快照；只会替换目录副本，不覆盖有效链接。")
+	addWarning(&plan, "plan.warning.snapshotReplaceCopy", "执行前必须生成快照；只会替换目录副本，不覆盖有效链接。", nil)
 	return plan, nil
 }
 

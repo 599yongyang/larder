@@ -5,8 +5,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { AssetSearch } from '@/components/AssetSearch'
 import { backend } from '../../backend'
 import styles from '../../App.module.css'
+import { t } from '../../i18n'
 import { toastError, toastSuccess } from '../../lib/toast'
-import { OperationsView, opLabel, statusLabel } from '../operations/OperationsView'
+import { OperationsView, opLabel, statusKeys } from '../operations/OperationsView'
 import { TimelineView } from '../timeline/TimelineView'
 import type { Operation, TimelineEvent, UsageStat } from '../../types'
 
@@ -16,15 +17,15 @@ function HistoryView({ events, usage, operations, onRollback }: { events: Timeli
   const [opType, setOpType] = useState('all')
   const [opStatus, setOpStatus] = useState('all')
   const copyReport = async () => {
-    try { await navigator.clipboard.writeText(await backend.exportReport()); toastSuccess('报告已复制') } catch (error) { toastError(error, '复制报告失败') }
+    try { await navigator.clipboard.writeText(await backend.exportReport()); toastSuccess(t('history.reportCopied')) } catch (error) { toastError(error, t('history.failedToCopyReport')) }
   }
   return <div className={styles.historyPage}>
     <div className={styles.historyToolbar}>
-      <div className={styles.segmentedControl} role="group" aria-label="历史视图">
-        <Button variant={tab === 'timeline' ? 'secondary' : 'ghost'} size="xs" onClick={() => setTab('timeline')}>变化时间线<span className={styles.tabCount}>{events.length}</span></Button>
-        <Button variant={tab === 'operations' ? 'secondary' : 'ghost'} size="xs" onClick={() => setTab('operations')}>操作记录<span className={styles.tabCount}>{operations.length}</span></Button>
+      <div className={styles.segmentedControl} role="group" aria-label={t('history.historyView')}>
+        <Button variant={tab === 'timeline' ? 'secondary' : 'ghost'} size="xs" onClick={() => setTab('timeline')}>{t('history.changeTimeline')}<span className={styles.tabCount}>{events.length}</span></Button>
+        <Button variant={tab === 'operations' ? 'secondary' : 'ghost'} size="xs" onClick={() => setTab('operations')}>{t('history.operations')}<span className={styles.tabCount}>{operations.length}</span></Button>
       </div>
-      <div className={styles.historyToolbarActions}><AssetSearch value={query} onChange={setQuery} placeholder="搜索历史" label="搜索历史" width={170} />{tab === 'operations' && <><Select value={opType} onValueChange={setOpType}><SelectTrigger size="sm" className="w-[120px]" aria-label="操作类型"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">全部操作</SelectItem>{Array.from(new Set(operations.map((op) => op.operation))).map((item) => <SelectItem key={item} value={item}>{opLabel[item] ?? item}</SelectItem>)}</SelectContent></Select><Select value={opStatus} onValueChange={setOpStatus}><SelectTrigger size="sm" className="w-[110px]" aria-label="操作状态"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">全部状态</SelectItem>{Object.entries(statusLabel).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></>}{tab === 'timeline' && <Button variant="outline" size="xs" onClick={() => void copyReport()}><Copy size={12} aria-hidden="true" />复制报告</Button>}</div>
+      <div className={styles.historyToolbarActions}><AssetSearch value={query} onChange={setQuery} placeholder={t('history.searchHistory')} label={t('history.searchHistory')} width={170} />{tab === 'operations' && <><Select value={opType} onValueChange={setOpType}><SelectTrigger size="sm" className="w-[120px]" aria-label={t('history.operationType')}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('history.allOperations')}</SelectItem>{Array.from(new Set(operations.map((op) => op.operation))).map((item) => <SelectItem key={item} value={item}>{opLabel(item)}</SelectItem>)}</SelectContent></Select><Select value={opStatus} onValueChange={setOpStatus}><SelectTrigger size="sm" className="w-[110px]" aria-label={t('history.operationStatus')}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('common.allStates')}</SelectItem>{Object.entries(statusKeys).map(([value, key]) => <SelectItem key={value} value={value}>{t(key)}</SelectItem>)}</SelectContent></Select></>}{tab === 'timeline' && <Button variant="outline" size="xs" onClick={() => void copyReport()}><Copy size={12} aria-hidden="true" />{t('history.copyReport')}</Button>}</div>
     </div>
     <div className={styles.historyBody}>{tab === 'timeline' ? <TimelineView events={events} usage={usage} query={query} /> : <OperationsView operations={operations} onRollback={onRollback} query={query} type={opType} status={opStatus} />}</div>
   </div>

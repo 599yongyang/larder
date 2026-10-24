@@ -15,6 +15,7 @@ Larder is a local-first desktop app for developers who work with multiple AI age
 - **CLI tools** — see what is installed, which package manager owns it, duplicates and available updates. Update or uninstall through the package manager.
 - **Instruction files** — scan `AGENTS.md`, `CLAUDE.md`, Cursor rules and Copilot instructions. Preview Markdown or raw content, edit existing files, or create new ones.
 - **Projects** — see the Skills, MCP servers and instruction files that belong to a project in one place.
+- **Language** — switch between English and Chinese in Settings; the app follows the system language on first launch.
 
 ![MCP overview](docs/screenshots/mcp.png)
 

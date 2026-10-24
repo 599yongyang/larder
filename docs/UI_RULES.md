@@ -8,6 +8,17 @@ Short rules so new screens do not drift from the existing density.
 - No collapse mode
 - Brand is the only header content
 
+## Language
+
+Every user-facing string goes through `t()` from `frontend/src/i18n.ts`.
+
+- Use semantic keys such as `nav.skills` and `settings.language`; translations live in `frontend/src/locales/en.ts` and `frontend/src/locales/zh-CN.ts`.
+- i18next owns lookup, interpolation and plural/formatting extensions. `t()` is the app-facing wrapper.
+- Do not add raw Chinese or English UI labels directly in JSX.
+- Language can be set to system language, Chinese or English; switching applies live and briefly scrambles visible text nodes, then settles.
+- To add a language, add a locale file, register it in `frontend/src/i18n.ts`, and add it to the `languages` list.
+- Dates, times and backend labels shown in the UI also need localization.
+
 ## Brand
 
 The in-app brand is just the word `Larder`, set in Space Grotesk 600, 18px. There is no logo mark and no collapse control in the app shell.

@@ -19,6 +19,7 @@ export type {
     LockSkill,
     MCPAgent,
     MCPServer,
+    Message,
     Operation,
     Plan,
     PlanChange,

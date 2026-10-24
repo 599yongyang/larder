@@ -24,7 +24,8 @@ func PlanMCPRemove(server model.MCPServer, agentPaths []string) (model.Plan, err
 		ID:               "plan:mcp-remove:" + server.ID,
 		Operation:        "mcp_remove",
 		Title:            "移除 MCP Server",
-		Summary:          fmt.Sprintf("从选中的 Agent 配置中移除 %s；会先备份配置文件。", server.Name),
+		TitleMessage:     planTitle("plan.removeMcp.title", "移除 MCP Server"),
+		SummaryMessage:   planMessage("plan.summary.mcpRemove", "从选中的 Agent 配置中移除 {name}；会先备份配置文件。", map[string]string{"name": server.Name}),
 		MCPName:          server.Name,
 		RequiresSnapshot: true,
 		Executable:       true,
@@ -42,7 +43,8 @@ func PlanMCPRemove(server model.MCPServer, agentPaths []string) (model.Plan, err
 		}
 		plan.Changes = append(plan.Changes, model.PlanChange{Action: "remove_mcp_entry", RootID: agent.Label, RootLabel: agent.Label, Target: agent.Path, Reason: "从该 Agent 配置中移除 MCP Server"})
 	}
-	plan.Warnings = append(plan.Warnings, "只修改 MCP 配置，不会删除任何已安装的命令或文件。", "JSON 配置会重新排版；执行前会备份原文件，可在历史中回滚。")
+	addWarning(&plan, "plan.warning.mcpConfigOnly", "只修改 MCP 配置，不会删除任何已安装的命令或文件。", nil)
+	addWarning(&plan, "plan.warning.jsonReformat", "JSON 配置会重新排版；执行前会备份原文件，可在历史中回滚。", nil)
 	return plan, nil
 }
 

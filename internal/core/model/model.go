@@ -234,10 +234,19 @@ type PlanChange struct {
 	Reason    string `json:"reason,omitempty"`
 }
 
+type Message struct {
+	Code     string            `json:"code,omitempty"`
+	Params   map[string]string `json:"params,omitempty"`
+	Fallback string            `json:"fallback,omitempty"`
+}
+
 type Plan struct {
 	ID               string            `json:"id"`
 	Operation        string            `json:"operation"`
 	Title            string            `json:"title"`
+	TitleMessage     Message           `json:"titleMessage,omitempty"`
+	SummaryMessage   Message           `json:"summaryMessage,omitempty"`
+	WarningMessages  []Message         `json:"warningMessages,omitempty"`
 	Summary          string            `json:"summary"`
 	SkillID          string            `json:"skillId,omitempty"`
 	SkillName        string            `json:"skillName,omitempty"`

@@ -158,7 +158,7 @@ func (s *AppService) refresh(parent context.Context) {
 	s.mu.Lock()
 	s.state.Scanning = false
 	s.state.Snapshot = result
-	s.state.Updates = model.UpdateReport{}
+	s.state.Updates = model.UpdateReport{CheckedAt: s.state.Updates.CheckedAt}
 	s.state.Cached = false
 	if err != nil && !errors.Is(err, context.Canceled) {
 		s.state.LastError = err.Error()
@@ -178,7 +178,7 @@ func (s *AppService) Scan() (AppState, error) {
 	if s.state.Scanning {
 		state := s.state
 		s.mu.Unlock()
-		return state, errors.New("scan already running")
+		return state, messageError("common.scanAlreadyRunning", "scan already running", nil)
 	}
 	parent := s.ctx
 	if parent == nil {
@@ -196,7 +196,7 @@ func (s *AppService) Scan() (AppState, error) {
 	s.scanCancel = nil
 	s.state.Scanning = false
 	s.state.Snapshot = result
-	s.state.Updates = model.UpdateReport{}
+	s.state.Updates = model.UpdateReport{CheckedAt: s.state.Updates.CheckedAt}
 	if err != nil && !errors.Is(err, context.Canceled) {
 		s.state.LastError = err.Error()
 	} else {
@@ -261,6 +261,9 @@ func (s *AppService) PlanCopyToLink(skillID string, rootIDs []string) (model.Pla
 
 func (s *AppService) ApplyPlan(planID string) (model.Operation, error) {
 	op, err := s.core.ApplyPlan(s.context(), planID)
+	if err != nil {
+		return op, messageError("common.executionFailed", err.Error(), nil)
+	}
 	if err == nil {
 		settings, _ := s.core.Settings(s.context())
 		retention := settings.SnapshotRetention
@@ -438,7 +441,7 @@ func (s *AppService) DisableMCPAgent(serverID, agentPath string) error {
 		}
 	}
 	if target == nil {
-		return errors.New("mcp server not found")
+		return messageError("mcp.serverNotFound", "mcp server not found", nil)
 	}
 	var label string
 	for _, agent := range target.Agents {
@@ -526,7 +529,7 @@ func (s *AppService) PickBackupFile() (string, error) {
 	app := s.app
 	s.mu.RUnlock()
 	if app == nil {
-		return "", errors.New("app is not ready")
+		return "", messageError("common.appNotReady", "app is not ready", nil)
 	}
 	dialog := app.Dialog.OpenFile().SetTitle("选择备份文件")
 	dialog.CanChooseFiles(true)
@@ -565,7 +568,7 @@ func (s *AppService) SaveInstruction(path, content string) error {
 		return err
 	}
 	if len(content) > 512*1024 {
-		return errors.New("instruction file is too large")
+		return messageError("instructions.fileTooLarge", "instruction file is too large", nil)
 	}
 	if existing, err := os.ReadFile(path); err == nil {
 		backupDir := filepath.Join(s.dataDir, "instruction-backups")
@@ -593,7 +596,7 @@ func (s *AppService) CreateInstruction(projectPath, name, content string) (strin
 		}
 	}
 	if !allowedProject {
-		return "", errors.New("project is not in settings")
+		return "", messageError("instructions.projectNotConfigured", "project is not in settings", nil)
 	}
 	names := map[string]string{
 		"AGENTS.md":                       "AGENTS.md",
@@ -606,18 +609,18 @@ func (s *AppService) CreateInstruction(projectPath, name, content string) (strin
 	}
 	relative, ok := names[name]
 	if !ok {
-		return "", errors.New("unsupported instruction file name")
+		return "", messageError("instructions.unsupportedFileName", "unsupported instruction file name", nil)
 	}
 	path := filepath.Join(projectPath, filepath.FromSlash(relative))
 	if _, err := os.Stat(path); err == nil {
-		return "", errors.New("instruction file already exists")
+		return "", messageError("instructions.fileAlreadyExists", "instruction file already exists", nil)
 	}
 	return path, s.SaveInstruction(path, content)
 }
 
 func validateInstructionPath(path string, roots []string) error {
 	if !filepath.IsAbs(path) {
-		return errors.New("instruction path must be absolute")
+		return messageError("instructions.pathMustBeAbsolute", "instruction path must be absolute", nil)
 	}
 	clean := filepath.Clean(path)
 	allowed := false
@@ -629,27 +632,27 @@ func validateInstructionPath(path string, roots []string) error {
 		}
 	}
 	if !allowed {
-		return errors.New("instruction path is outside configured workspaces")
+		return messageError("instructions.pathOutsideWorkspaces", "instruction path is outside configured workspaces", nil)
 	}
 	switch strings.ToLower(filepath.Ext(clean)) {
 	case ".md", ".mdc", ".markdown", ".txt", ".cursorrules":
 		return nil
 	default:
-		return errors.New("unsupported instruction file type")
+		return messageError("instructions.unsupportedFileType", "unsupported instruction file type", nil)
 	}
 }
 
 func (s *AppService) InstructionContent(path string) (string, error) {
 	ext := strings.ToLower(filepath.Ext(path))
 	if ext != ".md" && ext != ".mdc" && ext != ".markdown" && ext != ".txt" && ext != ".cursorrules" {
-		return "", errors.New("unsupported instruction file type")
+		return "", messageError("instructions.unsupportedFileType", "unsupported instruction file type", nil)
 	}
 	info, err := os.Stat(path)
 	if err != nil {
 		return "", err
 	}
 	if info.Size() > 512*1024 {
-		return "", errors.New("instruction file is too large to preview")
+		return "", messageError("instructions.fileTooLargeToPreview", "instruction file is too large to preview", nil)
 	}
 	raw, err := os.ReadFile(path)
 	return string(raw), err
@@ -671,7 +674,7 @@ func (s *AppService) TestMCP(serverID string) (MCPTestResult, error) {
 		}
 	}
 	if server == nil {
-		return MCPTestResult{}, errors.New("mcp server not found")
+		return MCPTestResult{}, messageError("mcp.serverNotFound", "mcp server not found", nil)
 	}
 	if server.URL != "" {
 		client := &http.Client{Timeout: 6 * time.Second}
@@ -755,7 +758,7 @@ func (s *AppService) CatalogDescription(source, skillID string) (string, error) 
 
 func (s *AppService) RecordCatalogInstall(path, source, skillID string) error {
 	if path == "" || source == "" || skillID == "" {
-		return errors.New("path, source and skill are required")
+		return messageError("skills.installFieldsRequired", "path, source and skill are required", nil)
 	}
 	s.mu.Lock()
 	s.installs[path] = CatalogInstall{Path: path, Source: source, SkillID: skillID, InstalledAt: time.Now()}
@@ -808,7 +811,7 @@ func (s *AppService) PickFolder() (string, error) {
 	app := s.app
 	s.mu.RUnlock()
 	if app == nil {
-		return "", errors.New("app is not ready")
+		return "", messageError("common.appNotReady", "app is not ready", nil)
 	}
 	dialog := app.Dialog.OpenFile().SetTitle("选择项目文件夹")
 	dialog.CanChooseFiles(false)
