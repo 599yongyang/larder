@@ -214,6 +214,9 @@ func (f fakeCLIRunner) Run(context.Context, string, []string, []string) ([]byte,
 }
 
 func TestCLIPlanExecutionUsesInjectedRunner(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fixture uses a Unix symlink and executable")
+	}
 	home := t.TempDir()
 	t.Setenv("LARDER_HOME", home)
 	cliDir := filepath.Join(home, "brewbin")

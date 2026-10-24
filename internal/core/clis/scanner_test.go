@@ -12,6 +12,9 @@ import (
 )
 
 func TestScannerFindsOwnersAndDuplicates(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fixture uses Unix executable names without PATHEXT")
+	}
 	home := t.TempDir()
 	brewDir := filepath.Join(home, "homebrew", "bin")
 	npmDir := filepath.Join(home, "npm", "bin")

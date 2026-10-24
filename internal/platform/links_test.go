@@ -31,7 +31,15 @@ func TestCreateAndResolveDirectoryLink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if filepath.Clean(resolved) != filepath.Clean(target) {
+	resolvedInfo, err := os.Stat(resolved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetInfo, err := os.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(resolvedInfo, targetInfo) {
 		t.Fatalf("resolved target = %q, want %q", resolved, target)
 	}
 	if resolvedKind != want {
