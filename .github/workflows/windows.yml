@@ -1,0 +1,101 @@
+name: Windows acceptance
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      LARDER_REQUIRE_WEBVIEW2: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Wails CLI
+        shell: pwsh
+        run: |
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.34
+          "$(go env GOPATH)\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Install Task
+        shell: pwsh
+        run: |
+          go install github.com/go-task/task/v3/cmd/task@latest
+          "$(go env GOPATH)\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          task --version
+
+      - name: Verify WebView2 runtime
+        shell: pwsh
+        run: |
+          $client = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          $keys = @(
+            "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\$client",
+            "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$client",
+            "HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$client"
+          )
+          $versions = @($keys | ForEach-Object { try { (Get-ItemProperty -Path $_ -ErrorAction Stop).pv } catch {} } | Where-Object { $_ })
+          if ($versions.Count -eq 0) { throw "WebView2 Evergreen runtime was not found" }
+          Write-Host "WebView2 version(s): $($versions -join ', ')"
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
+
+      - name: Go tests and vet
+        run: |
+          go test ./...
+          go vet ./...
+
+      - name: Frontend build
+        run: npm run build --prefix frontend
+
+      - name: Frontend tests
+        run: npm test --prefix frontend
+
+      - name: Wails build
+        shell: pwsh
+        run: |
+          $env:GOOS = 'windows'
+          $env:GOARCH = 'amd64'
+          wails3 build
+
+      - name: Fixture scan and GUI smoke
+        shell: pwsh
+        run: |
+          $fixtureHome = Join-Path $env:RUNNER_TEMP 'larder-home'
+          $dataDir = Join-Path $env:RUNNER_TEMP 'larder-data'
+          New-Item -ItemType Directory -Force (Join-Path $fixtureHome '.agents\skills\windows-fixture') | Out-Null
+          @'
+          ---
+          name: windows-fixture
+          description: Windows path compatibility fixture
+          ---
+          '@ | Set-Content -Encoding utf8 (Join-Path $fixtureHome '.agents\skills\windows-fixture\SKILL.md')
+          $env:LARDER_HOME = $fixtureHome
+          $env:LARDER_DATA_DIR = $dataDir
+          $process = Start-Process -FilePath '.\bin\larder.exe' -WorkingDirectory $pwd -PassThru
+          Start-Sleep -Seconds 8
+          if ($process.HasExited) { throw "Larder exited during Windows startup" }
+          Stop-Process -Id $process.Id -Force
+
+      - name: Upload Windows binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: larder-windows
+          path: bin/larder.exe

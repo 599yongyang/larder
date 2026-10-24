@@ -1,0 +1,39 @@
+version: '3'
+info:
+  companyName: "Larder contributors"
+  productName: "Larder"
+  productIdentifier: "dev.larder.app"
+  description: "本机 Skills、MCP、CLI 与指令管理"
+  copyright: "© 2026 Larder contributors"
+  comments: "只读 Skill 扫描与诊断"
+  version: "0.0.1"
+dev_mode:
+  root_path: .
+  log_level: warn
+  debounce: 500
+  ignore:
+    dir:
+      - .git
+      - node_modules
+      - frontend
+      - bin
+      - .larder-gocache
+    file:
+      - .DS_Store
+      - .gitignore
+      - "*_test.go"
+    watched_extension:
+      - "*.go"
+      - "*.js"
+      - "*.ts"
+    git_ignore: true
+  executes:
+    - cmd: wails3 build DEV=true
+      type: blocking
+    - cmd: wails3 task common:dev:frontend
+      type: background
+    - cmd: wails3 task run
+      type: primary
+      exit_policy: shutdown
+fileAssociations: []
+other: []

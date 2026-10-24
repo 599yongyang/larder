@@ -1,0 +1,110 @@
+import { AppService } from '../bindings/larder/cmd/larder'
+
+// Errors are intentionally propagated. The UI must show a real failure state
+// instead of silently rendering an empty ledger.
+export const backend = {
+  state: async () => normalizeState(await AppService.State() as any),
+  scan: async () => normalizeState(await AppService.Scan() as any),
+  cancel: async () => Boolean(await AppService.CancelScan()),
+  doctor: async () => ((await AppService.Doctor()) as any) ?? [],
+  mcp: async () => ((await AppService.MCP()) as any) ?? [],
+  appInfo: async () => (await AppService.AppInfo()) as any,
+  pickBackupFile: async () => String(await AppService.PickBackupFile() ?? ''),
+  inspectBackup: async (path: string) => (await AppService.InspectBackup(path)) as any,
+  restoreBackup: async (path: string) => (await AppService.RestoreBackup(path)) as any,
+  exportBackup: async () => String(await AppService.ExportBackup()),
+  saveInstruction: async (path: string, content: string) => { await AppService.SaveInstruction(path, content) },
+  createInstruction: async (projectPath: string, name: string, content: string) => String(await AppService.CreateInstruction(projectPath, name, content)),
+  instructionContent: async (path: string) => String(await AppService.InstructionContent(path)),
+  instructions: async () => ((await AppService.Instructions()) as any) ?? [],
+  pickFolder: async () => String(await AppService.PickFolder()),
+  catalogSkills: async (view: 'popular' | 'trending') => ((await AppService.CatalogSkills(view)) as any) ?? [],
+  searchCatalogSkills: async (query: string) => ((await AppService.SearchCatalogSkills(query)) as any) ?? [],
+  resolveCatalogSkill: async (source: string, skillID: string) => String(await AppService.ResolveCatalogSkill(source, skillID)),
+  catalogDescription: async (source: string, skillID: string) => String(await AppService.CatalogDescription(source, skillID)),
+  catalogInstalls: async () => ((await AppService.CatalogInstalls()) as any) ?? [],
+  recordCatalogInstall: async (path: string, source: string, skillID: string) => { await AppService.RecordCatalogInstall(path, source, skillID) },
+  settings: async () => normalizeSettings(await AppService.Settings() as any),
+  saveSettings: async (settings: unknown) => normalizeSettings(await AppService.SaveSettings(settings as any) as any),
+  ignoreAgent: async (path: string, label: string, rootID: string) => normalizeSettings(await AppService.IgnoreAgent(path, label, rootID) as any),
+  restoreAgent: async (path: string) => normalizeSettings(await AppService.RestoreAgent(path) as any),
+  trashAgent: async (path: string) => normalizeSettings(await AppService.TrashAgent(path) as any),
+  revealSkill: async (skillID: string) => { await AppService.RevealSkill(skillID) },
+  revealCLI: async (cliID: string) => { await AppService.RevealCLI(cliID) },
+  checkUpdates: async () => normalizeUpdates(await AppService.CheckUpdates() as any),
+  planLink: async (skillID: string, rootIDs: string[]) => (await AppService.PlanLink(skillID, rootIDs)) as any,
+  planCopyToLink: async (skillID: string, rootIDs: string[]) => (await AppService.PlanCopyToLink(skillID, rootIDs)) as any,
+  planDisableLink: async (skillID: string, rootIDs: string[]) => (await AppService.PlanDisableLink(skillID, rootIDs)) as any,
+  planSyncCopy: async (skillID: string, rootIDs: string[]) => (await AppService.PlanSyncCopy(skillID, rootIDs)) as any,
+  applyLinkPlan: async (planID: string) => (await AppService.ApplyLinkPlan(planID)) as any,
+  applyPlan: async (planID: string) => (await AppService.ApplyPlan(planID)) as any,
+  planCLI: async (cliID: string, uninstall: boolean, latest: string) => (await AppService.PlanCLI(cliID, uninstall, latest)) as any,
+  planSkillUpdate: async (skillID: string) => (await AppService.PlanSkillUpdate(skillID)) as any,
+  planInstallSkill: async (repo: string, skillPath: string, name: string) => (await AppService.PlanInstallSkill(repo, skillPath, name)) as any,
+  planInstallCatalogSkill: async (repo: string, skillID: string, name: string) => (await AppService.PlanInstallCatalogSkill(repo, skillID, name)) as any,
+  planUninstallSkill: async (skillID: string) => (await AppService.PlanUninstallSkill(skillID)) as any,
+  planMCPRemove: async (serverID: string, agentPaths: string[]) => (await AppService.PlanMCPRemove(serverID, agentPaths)) as any,
+  testMCP: async (serverID: string) => (await AppService.TestMCP(serverID)) as any,
+  disableMCPAgent: async (serverID: string, agentPath: string) => { await AppService.DisableMCPAgent(serverID, agentPath) },
+  enableMCPAgent: async (name: string, agentPath: string) => { await AppService.EnableMCPAgent(name, agentPath) },
+  planMCPUpdate: async (serverID: string, name: string, command: string, args: string[], url: string, agentPaths: string[]) => (await AppService.PlanMCPUpdate(serverID, name, command, args, url, agentPaths)) as any,
+  mcpTargets: async () => ((await AppService.MCPTargets()) as any) ?? [],
+  searchMCPRegistry: async (query: string) => ((await AppService.SearchMCPRegistry(query)) as any) ?? [],
+  planMCPAdd: async (name: string, transport: string, command: string, args: string[], url: string, env: Record<string, string>, agentPaths: string[]) => (await AppService.PlanMCPAdd(name, transport, command, args, url, env, agentPaths)) as any,
+  operations: async () => ((await AppService.Operations()) as any) ?? [],
+  timeline: async () => ((await AppService.Timeline()) as any) ?? [],
+  exportReport: async () => String(await AppService.ExportReport()),
+  usageStats: async () => ((await AppService.UsageStats()) as any) ?? [],
+  skillIcon: async (skillID: string) => String(await AppService.SkillIcon(skillID)),
+  toggleWindowMaximised: async () => Boolean(await AppService.ToggleWindowMaximised()),
+  rollbackOperation: async (operationID: string) => (await AppService.RollbackOperation(operationID)) as any,
+}
+
+function normalizeUpdates(value: any) {
+  return {
+    checkedAt: value?.checkedAt ?? '',
+    items: Array.isArray(value?.items) ? value.items : [],
+    errors: Array.isArray(value?.errors) ? value.errors : [],
+    scanned: Number(value?.scanned ?? 0),
+    available: Number(value?.available ?? 0),
+    current: Number(value?.current ?? 0),
+    skillScanned: Number(value?.skillScanned ?? 0),
+    skillChanged: Number(value?.skillChanged ?? 0),
+    skillCurrent: Number(value?.skillCurrent ?? 0),
+    skillErrors: Number(value?.skillErrors ?? 0),
+  }
+}
+
+function normalizeSettings(value: any) {
+  return {
+    projectWorkspaces: Array.isArray(value?.projectWorkspaces) ? value.projectWorkspaces : [],
+    ignoredAgents: Array.isArray(value?.ignoredAgents) ? value.ignoredAgents : [],
+    showAgentBuiltins: Boolean(value?.showAgentBuiltins),
+    usageStatsEnabled: Boolean(value?.usageStatsEnabled),
+    autoCheckUpdates: Boolean(value?.autoCheckUpdates),
+    updateCheckIntervalHours: Number(value?.updateCheckIntervalHours || 24),
+    snapshotRetention: Number(value?.snapshotRetention || 50),
+  }
+}
+
+function normalizeState(value: any): any {
+  const snapshot = value?.snapshot ?? {}
+  return {
+    ...value,
+    cached: Boolean(value?.cached),
+    scanning: Boolean(value?.scanning),
+    lastError: value?.lastError ?? '',
+    updatedAt: value?.updatedAt ?? '',
+    snapshot: {
+      ...snapshot,
+      status: snapshot.status ?? 'idle',
+      roots: snapshot.roots ?? [],
+      skills: snapshot.skills ?? [],
+      agentLinks: snapshot.agentLinks ?? [],
+      clis: snapshot.clis ?? [],
+      issues: snapshot.issues ?? [],
+      fromCache: Boolean(snapshot.fromCache),
+    },
+    updates: normalizeUpdates(value?.updates ?? {}),
+  }
+}

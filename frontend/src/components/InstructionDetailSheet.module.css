@@ -1,0 +1,9 @@
+.instructionPreview{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ink-soft);font:10.5px/1.7 var(--font-mono);background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:12px}
+.contentHead{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.contentHead h3{margin:0}
+.contentHead .segmentedControl{margin-left:auto}
+.contentHint{margin:0;color:var(--text-muted);font-size:10.5px}
+.frontmatter{display:grid;gap:4px;margin:0 0 14px;padding:9px 11px;border:1px solid var(--line);border-radius:7px;background:var(--panel)}
+.frontmatter>div{display:grid;grid-template-columns:92px minmax(0,1fr);gap:8px;font-size:9.5px}
+.frontmatter dt{color:var(--text-muted);font-family:var(--font-mono)}
+.frontmatter dd{margin:0;overflow-wrap:anywhere;color:var(--ink-soft)}

@@ -1,0 +1,27 @@
+export type View = 'skills' | 'cli' | 'mcp' | 'instructions' | 'project' | 'history' | 'settings'
+export type LinkMode = 'linked' | 'copied' | 'local' | 'missing' | 'broken' | 'unavailable' | 'shared'
+export type Root = { id: string; label: string; logicalAgent?: string; path: string; kind: string; known: boolean; status: string; error?: string; entryCount: number; sharedSkills?: boolean }
+export type Skill = { id: string; name: string; path: string; rootId: string; rootKind: string; source?: string; sourceUrl?: string; skillPath?: string; locked: boolean; hasSkillMd: boolean; description?: string; descTokens: number; folderHash?: string; contentHash?: string; scanState: string; isAgentLocal: boolean; isProject: boolean; copyDrift: boolean; icon?: string; iconSource?: string; bins?: string[]; origin?: string; originDetail?: string }
+export type Link = { skillId: string; rootId: string; mode: LinkMode; path?: string; targetPath?: string; drift: boolean; visible: boolean; reason?: string }
+export type Issue = { kind: string; path?: string; message: string }
+export type Snapshot = { schemaVersion: string; startedAt?: string; finishedAt?: string; status: string; roots: Root[]; skills: Skill[]; agentLinks: Link[]; clis: CLIInfo[]; issues: Issue[]; fromCache: boolean }
+export type Finding = { id: string; rule: string; severity: 'info' | 'warn' | 'error'; title: string; message: string; path?: string; skillId?: string; rootId?: string; evidence?: string[]; remediation?: string }
+export type BackupInfo = { path: string; createdAt: string; total: number; configs: number; instructions: number; apps: number; projects: string[] }
+export type BackupResult = { restored: number; skipped: number; snapshotDir: string }
+export type AppInfo = { version: string; schemaVersion: string; goVersion: string; platform: string; dataDir: string; homeDir: string }
+export type InstructionFile = { id: string; name: string; path: string; agent: string; scope: 'global' | 'project' | string; project?: string; size: number; modifiedAt: string; hash: string; excerpt?: string; duplicate: boolean }
+export type MCPAgent = { label: string; path: string; scope?: string; enabled: boolean }
+export type MCPServer = { id: string; name: string; transport: string; command?: string; args?: string[]; url?: string; envKeys?: string[]; headerKeys?: string[]; status: string; agents: MCPAgent[] }
+export type CLIPath = { path: string; owner: string; ownerDetail?: string; broken: boolean; effective: boolean }
+export type CLIInfo = { id: string; name: string; path: string; owner: string; ownerDetail?: string; version?: string; status: string; duplicateCount: number; paths?: CLIPath[]; scannedAt: string }
+export type TimelineEvent = { id: number; scanId: number; kind: 'added' | 'changed' | 'removed' | string; skillName: string; path?: string; oldHash?: string; newHash?: string; at: string }
+export type Operation = { id: string; planId: string; operation: string; status: string; message?: string; changes?: string[]; snapshotPath?: string; createdAt: string }
+export type PlanChange = { action: string; rootId: string; rootLabel: string; source: string; target: string; exists: boolean; reason?: string }
+export type Plan = { id: string; operation: string; title: string; summary: string; skillId?: string; skillName?: string; mcpName?: string; targetPath?: string; changes: PlanChange[]; impact: string[]; command?: string; args?: string[]; warnings?: string[]; requiresSnapshot: boolean; executable: boolean; createdAt: string }
+export type UpdateItem = { kind: 'cli' | 'skill'; cliId?: string; owner: string; package?: string; name: string; commands?: string[]; currentVersion?: string; latestVersion?: string; source?: string; state: 'available' | 'current' | 'changed' | 'unknown' | 'error'; message?: string }
+export type UpdateReport = { checkedAt: string; items: UpdateItem[]; errors?: string[]; scanned: number; available: number; current: number; skillScanned: number; skillChanged: number; skillCurrent: number; skillErrors: number }
+export type IgnoredAgent = { rootId?: string; label: string; path: string }
+export type Settings = { projectWorkspaces: string[]; ignoredAgents?: IgnoredAgent[]; showAgentBuiltins: boolean; usageStatsEnabled: boolean; autoCheckUpdates: boolean; updateCheckIntervalHours: number; snapshotRetention: number }
+export type UsageStat = { name: string; count: number }
+
+export const emptySnapshot: Snapshot = { schemaVersion: '1', status: 'idle', roots: [], skills: [], agentLinks: [], clis: [], issues: [], fromCache: false }

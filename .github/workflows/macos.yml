@@ -1,0 +1,62 @@
+name: macOS build and test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Wails CLI
+        run: |
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.34
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Install Task
+        run: |
+          go install github.com/go-task/task/v3/cmd/task@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          task --version
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
+
+      - name: Frontend tests
+        run: npm test --prefix frontend
+
+      - name: Go tests and vet
+        run: |
+          go test ./...
+          go vet ./...
+
+      - name: Frontend build
+        run: npm run build --prefix frontend
+
+      - name: Wails build
+        run: wails3 build
+
+      - name: Upload macOS binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: larder-macos
+          path: bin/larder
+          if-no-files-found: error

@@ -1,0 +1,35 @@
+.task
+bin
+frontend/dist/*
+!frontend/dist/.keep
+frontend/node_modules
+.larder-gocache
+.larder-gomodcache
+.larder-gotmp
+frontend/.npm-cache
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
+
+# Local toolchains / caches (never commit)
+.tools/
+.scaffold/
+.npm-cache/
+.larder-gocache/
+.larder-gomodcache/
+.larder-gotmp/
+.tmp-*/
+*.log
+.DS_Store
+
+# Local editor / test artifacts
+.vscode/
+.idea/
+coverage/
+frontend/coverage/
+frontend/.vite/
+
+.preview/
+
+preview/
