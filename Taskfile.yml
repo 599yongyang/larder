@@ -2,6 +2,7 @@ version: '3'
 
 vars:
   APP_NAME: "larder"
+  APP_DISPLAY_NAME: "Larder"
   BIN_DIR: "bin"
   PACKAGE_MANAGER: '{{.PACKAGE_MANAGER | default "npm"}}'
   VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
