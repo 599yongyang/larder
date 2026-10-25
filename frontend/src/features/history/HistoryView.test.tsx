@@ -18,7 +18,7 @@ test('filters timeline events by search', async () => {
   expect(screen.getByText('beta')).toBeTruthy()
 })
 
-test('filters operations by type and status', async () => {
+test('filters the unified feed by record type and search', async () => {
   const operations = [
     { id: 'o1', planId: 'p1', operation: 'skill_update', status: 'success', message: 'updated alpha', createdAt: '2026-01-01T00:00:00Z' },
     { id: 'o2', planId: 'p2', operation: 'mcp_remove', status: 'failed', message: 'remove failed', createdAt: '2026-01-02T00:00:00Z' },
@@ -26,11 +26,10 @@ test('filters operations by type and status', async () => {
   render(<HistoryView events={[]} usage={[]} operations={operations} onRollback={async () => {}} />)
   await userEvent.click(screen.getByRole('button', { name: /操作记录/ }))
   expect(screen.getByText('updated alpha')).toBeTruthy()
-  await userEvent.click(screen.getByRole('combobox', { name: '操作类型' }))
-  await userEvent.click(await screen.findByRole('option', { name: 'Skill 更新' }))
-  expect(screen.getByText('updated alpha')).toBeTruthy()
-  expect(screen.queryByText('remove failed')).toBeNull()
-  await userEvent.click(screen.getByRole('combobox', { name: '操作状态' }))
-  await userEvent.click(await screen.findByRole('option', { name: '失败' }))
-  expect(screen.getByText('没有匹配的操作记录。')).toBeTruthy()
+  await userEvent.type(screen.getByLabelText('搜索历史'), 'remove failed')
+  expect(screen.queryByText('updated alpha')).toBeNull()
+  expect(screen.getByText('remove failed')).toBeTruthy()
+  await userEvent.clear(screen.getByLabelText('搜索历史'))
+  await userEvent.click(screen.getByRole('button', { name: /外部变化/ }))
+  expect(screen.getByText('还没有历史记录。Larder 操作和外部 Skill 文件变化会显示在这里。')).toBeTruthy()
 })

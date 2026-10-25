@@ -1,33 +1,31 @@
 import { useState } from 'react'
 import { Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { AssetSearch } from '@/components/AssetSearch'
+import { AssetSearch } from '../../components/AssetSearch'
 import { backend } from '../../backend'
 import styles from '../../App.module.css'
 import { t } from '../../i18n'
 import { toastError, toastSuccess } from '../../lib/toast'
-import { OperationsView, opLabel, statusKeys } from '../operations/OperationsView'
-import { TimelineView } from '../timeline/TimelineView'
+import { HistoryFeed } from './HistoryFeed'
+import { TrashView } from './TrashView'
 import type { Operation, TimelineEvent, UsageStat } from '../../types'
 
-function HistoryView({ events, usage, operations, onRollback }: { events: TimelineEvent[]; usage: UsageStat[]; operations: Operation[]; onRollback: (id: string) => Promise<void> }) {
-  const [tab, setTab] = useState<'timeline' | 'operations'>('timeline')
+function HistoryView({ events, usage, operations, onRollback, onRefresh }: { events: TimelineEvent[]; usage: UsageStat[]; operations: Operation[]; onRollback: (id: string) => Promise<void>; onRefresh?: () => Promise<void> }) {
+  const [tab, setTab] = useState<'history' | 'trash'>('history')
   const [query, setQuery] = useState('')
-  const [opType, setOpType] = useState('all')
-  const [opStatus, setOpStatus] = useState('all')
+  const trashCount = operations.filter((operation) => (operation.operation === 'uninstall_skill' || operation.operation === 'mcp_remove') && operation.status === 'success').length
   const copyReport = async () => {
     try { await navigator.clipboard.writeText(await backend.exportReport()); toastSuccess(t('history.reportCopied')) } catch (error) { toastError(error, t('history.failedToCopyReport')) }
   }
   return <div className={styles.historyPage}>
     <div className={styles.historyToolbar}>
       <div className={styles.segmentedControl} role="group" aria-label={t('history.historyView')}>
-        <Button variant={tab === 'timeline' ? 'secondary' : 'ghost'} size="xs" onClick={() => setTab('timeline')}>{t('history.changeTimeline')}<span className={styles.tabCount}>{events.length}</span></Button>
-        <Button variant={tab === 'operations' ? 'secondary' : 'ghost'} size="xs" onClick={() => setTab('operations')}>{t('history.operations')}<span className={styles.tabCount}>{operations.length}</span></Button>
+        <Button variant={tab === 'history' ? 'secondary' : 'ghost'} size="xs" onClick={() => setTab('history')}>{t('history.history')}</Button>
+        <Button variant={tab === 'trash' ? 'secondary' : 'ghost'} size="xs" onClick={() => setTab('trash')}>{t('history.trash')}<span className={styles.tabCount}>{trashCount}</span></Button>
       </div>
-      <div className={styles.historyToolbarActions}><AssetSearch value={query} onChange={setQuery} placeholder={t('history.searchHistory')} label={t('history.searchHistory')} width={170} />{tab === 'operations' && <><Select value={opType} onValueChange={setOpType}><SelectTrigger size="sm" className="w-[120px]" aria-label={t('history.operationType')}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('history.allOperations')}</SelectItem>{Array.from(new Set(operations.map((op) => op.operation))).map((item) => <SelectItem key={item} value={item}>{opLabel(item)}</SelectItem>)}</SelectContent></Select><Select value={opStatus} onValueChange={setOpStatus}><SelectTrigger size="sm" className="w-[110px]" aria-label={t('history.operationStatus')}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('common.allStates')}</SelectItem>{Object.entries(statusKeys).map(([value, key]) => <SelectItem key={value} value={value}>{t(key)}</SelectItem>)}</SelectContent></Select></>}{tab === 'timeline' && <Button variant="outline" size="xs" onClick={() => void copyReport()}><Copy size={12} aria-hidden="true" />{t('history.copyReport')}</Button>}</div>
+      <div className={styles.historyToolbarActions}><AssetSearch value={query} onChange={setQuery} placeholder={t('history.searchHistory')} label={t('history.searchHistory')} width={170} />{tab === 'history' && <Button variant="outline" size="xs" onClick={() => void copyReport()}><Copy size={12} aria-hidden="true" />{t('history.copyReport')}</Button>}</div>
     </div>
-    <div className={styles.historyBody}>{tab === 'timeline' ? <TimelineView events={events} usage={usage} query={query} /> : <OperationsView operations={operations} onRollback={onRollback} query={query} type={opType} status={opStatus} />}</div>
+    <div className={styles.historyBody}>{tab === 'history' ? <HistoryFeed events={events} operations={operations} usage={usage} query={query} onRollback={onRollback} /> : <TrashView operations={operations} onRollback={onRollback} onRefresh={onRefresh} />}</div>
   </div>
 }
 
