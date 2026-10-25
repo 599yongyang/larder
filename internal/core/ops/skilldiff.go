@@ -163,6 +163,18 @@ func BuildSkillUpdateDiff(ctx context.Context, skill model.Skill, repo string, f
 	return diff, nil
 }
 
+type fingerprintCacheEntry struct {
+	size   int64
+	mod    time.Time
+	binary bool
+	hash   string
+}
+
+var fingerprintCache = struct {
+	sync.Mutex
+	entries map[string]fingerprintCacheEntry
+}{entries: map[string]fingerprintCacheEntry{}}
+
 func fingerprintTree(root string) (map[string]fileFingerprint, error) {
 	result := map[string]fileFingerprint{}
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
@@ -183,6 +195,13 @@ func fingerprintTree(root string) (map[string]fileFingerprint, error) {
 		info, err := entry.Info()
 		if err != nil {
 			return err
+		}
+		fingerprintCache.Lock()
+		cached, cachedOK := fingerprintCache.entries[path]
+		fingerprintCache.Unlock()
+		if cachedOK && cached.size == info.Size() && cached.mod.Equal(info.ModTime()) {
+			result[relative] = fileFingerprint{size: cached.size, hash: cached.hash, binary: cached.binary}
+			return nil
 		}
 		file, err := os.Open(path)
 		if err != nil {
@@ -218,7 +237,14 @@ func fingerprintTree(root string) (map[string]fileFingerprint, error) {
 			}
 		}
 		_ = file.Close()
-		result[relative] = fileFingerprint{size: info.Size(), hash: hex.EncodeToString(hash.Sum(nil)), binary: isBinary(first[:firstN])}
+		fingerprint := fileFingerprint{size: info.Size(), hash: hex.EncodeToString(hash.Sum(nil)), binary: isBinary(first[:firstN])}
+		fingerprintCache.Lock()
+		if len(fingerprintCache.entries) > 8000 {
+			fingerprintCache.entries = map[string]fingerprintCacheEntry{}
+		}
+		fingerprintCache.entries[path] = fingerprintCacheEntry{size: info.Size(), mod: info.ModTime(), binary: fingerprint.binary, hash: fingerprint.hash}
+		fingerprintCache.Unlock()
+		result[relative] = fingerprint
 		return nil
 	})
 	return result, err
