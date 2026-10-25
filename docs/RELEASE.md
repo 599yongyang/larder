@@ -16,8 +16,23 @@ go vet ./...
 
 ## Build
 
+Build the macOS app bundle and DMG:
+
 ```sh
-./scripts/build.sh
+./scripts/package.sh macos
+```
+
+Build a Windows installer from macOS (requires NSIS):
+
+```sh
+brew install makensis
+./scripts/package.sh windows
+```
+
+Build both:
+
+```sh
+./scripts/package.sh all
 ```
 
 The build must run on a machine with the platform toolchain available:
