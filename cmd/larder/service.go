@@ -116,6 +116,7 @@ func (s *AppService) Startup() {
 		retention = 50
 	}
 	_ = s.core.PruneSnapshots(retention)
+	_ = s.core.PruneTimeline(s.context())
 	s.mu.Lock()
 	if s.ctx != nil {
 		s.mu.Unlock()
@@ -158,7 +159,7 @@ func (s *AppService) refresh(parent context.Context) {
 	s.mu.Lock()
 	s.state.Scanning = false
 	s.state.Snapshot = result
-	s.state.Updates = model.UpdateReport{CheckedAt: s.state.Updates.CheckedAt}
+	s.state.Updates = s.core.Updates()
 	s.state.Cached = false
 	if err != nil && !errors.Is(err, context.Canceled) {
 		s.state.LastError = err.Error()
@@ -196,7 +197,7 @@ func (s *AppService) Scan() (AppState, error) {
 	s.scanCancel = nil
 	s.state.Scanning = false
 	s.state.Snapshot = result
-	s.state.Updates = model.UpdateReport{CheckedAt: s.state.Updates.CheckedAt}
+	s.state.Updates = s.core.Updates()
 	if err != nil && !errors.Is(err, context.Canceled) {
 		s.state.LastError = err.Error()
 	} else {
@@ -257,6 +258,20 @@ func (s *AppService) PlanSyncCopy(skillID string, rootIDs []string) (model.Plan,
 
 func (s *AppService) PlanCopyToLink(skillID string, rootIDs []string) (model.Plan, error) {
 	return s.core.PlanCopyToLink(s.context(), skillID, rootIDs)
+}
+
+func (s *AppService) ApplyPlanWithResolutions(planID string, resolutions map[string]string) (model.Operation, error) {
+	op, err := s.core.ApplyPlanWithResolutions(s.context(), planID, resolutions)
+	if err == nil {
+		settings, _ := s.core.Settings(s.context())
+		retention := settings.SnapshotRetention
+		if retention <= 0 {
+			retention = 50
+		}
+		_ = s.core.PruneSnapshots(retention)
+		s.syncFromCore()
+	}
+	return op, err
 }
 
 func (s *AppService) ApplyPlan(planID string) (model.Operation, error) {
@@ -348,9 +363,23 @@ func (s *AppService) Operations() ([]model.Operation, error) {
 func (s *AppService) RollbackOperation(operationID string) (model.Operation, error) {
 	op, err := s.core.RollbackOperation(s.context(), operationID)
 	if err == nil {
+		settings, _ := s.core.Settings(s.context())
+		retention := settings.SnapshotRetention
+		if retention <= 0 {
+			retention = 50
+		}
+		_ = s.core.PruneSnapshots(retention)
 		s.syncFromCore()
 	}
 	return op, err
+}
+
+func (s *AppService) PurgeTrash(operationID string) error {
+	return s.core.PurgeTrash(s.context(), operationID)
+}
+
+func (s *AppService) PreviewSkillUpdate(skillID string) (model.SkillUpdateDiff, error) {
+	return s.core.PreviewSkillUpdate(s.context(), skillID)
 }
 
 func (s *AppService) CheckUpdates() (model.UpdateReport, error) {

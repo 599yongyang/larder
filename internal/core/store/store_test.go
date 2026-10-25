@@ -76,3 +76,63 @@ func TestLegacySettingsEnableAutomaticUpdateChecks(t *testing.T) {
 		t.Fatalf("legacy settings not migrated: %#v", settings)
 	}
 }
+
+func TestSkillBaselineRoundTrip(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "ledger.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	if err := db.SaveSkillBaseline(ctx, model.SkillBaseline{Path: "/tmp/skill", Files: map[string]string{"SKILL.md": "abc"}}); err != nil {
+		t.Fatal(err)
+	}
+	baseline, ok, err := db.LoadSkillBaseline(ctx, "/tmp/skill")
+	if err != nil || !ok || baseline.Files["SKILL.md"] != "abc" {
+		t.Fatalf("baseline = %#v ok=%v err=%v", baseline, ok, err)
+	}
+	if err := db.DeleteSkillBaseline(ctx, "/tmp/skill"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := db.LoadSkillBaseline(ctx, "/tmp/skill"); ok {
+		t.Fatal("baseline was not deleted")
+	}
+}
+
+func TestTimelineUsesPathIdentityForDuplicateSkillNames(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "ledger.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	scan := model.ScanResult{SchemaVersion: model.SchemaVersion, StartedAt: now, FinishedAt: now, Status: model.ScanComplete,
+		Skills: []model.Skill{
+			{ID: "s1", Name: "alpha", Path: "/tmp/a/alpha", RootID: "a", RootKind: model.RootGlobal, HasSkillMD: true, FolderHash: "hash-a", ScannedAt: now},
+			{ID: "s2", Name: "alpha", Path: "/tmp/b/alpha", RootID: "b", RootKind: model.RootGlobal, HasSkillMD: true, FolderHash: "hash-b", ScannedAt: now},
+		}}
+	if err := db.SaveScan(ctx, scan); err != nil {
+		t.Fatal(err)
+	}
+	if events, err := db.LoadTimeline(ctx, 100); err != nil || len(events) != 0 {
+		t.Fatalf("initial timeline = %#v err=%v", events, err)
+	}
+	if err := db.SaveScan(ctx, scan); err != nil {
+		t.Fatal(err)
+	}
+	if events, err := db.LoadTimeline(ctx, 100); err != nil || len(events) != 0 {
+		t.Fatalf("stable timeline = %#v err=%v", events, err)
+	}
+	scan.Skills[1].FolderHash = "hash-b2"
+	if err := db.SaveScan(ctx, scan); err != nil {
+		t.Fatal(err)
+	}
+	events, err := db.LoadTimeline(ctx, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].Path != "/tmp/b/alpha" || events[0].Kind != "changed" {
+		t.Fatalf("timeline = %#v", events)
+	}
+}

@@ -6,8 +6,10 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"larder/internal/core/inventory"
+	"larder/internal/core/model"
 	"larder/internal/core/store"
 	"larder/internal/platform"
 )
@@ -353,5 +355,57 @@ func TestTrashAgentMovesIgnoredRootToTrash(t *testing.T) {
 	trashed := filepath.Join(home, ".Trash", "skills")
 	if _, err := os.Stat(filepath.Join(trashed, "noise", "SKILL.md")); err != nil {
 		t.Fatalf("trashed skill missing: %v", err)
+	}
+}
+
+func TestScanKeepsPersistedUpdateReport(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("LARDER_HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, ".agents", "skills", "alpha"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".agents", "skills", "alpha", "SKILL.md"), []byte("---\nname: alpha\ndescription: fixture\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	db, err := store.Open(filepath.Join(t.TempDir(), "ledger.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	report := model.UpdateReport{CheckedAt: time.Now(), Items: []model.UpdateItem{{Kind: "skill", Name: "alpha", State: "changed"}}, Available: 1, SkillChanged: 1}
+	if err := db.SaveUpdates(ctx, report); err != nil {
+		t.Fatal(err)
+	}
+	service := inventory.NewService(platform.LocalPaths{}, platform.OSFileSystem{}, db)
+	if _, _, err := service.LoadCache(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := service.Updates(); got.CheckedAt.IsZero() || len(got.Items) != 1 || got.Items[0].Name != "alpha" {
+		t.Fatalf("update report was lost by scan: %#v", got)
+	}
+}
+
+func TestEmptyUpdatePlaceholderDoesNotSuppressChecks(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("LARDER_HOME", home)
+	db, err := store.Open(filepath.Join(t.TempDir(), "ledger.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	if err := db.SaveUpdates(ctx, model.UpdateReport{CheckedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	service := inventory.NewService(platform.LocalPaths{}, platform.OSFileSystem{}, db)
+	if _, _, err := service.LoadCache(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := service.Updates(); !got.CheckedAt.IsZero() {
+		t.Fatalf("empty placeholder should be discarded: %#v", got)
 	}
 }

@@ -45,14 +45,14 @@ func PlanSkillUpdate(skill model.Skill, repo string) (model.Plan, error) {
 		Executable:       true,
 		CreatedAt:        time.Now(),
 	}
-	addWarning(&plan, "plan.warning.overwriteLocalSkill", "会用来源 HEAD 覆盖本地 Skill 文件夹；本地未提交修改请先确认。", nil)
+	addWarning(&plan, "plan.warning.overwriteLocalSkill", "上游管理的文件会更新；本地修改或新增的文件默认保留，可在更新预览中选择同步官方版本。", nil)
 	plan.Changes = append(plan.Changes, model.PlanChange{Action: "update_skill", Source: repo, Target: skill.Path, Reason: "来源 " + repo + " · " + skillPath})
 	return plan, nil
 }
 
 // ApplySkillUpdate downloads the pinned source URL, snapshots the local folder,
 // then atomically replaces its files. A failure restores the snapshot.
-func ApplySkillUpdate(ctx context.Context, plan model.Plan, snapshotRoot string, fetcher platform.Fetcher, filesystem platform.FileSystem) (model.Operation, error) {
+func ApplySkillUpdateWithResolutions(ctx context.Context, plan model.Plan, snapshotRoot string, fetcher platform.Fetcher, filesystem platform.FileSystem, baseline map[string]string, resolutions map[string]string) (model.Operation, error) {
 	now := time.Now()
 	op := model.Operation{ID: fmt.Sprintf("op-%s-%d", plan.ID, now.UnixNano()), PlanID: plan.ID, Operation: plan.Operation, Status: "failed", CreatedAt: now}
 	if filesystem == nil {
@@ -93,15 +93,21 @@ func ApplySkillUpdate(ctx context.Context, plan model.Plan, snapshotRoot string,
 	if err := extractSkillFolder(tarball, plan.SourcePath, staging); err != nil {
 		return op, err
 	}
-	if err := os.RemoveAll(plan.TargetPath); err != nil {
-		_ = copyTree(backup, plan.TargetPath)
-		return op, err
-	}
-	if err := copyTree(staging, plan.TargetPath); err != nil {
+	_ = WriteBaselineManifest(snapshotDir, staging)
+	// Merge the incoming files over the existing folder instead of replacing
+	// the folder wholesale. Files the user added are never deleted by an
+	// update; the full pre-update tree is already in the snapshot.
+	if err := mergeTreeProtected(staging, plan.TargetPath, baseline, resolutions); err != nil {
 		_ = os.RemoveAll(plan.TargetPath)
 		_ = copyTree(backup, plan.TargetPath)
 		return op, err
 	}
+	incomingHashes, _ := FileHashes(staging)
+	currentHashes, _ := FileHashes(plan.TargetPath)
+	if len(baseline) > 0 {
+		removeUpstreamDeletedFiles(plan.TargetPath, baseline, currentHashes, incomingHashes, resolutions)
+	}
+	removeLocalOnlyFiles(plan.TargetPath, incomingHashes, baseline, resolutions)
 	if info, err := filesystem.Stat(plan.TargetPath); err != nil || !info.IsDir() {
 		_ = os.RemoveAll(plan.TargetPath)
 		_ = copyTree(backup, plan.TargetPath)
@@ -192,4 +198,170 @@ func extractSkillFolder(tarball []byte, skillPath, target string) error {
 		return errors.New("skill folder not found in source archive")
 	}
 	return nil
+}
+
+func mergeTree(src, dst string) error {
+	return filepath.WalkDir(src, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		relative, err := filepath.Rel(src, path)
+		if err != nil || relative == "." {
+			return err
+		}
+		target := filepath.Join(dst, relative)
+		if entry.IsDir() {
+			return os.MkdirAll(target, 0o700)
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+			return err
+		}
+		if err := os.WriteFile(target, content, info.Mode().Perm()); err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+func removeLocalOnlyFiles(dst string, incoming map[string]string, baseline map[string]string, resolutions map[string]string) {
+	current, err := FileHashes(dst)
+	if err != nil {
+		return
+	}
+	for path := range current {
+		if _, ok := incoming[path]; ok {
+			continue
+		}
+		if _, managed := baseline[path]; managed {
+			continue
+		}
+		if resolutions[path] == "upstream" {
+			_ = os.Remove(filepath.Join(dst, filepath.FromSlash(path)))
+		}
+	}
+}
+
+func removeUpstreamDeletedFiles(dst string, baseline map[string]string, current map[string]string, incoming map[string]string, resolutions map[string]string) {
+	for path, baseHash := range baseline {
+		if _, ok := incoming[path]; ok {
+			continue
+		}
+		currentHash, ok := current[path]
+		if !ok {
+			continue
+		}
+		if currentHash != baseHash && resolutions[path] != "upstream" {
+			continue
+		}
+		_ = os.Remove(filepath.Join(dst, filepath.FromSlash(path)))
+	}
+}
+
+func conflictPath(dst, relative string) string {
+	target := filepath.Join(dst, filepath.FromSlash(relative+".upstream"))
+	if _, err := os.Stat(target); err != nil {
+		return target
+	}
+	for index := 1; index < 100; index++ {
+		candidate := filepath.Join(dst, filepath.FromSlash(fmt.Sprintf("%s.upstream-%d", relative, index)))
+		if _, err := os.Stat(candidate); err != nil {
+			return candidate
+		}
+	}
+	return target
+}
+
+func mergeTreeProtected(src, dst string, baseline map[string]string, resolutions map[string]string) error {
+	current, err := FileHashes(dst)
+	if err != nil {
+		return err
+	}
+	return filepath.WalkDir(src, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		relative, err := filepath.Rel(src, path)
+		if err != nil || relative == "." {
+			return err
+		}
+		relative = filepath.ToSlash(relative)
+		target := filepath.Join(dst, relative)
+		if entry.IsDir() {
+			return os.MkdirAll(target, 0o700)
+		}
+		if len(baseline) == 0 {
+			switch resolutions[relative] {
+			case "local":
+				return nil
+			case "both":
+				info, statErr := entry.Info()
+				content, readErr := os.ReadFile(path)
+				if statErr == nil && readErr == nil {
+					_ = os.MkdirAll(filepath.Dir(target), 0o700)
+					_ = os.WriteFile(conflictPath(dst, relative), content, info.Mode().Perm())
+				}
+				return nil
+			}
+		}
+		if baseHash, ok := baseline[relative]; ok {
+			currentHash, exists := current[relative]
+			if !exists {
+				// The user deleted a managed file while the upstream still has it.
+				if resolutions[relative] == "local" {
+					return nil
+				}
+			} else if currentHash != baseHash {
+				switch resolutions[relative] {
+				case "upstream":
+					// fall through and copy the upstream file
+				case "both":
+					dir := filepath.Dir(target)
+					if mkErr := os.MkdirAll(dir, 0o700); mkErr == nil {
+						info, statErr := entry.Info()
+						content, readErr := os.ReadFile(path)
+						if statErr == nil && readErr == nil {
+							_ = os.WriteFile(conflictPath(dst, relative), content, info.Mode().Perm())
+						}
+					}
+					return nil
+				default:
+					// keep the local edit
+					return nil
+				}
+			}
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+			return err
+		}
+		if err := os.WriteFile(target, content, info.Mode().Perm()); err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+// ApplySkillUpdate is the compatibility entry point for callers that do not
+// need per-file conflict resolutions.
+func ApplySkillUpdate(ctx context.Context, plan model.Plan, snapshotRoot string, fetcher platform.Fetcher, filesystem platform.FileSystem, baselines ...map[string]string) (model.Operation, error) {
+	var baseline map[string]string
+	if len(baselines) > 0 {
+		baseline = baselines[0]
+	}
+	return ApplySkillUpdateWithResolutions(ctx, plan, snapshotRoot, fetcher, filesystem, baseline, nil)
 }

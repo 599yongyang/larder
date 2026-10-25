@@ -35,6 +35,16 @@ export interface CLIPath {
     "effective": boolean;
 }
 
+export interface DiffLine {
+    /**
+     * context, add, del
+     */
+    "kind": string;
+    "oldLine"?: number;
+    "newLine"?: number;
+    "text": string;
+}
+
 export interface Finding {
     "id": string;
     "rule": string;
@@ -290,6 +300,38 @@ export interface Skill {
     "bins"?: string[] | null;
     "origin"?: string;
     "originDetail"?: string;
+}
+
+export interface SkillUpdateDiff {
+    "skillId": string;
+    "skillName": string;
+    "repo": string;
+    "files": SkillUpdateFile[] | null;
+    "added": number;
+    "modified": number;
+    "localOnly": number;
+    "conflicted": number;
+    "hasBaseline": boolean;
+    "scannedAt": string;
+}
+
+export interface SkillUpdateFile {
+    "path": string;
+
+    /**
+     * added, modified, local (only in local folder)
+     */
+    "status": string;
+    "size"?: number;
+    "localSize"?: number;
+    "incomingSize"?: number;
+    "binary"?: boolean;
+    "additions"?: number;
+    "deletions"?: number;
+    "localChanged"?: boolean;
+    "upstreamChanged"?: boolean;
+    "lines"?: DiffLine[] | null;
+    "truncated"?: boolean;
 }
 
 export interface TimelineEvent {

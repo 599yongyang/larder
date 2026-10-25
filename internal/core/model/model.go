@@ -224,6 +224,47 @@ type Operation struct {
 	CreatedAt    time.Time `json:"createdAt"`
 }
 
+type SkillUpdateFile struct {
+	Path            string     `json:"path"`
+	Status          string     `json:"status"` // added, modified, local (only in local folder)
+	Size            int64      `json:"size,omitempty"`
+	LocalSize       int64      `json:"localSize,omitempty"`
+	IncomingSize    int64      `json:"incomingSize,omitempty"`
+	Binary          bool       `json:"binary,omitempty"`
+	Additions       int        `json:"additions,omitempty"`
+	Deletions       int        `json:"deletions,omitempty"`
+	LocalChanged    bool       `json:"localChanged,omitempty"`
+	UpstreamChanged bool       `json:"upstreamChanged,omitempty"`
+	Lines           []DiffLine `json:"lines,omitempty"`
+	Truncated       bool       `json:"truncated,omitempty"`
+}
+
+type DiffLine struct {
+	Kind    string `json:"kind"` // context, add, del
+	OldLine int    `json:"oldLine,omitempty"`
+	NewLine int    `json:"newLine,omitempty"`
+	Text    string `json:"text"`
+}
+
+type SkillBaseline struct {
+	Path      string            `json:"path"`
+	Files     map[string]string `json:"files"`
+	UpdatedAt time.Time         `json:"updatedAt"`
+}
+
+type SkillUpdateDiff struct {
+	SkillID     string            `json:"skillId"`
+	SkillName   string            `json:"skillName"`
+	Repo        string            `json:"repo"`
+	Files       []SkillUpdateFile `json:"files"`
+	Added       int               `json:"added"`
+	Modified    int               `json:"modified"`
+	LocalOnly   int               `json:"localOnly"`
+	Conflicted  int               `json:"conflicted"`
+	HasBaseline bool              `json:"hasBaseline"`
+	ScannedAt   time.Time         `json:"scannedAt"`
+}
+
 type PlanChange struct {
 	Action    string `json:"action"`
 	RootID    string `json:"rootId"`

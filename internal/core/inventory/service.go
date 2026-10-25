@@ -50,7 +50,7 @@ func NewService(paths platform.LocalPaths, fs platform.FileSystem, db *store.Sto
 	if fs == nil {
 		fs = platform.OSFileSystem{}
 	}
-	return &Service{paths: paths, fs: fs, store: db, scanner: skills.NewScanner(fs), cliScanner: clis.NewScanner(fs), runner: platform.OSCommandRunner{}, fetcher: platform.HTTPFetcher{}, linker: platform.OSLinker{}, pendingPlans: map[string]model.Plan{}}
+	return &Service{paths: paths, fs: fs, store: db, scanner: skills.NewScanner(fs), cliScanner: clis.NewScanner(fs), runner: platform.OSCommandRunner{}, fetcher: platform.NewCachedFetcher(platform.HTTPFetcher{}, 2*time.Minute, 6), linker: platform.OSLinker{}, pendingPlans: map[string]model.Plan{}}
 }
 
 func (s *Service) LoadCache(ctx context.Context) (model.ScanResult, bool, error) {
@@ -71,6 +71,10 @@ func (s *Service) LoadCache(ctx context.Context) (model.ScanResult, bool, error)
 	updateReport, hasUpdates, err := s.store.LoadUpdates(ctx)
 	if err != nil {
 		return result, false, err
+	}
+	if hasUpdates && !validUpdateReport(updateReport) {
+		_ = s.store.SaveUpdates(ctx, model.UpdateReport{})
+		hasUpdates = false
 	}
 	s.mu.Lock()
 	s.latest = result
@@ -343,8 +347,16 @@ func (s *Service) Scan(ctx context.Context) (model.ScanResult, error) {
 	result.CLIs = cliItems
 	result.Issues = append(result.Issues, cliIssues...)
 	s.mu.Lock()
-	nextUpdates := model.UpdateReport{CheckedAt: s.updates.CheckedAt}
+	nextUpdates := s.updates
 	s.mu.Unlock()
+	if nextUpdates.CheckedAt.IsZero() && s.store != nil {
+		if loaded, ok, err := s.store.LoadUpdates(ctx); err == nil && ok && validUpdateReport(loaded) {
+			nextUpdates = loaded
+			s.mu.Lock()
+			s.updates = loaded
+			s.mu.Unlock()
+		}
+	}
 	if scanErr == nil && s.store != nil {
 		if err := s.store.SaveScan(ctx, result); err != nil {
 			return result, err
@@ -880,6 +892,10 @@ func (s *Service) PlanCopyToLink(ctx context.Context, skillID string, rootIDs []
 
 // ApplyPlan dispatches a confirmed plan to the matching executor.
 func (s *Service) ApplyPlan(ctx context.Context, planID string) (model.Operation, error) {
+	return s.ApplyPlanWithResolutions(ctx, planID, nil)
+}
+
+func (s *Service) ApplyPlanWithResolutions(ctx context.Context, planID string, resolutions map[string]string) (model.Operation, error) {
 	s.mu.RLock()
 	plan, ok := s.pendingPlans[planID]
 	s.mu.RUnlock()
@@ -890,10 +906,15 @@ func (s *Service) ApplyPlan(ctx context.Context, planID string) (model.Operation
 		return s.applyCLIPlan(ctx, plan)
 	}
 	if plan.Operation == "skill_update" {
-		return s.applySkillPlan(ctx, plan)
+		return s.applySkillPlan(ctx, plan, resolutions)
 	}
 	if plan.Operation == "install_skill" {
 		op, err := ops.ApplyInstallSkill(ctx, plan, s.snapshotRoot, s.fetcher, s.fs)
+		if err == nil && op.Status == "success" {
+			if files, hashErr := ops.FileHashes(plan.TargetPath); hashErr == nil {
+				s.saveSkillBaseline(ctx, plan.TargetPath, files)
+			}
+		}
 		if s.store != nil {
 			_ = s.store.SaveOperation(ctx, op)
 		}
@@ -950,8 +971,59 @@ func (s *Service) ApplyPlan(ctx context.Context, planID string) (model.Operation
 	return s.ApplyLinkPlan(ctx, planID)
 }
 
-func (s *Service) applySkillPlan(ctx context.Context, plan model.Plan) (model.Operation, error) {
-	op, err := ops.ApplySkillUpdate(ctx, plan, s.snapshotRoot, s.fetcher, s.fs)
+func (s *Service) markSkillUpdateApplied(ctx context.Context, name string) {
+	if name == "" {
+		return
+	}
+	s.mu.Lock()
+	report := s.updates
+	items := make([]model.UpdateItem, 0, len(report.Items))
+	removed := 0
+	for _, item := range report.Items {
+		if item.Kind == "skill" && item.Name == name {
+			removed++
+			continue
+		}
+		items = append(items, item)
+	}
+	if removed == 0 {
+		s.mu.Unlock()
+		return
+	}
+	report.Items = items
+	report.SkillChanged -= removed
+	if report.SkillChanged < 0 {
+		report.SkillChanged = 0
+	}
+	report.Available -= removed
+	if report.Available < 0 {
+		report.Available = 0
+	}
+	s.updates = report
+	s.mu.Unlock()
+	if s.store != nil {
+		_ = s.store.SaveUpdates(ctx, report)
+	}
+}
+
+func (s *Service) applySkillPlan(ctx context.Context, plan model.Plan, resolutions map[string]string) (model.Operation, error) {
+	baseline := map[string]string{}
+	if s.store != nil {
+		if saved, ok, loadErr := s.store.LoadSkillBaseline(ctx, plan.TargetPath); loadErr == nil && ok {
+			baseline = saved.Files
+		}
+	}
+	op, err := ops.ApplySkillUpdateWithResolutions(ctx, plan, s.snapshotRoot, s.fetcher, s.fs, baseline, resolutions)
+	if err == nil && op.Status == "success" {
+		s.markSkillUpdateApplied(ctx, plan.SkillName)
+		files := map[string]string{}
+		if saved, loadErr := ops.LoadBaselineManifest(op.SnapshotPath); loadErr == nil {
+			files = saved
+		} else if hashes, hashErr := ops.FileHashes(plan.TargetPath); hashErr == nil {
+			files = hashes
+		}
+		s.saveSkillBaseline(ctx, plan.TargetPath, files)
+	}
 	if s.store != nil {
 		_ = s.store.SaveOperation(ctx, op)
 	}
@@ -1091,6 +1163,13 @@ func (s *Service) SkillIcon(ctx context.Context, skillID string) (string, error)
 	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(raw), nil
 }
 
+func (s *Service) PruneTimeline(ctx context.Context) error {
+	if s.store == nil {
+		return nil
+	}
+	return s.store.PruneTimeline(ctx)
+}
+
 func (s *Service) Timeline(ctx context.Context) ([]model.TimelineEvent, error) {
 	if s.store == nil {
 		return nil, nil
@@ -1119,6 +1198,10 @@ func (s *Service) RollbackOperation(ctx context.Context, operationID string) (mo
 	if (original.Operation != "link_skill" && original.Operation != "replace_copy" && original.Operation != "sync_copy" && original.Operation != "disable_link" && original.Operation != "skill_update" && original.Operation != "install_skill" && original.Operation != "uninstall_skill" && original.Operation != "mcp_remove") || original.Status != "success" {
 		return model.Operation{}, errors.New("operation is not rollback-able")
 	}
+	safetySnapshot, err := ops.CreateRestoreSnapshot(original.SnapshotPath, s.snapshotRoot)
+	if err != nil {
+		return model.Operation{}, fmt.Errorf("back up current files before restore: %w", err)
+	}
 	if err := s.Rollback(ctx, original.SnapshotPath); err != nil {
 		return model.Operation{}, err
 	}
@@ -1127,7 +1210,7 @@ func (s *Service) RollbackOperation(ctx context.Context, operationID string) (mo
 	now := time.Now()
 	rollback := model.Operation{
 		ID: fmt.Sprintf("op-rollback-%d", now.UnixNano()), PlanID: original.PlanID, Operation: "rollback", Status: "success",
-		Message: "已回滚 " + original.ID, SnapshotPath: original.SnapshotPath, CreatedAt: now,
+		Message: "已回滚 " + original.ID + "；恢复前状态已保存", SnapshotPath: safetySnapshot, CreatedAt: now,
 	}
 	_ = s.store.SaveOperation(ctx, rollback)
 	_, _ = s.Scan(ctx)
@@ -1141,6 +1224,70 @@ func (s *Service) Rollback(ctx context.Context, snapshotPath string) error {
 	return ops.RollbackSnapshot(snapshotPath, s.fs, s.linker)
 }
 
+func (s *Service) PurgeTrash(ctx context.Context, operationID string) error {
+	if s.store == nil {
+		return errors.New("operation store is unavailable")
+	}
+	op, ok, err := s.store.GetOperation(ctx, operationID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errors.New("operation not found")
+	}
+	if op.Status != "success" || (op.Operation != "uninstall_skill" && op.Operation != "mcp_remove") {
+		return errors.New("operation is not a trash item")
+	}
+	if op.SnapshotPath != "" && s.snapshotRoot != "" {
+		clean := filepath.Clean(op.SnapshotPath)
+		root := filepath.Clean(s.snapshotRoot) + string(filepath.Separator)
+		if !strings.HasPrefix(clean, root) {
+			return errors.New("snapshot path is outside the snapshot directory")
+		}
+		if err := os.RemoveAll(clean); err != nil {
+			return err
+		}
+	}
+	op.Status = "deleted"
+	if err := s.store.SaveOperation(ctx, op); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Service) saveSkillBaseline(ctx context.Context, path string, files map[string]string) {
+	if s.store == nil || path == "" || len(files) == 0 {
+		return
+	}
+	_ = s.store.SaveSkillBaseline(ctx, model.SkillBaseline{Path: path, Files: files, UpdatedAt: time.Now()})
+}
+
+func (s *Service) PreviewSkillUpdate(ctx context.Context, skillID string) (model.SkillUpdateDiff, error) {
+	var skill *model.Skill
+	snapshot := s.Snapshot()
+	for i := range snapshot.Skills {
+		if snapshot.Skills[i].ID == skillID || snapshot.Skills[i].Name == skillID {
+			item := snapshot.Skills[i]
+			skill = &item
+			break
+		}
+	}
+	if skill == nil {
+		return model.SkillUpdateDiff{}, errors.New("skill not found")
+	}
+	repo := ops.GitHubRepo(*skill)
+	if repo == "" {
+		return model.SkillUpdateDiff{}, errors.New("skill has no GitHub source")
+	}
+	baseline := map[string]string{}
+	if s.store != nil {
+		if saved, ok, err := s.store.LoadSkillBaseline(ctx, skill.Path); err == nil && ok {
+			baseline = saved.Files
+		}
+	}
+	return ops.BuildSkillUpdateDiff(ctx, *skill, repo, s.fetcher, baseline)
+}
+
 func (s *Service) Updates() model.UpdateReport {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -1148,6 +1295,15 @@ func (s *Service) Updates() model.UpdateReport {
 }
 
 func (s *Service) Store() *store.Store { return s.store }
+
+func validUpdateReport(report model.UpdateReport) bool {
+	if report.CheckedAt.IsZero() {
+		return false
+	}
+	// Older scans wrote an empty placeholder report with only checkedAt. It
+	// must not suppress the next automatic check or hide real updates.
+	return len(report.Items) > 0 || report.Scanned > 0
+}
 
 func uniquePaths(values []string) []string {
 	seen := map[string]bool{}

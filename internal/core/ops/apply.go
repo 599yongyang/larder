@@ -452,3 +452,69 @@ func RollbackSnapshot(snapshotDir string, filesystem platform.FileSystem, linker
 	}
 	return nil
 }
+
+// CreateRestoreSnapshot records the current state of the paths touched by an
+// operation before rolling it back. The snapshot is itself restorable, so a
+// version/trash restore can always be undone.
+func CreateRestoreSnapshot(sourceSnapshotDir, snapshotRoot string) (string, error) {
+	if snapshotRoot == "" {
+		return "", errors.New("snapshot root is not configured")
+	}
+	raw, err := os.ReadFile(filepath.Join(sourceSnapshotDir, "manifest.json"))
+	if err != nil {
+		return "", err
+	}
+	var source SnapshotManifest
+	if err := json.Unmarshal(raw, &source); err != nil {
+		return "", err
+	}
+	now := time.Now()
+	id := fmt.Sprintf("restore-%d", now.UnixNano())
+	dir := filepath.Join(snapshotRoot, id)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	manifest := SnapshotManifest{ID: id, CreatedAt: now}
+	for index, target := range source.Targets {
+		info, statErr := os.Lstat(target.Target)
+		if statErr != nil {
+			continue
+		}
+		entry := SnapshotTarget{Target: target.Target, Exists: true}
+		switch {
+		case info.Mode()&fs.ModeSymlink != 0:
+			link, readErr := os.Readlink(target.Target)
+			if readErr != nil {
+				return "", readErr
+			}
+			entry.Action = "replace_link"
+			entry.LinkTarget = link
+		case info.IsDir():
+			backup := filepath.Join(dir, "trees", fmt.Sprintf("%d", index))
+			if err := copyTree(target.Target, backup); err != nil {
+				return "", err
+			}
+			entry.Action = "uninstall_skill"
+			entry.BackupPath = backup
+		default:
+			backup := filepath.Join(dir, "files", fmt.Sprintf("%d", index))
+			if err := os.MkdirAll(filepath.Dir(backup), 0o700); err != nil {
+				return "", err
+			}
+			if err := copyFile(target.Target, backup); err != nil {
+				return "", err
+			}
+			entry.Action = "remove_mcp_entry"
+			entry.BackupPath = backup
+		}
+		manifest.Targets = append(manifest.Targets, entry)
+	}
+	payload, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), payload, 0o600); err != nil {
+		return "", err
+	}
+	return dir, nil
+}

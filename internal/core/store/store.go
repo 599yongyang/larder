@@ -154,6 +154,11 @@ CREATE TABLE IF NOT EXISTS timeline_events (
   new_hash TEXT,
   at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS skill_baselines (
+  path TEXT PRIMARY KEY,
+  files_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS operations (
   id TEXT PRIMARY KEY,
   plan_id TEXT NOT NULL,
@@ -186,8 +191,11 @@ func (s *Store) SaveScan(ctx context.Context, result model.ScanResult) error {
 		return err
 	}
 	rollback := func(e error) error { _ = tx.Rollback(); return e }
-	previous := map[string]string{}
-	previousPath := map[string]string{}
+	type priorSkill struct {
+		name string
+		hash string
+	}
+	previous := map[string]priorSkill{}
 	prevRows, err := tx.QueryContext(ctx, `SELECT name, folder_hash, path FROM skills`)
 	if err != nil {
 		return rollback(err)
@@ -198,10 +206,28 @@ func (s *Store) SaveScan(ctx context.Context, result model.ScanResult) error {
 			_ = prevRows.Close()
 			return rollback(err)
 		}
-		previous[name] = hash
-		previousPath[name] = path
+		previous[path] = priorSkill{name: name, hash: hash}
 	}
 	_ = prevRows.Close()
+	hadPrevious := len(previous) > 0
+	suppressed := map[string]bool{}
+	if rows, queryErr := tx.QueryContext(ctx, `SELECT changes_json FROM operations WHERE status='success' AND created_at >= ?`, time.Now().Add(-5*time.Minute).UTC().Format(time.RFC3339Nano)); queryErr == nil {
+		for rows.Next() {
+			var raw string
+			if rows.Scan(&raw) == nil {
+				var changes []string
+				_ = json.Unmarshal([]byte(raw), &changes)
+				for _, change := range changes {
+					for _, prefix := range []string{"installed:", "uninstalled:", "updated:", "removed:"} {
+						if strings.HasPrefix(change, prefix) {
+							suppressed[strings.TrimPrefix(change, prefix)] = true
+						}
+					}
+				}
+			}
+		}
+		_ = rows.Close()
+	}
 	for _, table := range []string{"skills", "agent_dirs", "agent_links", "lock_skills", "clis", "scan_issues"} {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table); err != nil {
 			return rollback(err)
@@ -216,32 +242,43 @@ func (s *Store) SaveScan(ctx context.Context, result model.ScanResult) error {
 	if err != nil {
 		return rollback(err)
 	}
-	current := map[string]string{}
-	currentPath := map[string]string{}
+	current := map[string]priorSkill{}
 	for _, skill := range result.Skills {
-		if _, seen := current[skill.Name]; seen {
+		// The same display name can exist in several agent folders. Path is the
+		// stable identity; keying by name made duplicate Skills appear to change
+		// on every scan.
+		if _, seen := current[skill.Path]; seen {
 			continue
 		}
-		current[skill.Name] = skill.FolderHash
-		currentPath[skill.Name] = skill.Path
+		current[skill.Path] = priorSkill{name: skill.Name, hash: skill.FolderHash}
 	}
-	for name, hash := range current {
-		oldHash, ok := previous[name]
+	for path, skill := range current {
+		if suppressed[path] {
+			continue
+		}
+		old, ok := previous[path]
 		if !ok {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO timeline_events(scan_id,kind,skill_name,path,old_hash,new_hash,at) VALUES(?,?,?,?,?,?,?)`, scanID, "added", name, currentPath[name], "", hash, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+			// Do not seed the timeline with the entire initial inventory.
+			if !hadPrevious {
+				continue
+			}
+			if _, err := tx.ExecContext(ctx, `INSERT INTO timeline_events(scan_id,kind,skill_name,path,old_hash,new_hash,at) VALUES(?,?,?,?,?,?,?)`, scanID, "added", skill.name, path, "", skill.hash, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
 				return rollback(err)
 			}
 			continue
 		}
-		if oldHash != hash {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO timeline_events(scan_id,kind,skill_name,path,old_hash,new_hash,at) VALUES(?,?,?,?,?,?,?)`, scanID, "changed", name, currentPath[name], oldHash, hash, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		if old.hash != skill.hash {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO timeline_events(scan_id,kind,skill_name,path,old_hash,new_hash,at) VALUES(?,?,?,?,?,?,?)`, scanID, "changed", skill.name, path, old.hash, skill.hash, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
 				return rollback(err)
 			}
 		}
 	}
-	for name := range previous {
-		if _, ok := current[name]; !ok {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO timeline_events(scan_id,kind,skill_name,path,old_hash,new_hash,at) VALUES(?,?,?,?,?,?,?)`, scanID, "removed", name, previousPath[name], previous[name], "", time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+	for path, skill := range previous {
+		if suppressed[path] {
+			continue
+		}
+		if _, ok := current[path]; !ok {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO timeline_events(scan_id,kind,skill_name,path,old_hash,new_hash,at) VALUES(?,?,?,?,?,?,?)`, scanID, "removed", skill.name, path, skill.hash, "", time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
 				return rollback(err)
 			}
 		}
@@ -474,6 +511,44 @@ func (s *Store) LoadUpdates(ctx context.Context) (model.UpdateReport, bool, erro
 	return report, !report.CheckedAt.IsZero(), nil
 }
 
+func (s *Store) SaveSkillBaseline(ctx context.Context, baseline model.SkillBaseline) error {
+	if baseline.Path == "" || baseline.Files == nil {
+		return errors.New("invalid skill baseline")
+	}
+	raw, err := json.Marshal(baseline.Files)
+	if err != nil {
+		return err
+	}
+	updated := baseline.UpdatedAt
+	if updated.IsZero() {
+		updated = time.Now()
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT INTO skill_baselines(path,files_json,updated_at) VALUES(?,?,?) ON CONFLICT(path) DO UPDATE SET files_json=excluded.files_json,updated_at=excluded.updated_at`, baseline.Path, string(raw), updated.UTC().Format(time.RFC3339Nano))
+	return err
+}
+
+func (s *Store) LoadSkillBaseline(ctx context.Context, path string) (model.SkillBaseline, bool, error) {
+	var raw, updated string
+	err := s.db.QueryRowContext(ctx, `SELECT files_json,updated_at FROM skill_baselines WHERE path=?`, path).Scan(&raw, &updated)
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.SkillBaseline{}, false, nil
+	}
+	if err != nil {
+		return model.SkillBaseline{}, false, err
+	}
+	var files map[string]string
+	if err := json.Unmarshal([]byte(raw), &files); err != nil {
+		return model.SkillBaseline{}, false, err
+	}
+	at, _ := time.Parse(time.RFC3339Nano, updated)
+	return model.SkillBaseline{Path: path, Files: files, UpdatedAt: at}, true, nil
+}
+
+func (s *Store) DeleteSkillBaseline(ctx context.Context, path string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM skill_baselines WHERE path=?`, path)
+	return err
+}
+
 func (s *Store) SaveOperation(ctx context.Context, op model.Operation) error {
 	changes, _ := json.Marshal(op.Changes)
 	_, err := s.db.ExecContext(ctx, `INSERT INTO operations(id,plan_id,operation,status,message,changes_json,snapshot_path,created_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,message=excluded.message,changes_json=excluded.changes_json,snapshot_path=excluded.snapshot_path`, op.ID, op.PlanID, op.Operation, op.Status, op.Message, string(changes), op.SnapshotPath, op.CreatedAt.UTC().Format(time.RFC3339Nano))
@@ -500,6 +575,20 @@ func (s *Store) LoadTimeline(ctx context.Context, limit int) ([]model.TimelineEv
 		result = append(result, event)
 	}
 	return result, rows.Err()
+}
+
+func (s *Store) PruneTimeline(ctx context.Context) error {
+	// The first scan is the inventory baseline, not a user-visible change.
+	_, err := s.db.ExecContext(ctx, `DELETE FROM timeline_events WHERE kind = 'added' AND scan_id = (SELECT MIN(id) FROM scan_runs)`)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `DELETE FROM timeline_events WHERE id NOT IN (SELECT MAX(id) FROM timeline_events GROUP BY kind, skill_name, path, old_hash, new_hash)`)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `DELETE FROM timeline_events WHERE id NOT IN (SELECT id FROM timeline_events ORDER BY id DESC LIMIT 1000)`)
+	return err
 }
 
 func (s *Store) GetOperation(ctx context.Context, id string) (model.Operation, bool, error) {

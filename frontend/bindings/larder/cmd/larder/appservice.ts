@@ -37,6 +37,10 @@ export function ApplyPlan(planID: string): $CancellablePromise<model$0.Operation
     return $Call.ByID(903116600, planID);
 }
 
+export function ApplyPlanWithResolutions(planID: string, resolutions: { [_ in string]?: string } | null): $CancellablePromise<model$0.Operation> {
+    return $Call.ByID(1281102867, planID, resolutions);
+}
+
 export function CancelScan(): $CancellablePromise<boolean> {
     return $Call.ByID(3315272766);
 }
@@ -170,6 +174,14 @@ export function PlanSyncCopy(skillID: string, rootIDs: string[] | null): $Cancel
 
 export function PlanUninstallSkill(skillID: string): $CancellablePromise<model$0.Plan> {
     return $Call.ByID(1745518445, skillID);
+}
+
+export function PreviewSkillUpdate(skillID: string): $CancellablePromise<model$0.SkillUpdateDiff> {
+    return $Call.ByID(981182705, skillID);
+}
+
+export function PurgeTrash(operationID: string): $CancellablePromise<void> {
+    return $Call.ByID(2778568018, operationID);
 }
 
 export function RecordCatalogInstall(path: string, source: string, skillID: string): $CancellablePromise<void> {
