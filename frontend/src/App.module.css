@@ -704,3 +704,13 @@
 .versionDiffError{display:flex;align-items:flex-start;gap:7px;padding:9px 10px;border-radius:6px;background:var(--status-warn-bg);color:var(--amber);font-size:10.5px;line-height:1.5}
 .versionDiffError svg{flex:none;margin-top:1px}
 .versionDiffEmpty{margin:0;padding:22px;color:var(--text-muted);font-size:11px;text-align:center}
+
+.batchPreparing{display:flex;align-items:center;gap:7px;margin:0 0 8px;padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:var(--brand-soft);color:var(--ink-soft);font-size:10.5px}
+.batchPreparingDot{width:6px;height:6px;border-radius:50%;background:var(--brand);animation:pulse 1.2s ease-in-out infinite}
+
+.batchUpdateItem{border-bottom:1px solid var(--line)}
+.batchUpdateItem:last-child{border-bottom:0}
+.batchUpdateItem .batchUpdateRow{border-bottom:0}
+.batchExpand{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border:0;border-radius:4px;background:transparent;color:var(--text-muted);cursor:pointer}
+.batchExpand:hover{background:var(--brand-soft);color:var(--ink)}
+.batchUpdateFiles{display:grid;gap:6px;padding:0 8px 10px 26px}

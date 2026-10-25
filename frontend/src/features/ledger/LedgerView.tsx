@@ -68,6 +68,7 @@ function SkillsView({ skills, allSkills, roots, links, operations, selected, onS
   useEffect(() => { try { localStorage.setItem('larder.skills.status', statusFilter) } catch {} }, [statusFilter])
   useEffect(() => { try { localStorage.setItem('larder.skills.query', query) } catch {} }, [query])
   const [batchItems, setBatchItems] = useState<BatchUpdateItem[]>([])
+  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number }>()
   const [updateTarget, setUpdateTarget] = useState<Skill>()
   const updateItems = (updates?.items ?? []).filter((item) => item.kind === 'skill')
   const updateFor = (skill: Skill) => updateItems.find((item) => item.name === skill.name)
@@ -192,22 +193,36 @@ function SkillsView({ skills, allSkills, roots, links, operations, selected, onS
   }
   const requestGroupUpdate = async (items: Skill[]) => {
     const targets = items.filter((skill) => { const state = updateBySkill.get(skill.id)?.state; return state === 'changed' || state === 'available' })
-    if (targets.length === 0) return
+    if (targets.length === 0 || batchProgress) return
     setPlanError('')
+    setBatchProgress({ done: 0, total: targets.length })
     try {
-      const items: BatchUpdateItem[] = []
-      for (const skill of targets) {
-        const plan = await backend.planSkillUpdate(skill.id)
-        try {
-          const diff = await backend.previewSkillUpdate(skill.id) as import('../../types').SkillUpdateDiff
-          items.push({ plan, diff })
-        } catch (error) {
-          items.push({ plan, error: backendErrorMessage(error, t('skills.updatePreviewFailed')) })
+      const plans: Array<{ skill: Skill; plan: Plan }> = []
+      for (const skill of targets) plans.push({ skill, plan: await backend.planSkillUpdate(skill.id) })
+      const results: BatchUpdateItem[] = new Array(plans.length)
+      let next = 0
+      let done = 0
+      const worker = async () => {
+        while (true) {
+          const index = next++
+          if (index >= plans.length) return
+          const { skill, plan } = plans[index]
+          try {
+            const diff = await backend.previewSkillUpdate(skill.id) as import('../../types').SkillUpdateDiff
+            results[index] = { plan, diff }
+          } catch (error) {
+            results[index] = { plan, error: backendErrorMessage(error, t('skills.updatePreviewFailed')) }
+          }
+          done += 1
+          setBatchProgress({ done, total: plans.length })
         }
       }
-      setBatchItems(items)
+      await Promise.all(Array.from({ length: Math.min(3, plans.length) }, () => worker()))
+      setBatchItems(results.filter(Boolean))
     } catch (error) {
       setPlanError(backendErrorMessage(error, t('skills.failedToCreateBatchUpdatePlan')))
+    } finally {
+      setBatchProgress(undefined)
     }
   }
   const updateSelected = () => { if (selected) setUpdateTarget(selected) }
@@ -242,13 +257,14 @@ function SkillsView({ skills, allSkills, roots, links, operations, selected, onS
         <Button variant="outline" size="sm" onClick={() => setDiscoverOpen(true)}><Plus size={14} />{t('common.installSkill')}</Button>
       </div>
     </div>
+    {batchProgress && <div className={styles.batchPreparing} role="status"><span className={styles.batchPreparingDot} />{t('skills.batchPreparing', { done: batchProgress.done, total: batchProgress.total })}</div>}
     {displayedSkills.length === 0 ? <div className={styles.skillsEmpty}><span className={styles.emptyIcon}><Sparkles size={20} aria-hidden="true" /></span>{skills.length === 0 ? <><strong>{t('skills.noScanResultsYet')}</strong><p>{t('skills.scanThisMachineOrInstallDirectlyFromADirectory')}</p><div className={styles.emptyActions}><Button size="sm" onClick={() => void onRefresh()}><RefreshCw size={14} />{t('skills.scanThisMachine')}</Button><Button size="sm" variant="outline" onClick={() => setDiscoverOpen(true)}><Plus size={14} />{t('common.installSkill')}</Button></div></> : <><strong>{t('skills.noMatchingSkills')}</strong><p>{t('skills.noResultsUnderTheCurrentFilters')}</p><div className={styles.emptyActions}><Button size="sm" variant="outline" onClick={() => { setQuery(''); setStatusFilter('all'); onSource('all') }}>{t('skills.clearFilters')}</Button></div></>}</div> : display === 'list' ? (grouped ? <div className={styles.groupedList}><div className={styles.groupedColumns}><span>{t('common.name')}</span><span>{t('common.sourceLabel')}</span><span>{t('skills.agentVisibility')}</span><span>Tokens</span><span>{t('common.actions')}</span></div>{visibleGroups.map(([label, items, visibleItems]) => <section key={label} className={styles.groupedSection}>
-      <header className={styles.groupedGroupHeader}><SkillIcon skill={items[0]} className="size-5" /><span>{label}</span><small>{t('common.skillCount', { n: items.length })}</small>{items.some((skill) => hasUpdate(skill)) && <Button size="xs" variant="outline" className={styles.groupUpdateButton} onClick={() => void requestGroupUpdate(items)}>{t('skills.updateAll')}</Button>}</header>
+      <header className={styles.groupedGroupHeader}><SkillIcon skill={items[0]} className="size-5" /><span>{label}</span><small>{t('common.skillCount', { n: items.length })}</small>{items.some((skill) => hasUpdate(skill)) && <Button size="xs" variant="outline" className={styles.groupUpdateButton} disabled={Boolean(batchProgress)} onClick={() => void requestGroupUpdate(items)}>{t('skills.updateAll')}</Button>}</header>
       {visibleItems.map((skill) => <SkillListRow key={skill.id} skill={skill} roots={roots} links={links} issues={issues} update={updateBySkill.get(skill.id)} selected={selected?.id === skill.id} onSelect={() => onSelect(skill.id)} onUpdate={() => setUpdateTarget(skill)} onUninstall={skill.rootKind === 'global' ? () => void deleteSkillNow(skill) : undefined} />)}
     </section>)}</div> : <div className={`${styles.tableWrap} ${styles.skillsTable}`}><table>
       <thead><tr><th>{t('common.name')}</th><th>{t('common.sourceLabel')}</th><th>{t('skills.agentVisibility')}</th><th>Tokens</th><th>{t('common.actions')}</th></tr></thead>
       <tbody>{visibleSkills.map((skill) => <SkillRow key={skill.id} skill={skill} roots={roots} links={links} issues={issues} update={updateBySkill.get(skill.id)} selected={selected?.id === skill.id} onSelect={() => onSelect(skill.id)} onUpdate={() => setUpdateTarget(skill)} onUninstall={skill.rootKind === 'global' ? () => void deleteSkillNow(skill) : undefined} />)}</tbody>
-    </table></div>) : grouped ? <div className={styles.skillGroups}>{visibleGroups.map(([label, items, visibleItems]) => <section key={label} className={styles.skillGroup}><header className={styles.skillGroupHeader}><div className={styles.skillGroupTitle}><SkillIcon skill={items[0]} className="size-5" /><strong>{label}</strong></div><div className={styles.skillGroupMeta}><span>{t('common.skillCount', { n: items.length })}</span>{items.some((skill) => hasUpdate(skill)) && <Button size="xs" variant="outline" onClick={() => void requestGroupUpdate(items)}>{t('skills.updateAll')}</Button>}</div></header><div className={styles.skillGrid}>{visibleItems.map((skill) => <SkillCard key={skill.id} skill={skill} roots={roots} links={links} issues={issues} update={updateBySkill.get(skill.id)} selected={selected?.id === skill.id} onSelect={() => onSelect(skill.id)} showIcon={false} showSource={false} onUpdate={() => setUpdateTarget(skill)} onUninstall={skill.rootKind === 'global' ? () => void deleteSkillNow(skill) : undefined} />)}</div></section>)}</div> : <div className={styles.skillGrid}>{visibleSkills.map((skill) => <SkillCard key={skill.id} skill={skill} roots={roots} links={links} issues={issues} update={updateBySkill.get(skill.id)} selected={selected?.id === skill.id} onSelect={() => onSelect(skill.id)} onUpdate={() => setUpdateTarget(skill)} onUninstall={skill.rootKind === 'global' ? () => void deleteSkillNow(skill) : undefined} />)}</div>}
+    </table></div>) : grouped ? <div className={styles.skillGroups}>{visibleGroups.map(([label, items, visibleItems]) => <section key={label} className={styles.skillGroup}><header className={styles.skillGroupHeader}><div className={styles.skillGroupTitle}><SkillIcon skill={items[0]} className="size-5" /><strong>{label}</strong></div><div className={styles.skillGroupMeta}><span>{t('common.skillCount', { n: items.length })}</span>{items.some((skill) => hasUpdate(skill)) && <Button size="xs" variant="outline" disabled={Boolean(batchProgress)} onClick={() => void requestGroupUpdate(items)}>{batchProgress ? t('common.preparing') : t('skills.updateAll')}</Button>}</div></header><div className={styles.skillGrid}>{visibleItems.map((skill) => <SkillCard key={skill.id} skill={skill} roots={roots} links={links} issues={issues} update={updateBySkill.get(skill.id)} selected={selected?.id === skill.id} onSelect={() => onSelect(skill.id)} showIcon={false} showSource={false} onUpdate={() => setUpdateTarget(skill)} onUninstall={skill.rootKind === 'global' ? () => void deleteSkillNow(skill) : undefined} />)}</div></section>)}</div> : <div className={styles.skillGrid}>{visibleSkills.map((skill) => <SkillCard key={skill.id} skill={skill} roots={roots} links={links} issues={issues} update={updateBySkill.get(skill.id)} selected={selected?.id === skill.id} onSelect={() => onSelect(skill.id)} onUpdate={() => setUpdateTarget(skill)} onUninstall={skill.rootKind === 'global' ? () => void deleteSkillNow(skill) : undefined} />)}</div>}
     {remainingSkills > 0 && <div className={styles.skillsMore}><Button variant="outline" size="sm" onClick={() => setVisibleCount((count) => count + 120)}>{t('skills.showMoreRemaining', { n: remainingSkills })}</Button></div>}
     {selected && <Sheet open onOpenChange={(open) => { if (!open) onCloseDetail() }}>
       <SheetContent side="right" className="w-[440px] sm:max-w-[440px]">

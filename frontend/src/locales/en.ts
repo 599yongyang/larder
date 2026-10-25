@@ -742,6 +742,8 @@ const en: Record<string, string> = {
   'skills.viewDiff': 'View changes',
   'skills.versionFileRemoved': 'deleted',
   'skills.diffLoading': 'Loading changes…',
+  'skills.batchPreparing': 'Checking updates {done}/{total}…',
+  'skills.batchPreviewPartial': '{n} Skill(s) could not be previewed and will be skipped. The rest can still be applied.',
 }
 
 export default en

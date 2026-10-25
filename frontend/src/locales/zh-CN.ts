@@ -742,6 +742,8 @@ const zh: Record<string, string> = {
   'skills.viewDiff': '查看差异',
   'skills.versionFileRemoved': '已删除',
   'skills.diffLoading': '正在加载差异…',
+  'skills.batchPreparing': '正在检查更新 {done}/{total}…',
+  'skills.batchPreviewPartial': '有 {n} 个 Skill 无法预览，应用时会跳过；其余仍可继续。',
 }
 
 export default zh
