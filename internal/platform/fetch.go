@@ -26,7 +26,7 @@ func (f HTTPFetcher) Fetch(ctx context.Context, url string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "larder/0.0.1 update-check")
+	req.Header.Set("User-Agent", "larder/0.0.2 update-check")
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err

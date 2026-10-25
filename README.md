@@ -66,7 +66,7 @@ On Windows, an unsigned build may show a SmartScreen warning.
 
 ## Status
 
-`0.0.1` — early development. The current focus is local truth, safe writes and the daily workflow around Skills and MCP.
+`0.0.2` — early development. The current focus is local truth, safe writes and the daily workflow around Skills and MCP.
 
 ## License
 

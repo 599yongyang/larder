@@ -66,7 +66,7 @@ xattr -dr com.apple.quarantine /path/to/Larder.app
 
 ## 当前状态
 
-`0.0.1` — 早期开发阶段。当前重点是本机真实状态、安全写入，以及 Skills 和 MCP 的日常工作流。
+`0.0.2` — 早期开发阶段。当前重点是本机真实状态、安全写入，以及 Skills 和 MCP 的日常工作流。
 
 ## 许可
 
