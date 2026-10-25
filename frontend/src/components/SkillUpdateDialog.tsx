@@ -13,7 +13,7 @@ import type { SkillUpdateDiff, SkillUpdateFile } from '../types'
 
 
 const diffCache = new Map<string, { at: number; diff: SkillUpdateDiff }>()
-const DIFF_CACHE_TTL = 30_000
+const DIFF_CACHE_TTL = 5_000
 
 function defaultsForDiff(diff: SkillUpdateDiff): Record<string, string> {
   return Object.fromEntries(diff.files.filter((file) => file.status === 'conflict' || file.status === 'local_modified' || file.status === 'local' || (!diff.hasBaseline && file.status === 'modified')).map((file) => [file.path, 'local']))

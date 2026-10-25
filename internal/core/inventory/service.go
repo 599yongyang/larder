@@ -1205,6 +1205,13 @@ func (s *Service) RollbackOperation(ctx context.Context, operationID string) (mo
 	if err := s.Rollback(ctx, original.SnapshotPath); err != nil {
 		return model.Operation{}, err
 	}
+	// Restore the upstream baseline for the restored Skill so the next update
+	// comparison starts from the version the user just restored.
+	if path := skillPathForOperation(original); path != "" {
+		if files, hashErr := ops.FileHashes(path); hashErr == nil {
+			s.saveSkillBaseline(ctx, path, files)
+		}
+	}
 	original.Status = "rolled_back"
 	_ = s.store.SaveOperation(ctx, original)
 	now := time.Now()
@@ -1253,6 +1260,17 @@ func (s *Service) PurgeTrash(ctx context.Context, operationID string) error {
 		return err
 	}
 	return nil
+}
+
+func skillPathForOperation(operation model.Operation) string {
+	for _, change := range operation.Changes {
+		for _, prefix := range []string{"updated:", "uninstalled:"} {
+			if strings.HasPrefix(change, prefix) {
+				return strings.TrimPrefix(change, prefix)
+			}
+		}
+	}
+	return ""
 }
 
 func (s *Service) saveSkillBaseline(ctx context.Context, path string, files map[string]string) {
