@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Coins, Layers2, LayoutGrid, List, Plus, RefreshCw, Sparkles, Trash2, Wrench } from 'lucide-react'
+import { MotionConfig, motion } from 'framer-motion'
+import { AlertTriangle, CheckCircle2, Coins, History as HistoryIcon, Layers2, LayoutGrid, List, Plus, RefreshCw, RotateCcw, Sparkles, Trash2, Wrench } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { AgentIcon } from '../../components/AgentIcon'
 import { SkillIcon } from '../../components/SkillIcon'
@@ -7,21 +8,26 @@ import { AgentAvatarGroup } from '../../components/AgentAvatarGroup'
 import { Button } from '@/components/ui/button'
 import { PlanDialog } from '../../components/PlanDialog'
 import { IssueRepairDialog } from '../../components/IssueRepairDialog'
-import { BatchPlanDialog } from '../../components/BatchPlanDialog'
+import { BatchUpdateDialog, type BatchUpdateItem } from '../../components/BatchUpdateDialog'
 import { SkillUpdateDialog } from '../../components/SkillUpdateDialog'
 const DiscoverSheet = lazy(() => import('../../components/DiscoverSheet').then((module) => ({ default: module.DiscoverSheet })))
 import { AssetSearch } from '../../components/AssetSearch'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import styles from '../../App.module.css'
 import { backend } from '../../backend'
-import { skillSourceLabel } from '../../lib/format'
+import { formatTime, skillSourceLabel } from '../../lib/format'
 import { toastError, toastSuccess } from '../../lib/toast'
-import type { CLIInfo, Issue, Link, Plan, Root, Skill, UpdateItem, UpdateReport } from '../../types'
+import type { CLIInfo, Issue, Link, Operation, Plan, Root, Skill, UpdateItem, UpdateReport } from '../../types'
 import { t, tValue } from '../../i18n'
+import { getMotionMode } from '../../lib/motion'
 import { backendErrorMessage } from '../../lib/backendError'
+import { findSkillElement, playDeleteAnimation } from '../../lib/deleteAnimation'
 
-function SkillsView({ skills, allSkills, roots, links, selected, onSelect, onCloseDetail, source, sources, onSource, onRefresh, issues, updates, updatesLoading, onCheckUpdates, clis, onOpenCLI }: { skills: Skill[]; allSkills: Skill[]; roots: Root[]; links: Link[]; selected?: Skill; onSelect: (id: string) => void; onCloseDetail: () => void; source: string; sources: string[]; onSource: (value: string) => void; onRefresh: () => Promise<void>; issues: Issue[]; updates?: UpdateReport; updatesLoading: boolean; onCheckUpdates: () => void; clis: CLIInfo[]; onOpenCLI?: (id: string) => void }) {
+const layoutTransition = { duration: 0.24, ease: [0.23, 1, 0.32, 1] as const }
+
+function SkillsView({ skills, allSkills, roots, links, operations, selected, onSelect, onCloseDetail, source, sources, onSource, onRefresh, issues, updates, updatesLoading, onCheckUpdates, clis, onOpenCLI }: { skills: Skill[]; allSkills: Skill[]; roots: Root[]; links: Link[]; operations: Operation[]; selected?: Skill; onSelect: (id: string) => void; onCloseDetail: () => void; source: string; sources: string[]; onSource: (value: string) => void; onRefresh: () => Promise<void>; issues: Issue[]; updates?: UpdateReport; updatesLoading: boolean; onCheckUpdates: () => void; clis: CLIInfo[]; onOpenCLI?: (id: string) => void }) {
   const issueSkills = allSkills.filter((skill) => hasIssue(skill, links, issues))
   const issueCount = issueSkills.length
   const [repairOpen, setRepairOpen] = useState(false)
@@ -60,7 +66,7 @@ function SkillsView({ skills, allSkills, roots, links, selected, onSelect, onClo
   const [query, setQuery] = useState(() => { try { return localStorage.getItem('larder.skills.query') ?? '' } catch { return '' } })
   useEffect(() => { try { localStorage.setItem('larder.skills.status', statusFilter) } catch {} }, [statusFilter])
   useEffect(() => { try { localStorage.setItem('larder.skills.query', query) } catch {} }, [query])
-  const [batchPlans, setBatchPlans] = useState<Plan[]>([])
+  const [batchItems, setBatchItems] = useState<BatchUpdateItem[]>([])
   const [updateTarget, setUpdateTarget] = useState<Skill>()
   const updateItems = (updates?.items ?? []).filter((item) => item.kind === 'skill')
   const updateFor = (skill: Skill) => updateItems.find((item) => item.name === skill.name)
@@ -93,18 +99,30 @@ function SkillsView({ skills, allSkills, roots, links, selected, onSelect, onClo
       setPlanning(false)
     }
   }
-  const requestUninstall = async () => {
-    if (!selected) return
-    setPlanError('')
+  const undoDelete = async (operationID: string, name: string) => {
     try {
-      setPlan(await backend.planUninstallSkill(selected.id))
+      await backend.rollbackOperation(operationID)
+      toastSuccess(t('skills.versionRestored'), name)
+      await onRefresh()
     } catch (error) {
-      setPlanError(backendErrorMessage(error, t('skills.failedToPreviewUninstall')))
+      toastError(error, t('skills.undoFailed'))
     }
   }
-  const requestUninstallSkill = async (skill: Skill) => {
+  const deleteSkillNow = async (skill: Skill) => {
     setPlanError('')
-    try { setPlan(await backend.planUninstallSkill(skill.id)) } catch (error) { const message = backendErrorMessage(error, t('skills.failedToPreviewUninstall')); setPlanError(message); toastError(error, message) }
+    try {
+      const plan = await backend.planUninstallSkill(skill.id)
+      const operation = await backend.applyPlan(plan.id) as Operation
+      onCloseDetail()
+      toastSuccess(t('app.movedToTrash'), skill.name, { label: t('skills.undo'), onClick: () => void undoDelete(operation.id, skill.name) })
+      const animation = playDeleteAnimation(findSkillElement(skill.id))
+      const mode = getMotionMode()
+      await new Promise((resolve) => setTimeout(resolve, mode === 'off' ? 0 : mode === 'subtle' ? 180 : 700))
+      await onRefresh()
+      void animation
+    } catch (error) {
+      toastError(error, t('skills.failedToPreviewUninstall'))
+    }
   }
   const undoAddLink = async (skillID: string, rootID: string) => {
     try {
@@ -176,9 +194,17 @@ function SkillsView({ skills, allSkills, roots, links, selected, onSelect, onClo
     if (targets.length === 0) return
     setPlanError('')
     try {
-      const plans: Plan[] = []
-      for (const skill of targets) plans.push(await backend.planSkillUpdate(skill.id))
-      setBatchPlans(plans)
+      const items: BatchUpdateItem[] = []
+      for (const skill of targets) {
+        const plan = await backend.planSkillUpdate(skill.id)
+        try {
+          const diff = await backend.previewSkillUpdate(skill.id) as import('../../types').SkillUpdateDiff
+          items.push({ plan, diff })
+        } catch (error) {
+          items.push({ plan, error: backendErrorMessage(error, t('skills.updatePreviewFailed')) })
+        }
+      }
+      setBatchItems(items)
     } catch (error) {
       setPlanError(backendErrorMessage(error, t('skills.failedToCreateBatchUpdatePlan')))
     }
@@ -186,7 +212,7 @@ function SkillsView({ skills, allSkills, roots, links, selected, onSelect, onClo
   const updateSelected = () => { if (selected) setUpdateTarget(selected) }
   const copyPath = async () => { if (!selected) return; try { await navigator.clipboard.writeText(selected.path); toastSuccess(t('skills.pathCopied')) } catch (error) { toastError(error, t('skills.failedToCopyPath')) } }
   const revealPath = async () => { if (!selected) return; try { await backend.revealSkill(selected.id) } catch (error) { toastError(error, t('common.failedToOpenLocation')) } }
-  return <section className={styles.ledgerPanel}>
+  return <MotionConfig reducedMotion="user" transition={{ duration: getMotionMode() === 'off' ? 0 : 0.24, ease: [0.23, 1, 0.32, 1] }}><section className={styles.ledgerPanel}>
     <div className={styles.metrics}>
       <Metric label={t('common.skills')} value={allSkills.length} detail={t('skills.skillsScanned')} />
       <Metric label={t('skills.agentDirectories')} value={roots.length} detail={t('skills.actualDirectoryRoots')} />
@@ -217,11 +243,11 @@ function SkillsView({ skills, allSkills, roots, links, selected, onSelect, onClo
     </div>
     {displayedSkills.length === 0 ? <div className={styles.skillsEmpty}><span className={styles.emptyIcon}><Sparkles size={20} aria-hidden="true" /></span>{skills.length === 0 ? <><strong>{t('skills.noScanResultsYet')}</strong><p>{t('skills.scanThisMachineOrInstallDirectlyFromADirectory')}</p><div className={styles.emptyActions}><Button size="sm" onClick={() => void onRefresh()}><RefreshCw size={14} />{t('skills.scanThisMachine')}</Button><Button size="sm" variant="outline" onClick={() => setDiscoverOpen(true)}><Plus size={14} />{t('common.installSkill')}</Button></div></> : <><strong>{t('skills.noMatchingSkills')}</strong><p>{t('skills.noResultsUnderTheCurrentFilters')}</p><div className={styles.emptyActions}><Button size="sm" variant="outline" onClick={() => { setQuery(''); setStatusFilter('all'); onSource('all') }}>{t('skills.clearFilters')}</Button></div></>}</div> : display === 'list' ? (grouped ? <div className={styles.groupedList}><div className={styles.groupedColumns}><span>{t('common.name')}</span><span>{t('common.sourceLabel')}</span><span>{t('skills.agentVisibility')}</span><span>Tokens</span><span>{t('common.actions')}</span></div>{visibleGroups.map(([label, items, visibleItems]) => <section key={label} className={styles.groupedSection}>
       <header className={styles.groupedGroupHeader}><SkillIcon skill={items[0]} className="size-5" /><span>{label}</span><small>{t('common.skillCount', { n: items.length })}</small>{items.some((skill) => hasUpdate(skill)) && <Button size="xs" variant="outline" className={styles.groupUpdateButton} onClick={() => void requestGroupUpdate(items)}>{t('skills.updateAll')}</Button>}</header>
-      {visibleItems.map((skill) => <SkillListRow key={skill.id} skill={skill} roots={roots} links={links} issues={issues} update={updateBySkill.get(skill.id)} selected={selected?.id === skill.id} onSelect={() => onSelect(skill.id)} onUninstall={skill.rootKind === 'global' ? () => void requestUninstallSkill(skill) : undefined} />)}
+      {visibleItems.map((skill) => <SkillListRow key={skill.id} skill={skill} roots={roots} links={links} issues={issues} update={updateBySkill.get(skill.id)} selected={selected?.id === skill.id} onSelect={() => onSelect(skill.id)} onUpdate={() => setUpdateTarget(skill)} onUninstall={skill.rootKind === 'global' ? () => void deleteSkillNow(skill) : undefined} />)}
     </section>)}</div> : <div className={`${styles.tableWrap} ${styles.skillsTable}`}><table>
       <thead><tr><th>{t('common.name')}</th><th>{t('common.sourceLabel')}</th><th>{t('skills.agentVisibility')}</th><th>Tokens</th><th>{t('common.actions')}</th></tr></thead>
-      <tbody>{visibleSkills.map((skill) => <SkillRow key={skill.id} skill={skill} roots={roots} links={links} issues={issues} update={updateBySkill.get(skill.id)} selected={selected?.id === skill.id} onSelect={() => onSelect(skill.id)} onUninstall={skill.rootKind === 'global' ? () => void requestUninstallSkill(skill) : undefined} />)}</tbody>
-    </table></div>) : grouped ? <div className={styles.skillGroups}>{visibleGroups.map(([label, items, visibleItems]) => <section key={label} className={styles.skillGroup}><header className={styles.skillGroupHeader}><div className={styles.skillGroupTitle}><SkillIcon skill={items[0]} className="size-5" /><strong>{label}</strong></div><div className={styles.skillGroupMeta}><span>{t('common.skillCount', { n: items.length })}</span>{items.some((skill) => hasUpdate(skill)) && <Button size="xs" variant="outline" onClick={() => void requestGroupUpdate(items)}>{t('skills.updateAll')}</Button>}</div></header><div className={styles.skillGrid}>{visibleItems.map((skill) => <SkillCard key={skill.id} skill={skill} roots={roots} links={links} issues={issues} update={updateBySkill.get(skill.id)} selected={selected?.id === skill.id} onSelect={() => onSelect(skill.id)} showIcon={false} showSource={false} onUpdate={() => setUpdateTarget(skill)} onUninstall={skill.rootKind === 'global' ? () => void requestUninstallSkill(skill) : undefined} />)}</div></section>)}</div> : <div className={styles.skillGrid}>{visibleSkills.map((skill) => <SkillCard key={skill.id} skill={skill} roots={roots} links={links} issues={issues} update={updateBySkill.get(skill.id)} selected={selected?.id === skill.id} onSelect={() => onSelect(skill.id)} onUpdate={() => setUpdateTarget(skill)} onUninstall={skill.rootKind === 'global' ? () => void requestUninstallSkill(skill) : undefined} />)}</div>}
+      <tbody>{visibleSkills.map((skill) => <SkillRow key={skill.id} skill={skill} roots={roots} links={links} issues={issues} update={updateBySkill.get(skill.id)} selected={selected?.id === skill.id} onSelect={() => onSelect(skill.id)} onUpdate={() => setUpdateTarget(skill)} onUninstall={skill.rootKind === 'global' ? () => void deleteSkillNow(skill) : undefined} />)}</tbody>
+    </table></div>) : grouped ? <div className={styles.skillGroups}>{visibleGroups.map(([label, items, visibleItems]) => <section key={label} className={styles.skillGroup}><header className={styles.skillGroupHeader}><div className={styles.skillGroupTitle}><SkillIcon skill={items[0]} className="size-5" /><strong>{label}</strong></div><div className={styles.skillGroupMeta}><span>{t('common.skillCount', { n: items.length })}</span>{items.some((skill) => hasUpdate(skill)) && <Button size="xs" variant="outline" onClick={() => void requestGroupUpdate(items)}>{t('skills.updateAll')}</Button>}</div></header><div className={styles.skillGrid}>{visibleItems.map((skill) => <SkillCard key={skill.id} skill={skill} roots={roots} links={links} issues={issues} update={updateBySkill.get(skill.id)} selected={selected?.id === skill.id} onSelect={() => onSelect(skill.id)} showIcon={false} showSource={false} onUpdate={() => setUpdateTarget(skill)} onUninstall={skill.rootKind === 'global' ? () => void deleteSkillNow(skill) : undefined} />)}</div></section>)}</div> : <div className={styles.skillGrid}>{visibleSkills.map((skill) => <SkillCard key={skill.id} skill={skill} roots={roots} links={links} issues={issues} update={updateBySkill.get(skill.id)} selected={selected?.id === skill.id} onSelect={() => onSelect(skill.id)} onUpdate={() => setUpdateTarget(skill)} onUninstall={skill.rootKind === 'global' ? () => void deleteSkillNow(skill) : undefined} />)}</div>}
     {remainingSkills > 0 && <div className={styles.skillsMore}><Button variant="outline" size="sm" onClick={() => setVisibleCount((count) => count + 120)}>{t('skills.showMoreRemaining', { n: remainingSkills })}</Button></div>}
     {selected && <Sheet open onOpenChange={(open) => { if (!open) onCloseDetail() }}>
       <SheetContent side="right" className="w-[440px] sm:max-w-[440px]">
@@ -237,15 +263,15 @@ function SkillsView({ skills, allSkills, roots, links, selected, onSelect, onClo
           </div>
           {selected.description && <p className={styles.detailHeroDescription}>{selected.description}</p>}
         </SheetHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto p-0"><SkillDetail skill={selected} roots={roots} clis={clis} onOpenCLI={onOpenCLI} links={links} issues={issues} update={updateBySkill.get(selected.id)} onUpdate={updateSelected} onCopyPath={copyPath} onReveal={revealPath} onRepairLinks={brokenRoots.length > 0 ? () => void requestLinkPlan(brokenRoots) : undefined} onAddLink={(rootID) => void requestAddLink(rootID)} planning={planning} planError={planError} onSyncPlan={copiedRoots.length > 0 ? () => void requestSyncPlan() : undefined} syncPlanning={syncPlanning} syncError={syncError} onDisable={(rootID) => void requestDisable(rootID)} disabling={planning} onUninstall={selected.rootKind === 'global' ? () => void requestUninstall() : undefined} /></div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-0"><SkillDetail skill={selected} roots={roots} clis={clis} onOpenCLI={onOpenCLI} links={links} issues={issues} update={updateBySkill.get(selected.id)} onUpdate={updateSelected} onCopyPath={copyPath} onReveal={revealPath} onRepairLinks={brokenRoots.length > 0 ? () => void requestLinkPlan(brokenRoots) : undefined} onAddLink={(rootID) => void requestAddLink(rootID)} planning={planning} planError={planError} onSyncPlan={copiedRoots.length > 0 ? () => void requestSyncPlan() : undefined} syncPlanning={syncPlanning} syncError={syncError} onDisable={(rootID) => void requestDisable(rootID)} disabling={planning} onUninstall={selected.rootKind === 'global' ? () => void deleteSkillNow(selected) : undefined} operations={operations} onRestored={() => void onRefresh()} /></div>
       </SheetContent>
     </Sheet>}
     {discoverOpen && <Suspense fallback={null}><DiscoverSheet open={discoverOpen} roots={roots} installedSkills={allSkills} onOpenInstalled={(id) => { setDiscoverOpen(false); onSelect(id) }} onClose={() => setDiscoverOpen(false)} onInstalled={() => { setDiscoverOpen(false); void onRefresh() }} /></Suspense>}
     {repairOpen && <IssueRepairDialog issues={issueItems} onClose={() => setRepairOpen(false)} onLocate={(id) => { setRepairOpen(false); onSelect(id) }} onApplied={() => { setRepairOpen(false); void onRefresh() }} />}
     {updateTarget && <SkillUpdateDialog skillID={updateTarget.id} skillName={updateTarget.name} source={updateTarget.source} onClose={() => setUpdateTarget(undefined)} onApplied={() => { setUpdateTarget(undefined); onCloseDetail(); void onRefresh() }} />}
-    {batchPlans.length > 0 && <BatchPlanDialog plans={batchPlans} onClose={() => setBatchPlans([])} onApplied={() => { setBatchPlans([]); void onRefresh() }} />}
+    {batchItems.length > 0 && <BatchUpdateDialog items={batchItems} onClose={() => setBatchItems([])} onApplied={() => { setBatchItems([]); void onRefresh() }} />}
     {plan && <PlanDialog plan={plan} onClose={() => setPlan(undefined)} onApplied={() => { setPlan(undefined); onCloseDetail(); void onRefresh() }} />}
-  </section>
+  </section></MotionConfig>
 }
 
 function Metric({ label, value, detail, tone, onClick }: { label: string; value: string | number; detail: string; tone?: 'warn'; onClick?: () => void }) {
@@ -318,39 +344,39 @@ function StatusBadge({ issue, reasons = [] }: { skill?: Skill; issue: boolean; r
   return <Badge variant="success" title={t('skills.noBrokenLinksContentDriftOrMissingSkillMd')}>{t('common.healthy')}</Badge>
 }
 
-function SkillRow({ skill, roots, links, issues, update, selected, onSelect, onUninstall, showIcon = true }: { skill: Skill; roots: Root[]; links: Link[]; issues: Issue[]; update?: UpdateItem; selected: boolean; onSelect: () => void; onUninstall?: () => void; showIcon?: boolean }) {
+function SkillRow({ skill, roots, links, issues, update, selected, onSelect, onUpdate, onUninstall, showIcon = true }: { skill: Skill; roots: Root[]; links: Link[]; issues: Issue[]; update?: UpdateItem; selected: boolean; onSelect: () => void; onUpdate?: () => void; onUninstall?: () => void; showIcon?: boolean }) {
   const { discoverableRoots, issue, reasons } = summarize(skill, roots, links, issues)
-  return <tr data-skill-id={skill.id} className={`${selected ? styles.selectedRow : ''} ${styles.clickableRow}`} onClick={onSelect}>
-    <td><div className={styles.skillNameRow}><div className={styles.skillName}>{showIcon && <SkillIcon skill={skill} className="size-7" />}<span>{skill.name}</span>{skill.isProject && <Badge variant="info">{t('common.projects')}</Badge>}<OriginBadge origin={skill.origin} /><SkillHealthText issue={issue} reasons={reasons} /></div><SkillUpdateText update={update} /></div><p className={styles.skillDescription}>{skill.description || t('skills.noDescriptionAvailable')}</p></td>
+  return <motion.tr layout="position" transition={{ layout: layoutTransition }} data-skill-id={skill.id} className={`${selected ? styles.selectedRow : ''} ${styles.clickableRow}`} onClick={onSelect}>
+    <td><div className={styles.skillNameRow}><div className={styles.skillName}>{showIcon && <SkillIcon skill={skill} className="size-7" />}<span>{skill.name}</span>{skill.isProject && <Badge variant="info">{t('common.projects')}</Badge>}<OriginBadge origin={skill.origin} /><SkillHealthText issue={issue} reasons={reasons} /></div><SkillUpdateText update={update} onClick={onUpdate} /></div><p className={styles.skillDescription}>{skill.description || t('skills.noDescriptionAvailable')}</p></td>
     <td><span className={styles.sourceChip}>{skillSourceLabel(skill)}</span></td>
     <td><AgentAvatarGroup roots={discoverableRoots} /></td>
     <td><span className={styles.tokenValue} title={`${t('skills.tokensPerTurn', { n: skill.descTokens.toLocaleString() })} · ${t('skills.tokenCostHint')}`} aria-label={t('skills.tokensPerTurn', { n: skill.descTokens.toLocaleString() })}><Coins size={12} aria-hidden="true" />{skill.descTokens.toLocaleString()}</span></td>
     <td><div className={styles.quickActions}>{onUninstall && <Button variant="ghost" size="xs" className="text-destructive" title={t('common.uninstallSkill')} aria-label={t('common.uninstallSkill')} onClick={(event) => { event.stopPropagation(); onUninstall() }}><Trash2 size={14} /></Button>}</div></td>
-  </tr>
+  </motion.tr>
 }
 
-function SkillListRow({ skill, roots, links, issues, update, selected, onSelect, onUninstall }: { skill: Skill; roots: Root[]; links: Link[]; issues: Issue[]; update?: UpdateItem; selected: boolean; onSelect: () => void; onUninstall?: () => void }) {
+function SkillListRow({ skill, roots, links, issues, update, selected, onSelect, onUpdate, onUninstall }: { skill: Skill; roots: Root[]; links: Link[]; issues: Issue[]; update?: UpdateItem; selected: boolean; onSelect: () => void; onUpdate?: () => void; onUninstall?: () => void }) {
   const { discoverableRoots, issue, reasons } = summarize(skill, roots, links, issues)
-  return <div data-skill-id={skill.id} className={`${styles.groupedRow} ${selected ? styles.groupedRowSelected : ''} ${styles.clickableRow}`} onClick={onSelect}>
-    <div className={styles.groupedName}><div className={styles.skillNameRow}><div className={styles.skillName}><span>{skill.name}</span>{skill.isProject && <Badge variant="info">{t('common.projects')}</Badge>}<OriginBadge origin={skill.origin} /><SkillHealthText issue={issue} reasons={reasons} /></div><SkillUpdateText update={update} /></div><p className={styles.skillDescription}>{skill.description || t('skills.noDescriptionAvailable')}</p></div>
+  return <motion.div layout="position" transition={{ layout: layoutTransition }} data-skill-id={skill.id} className={`${styles.groupedRow} ${selected ? styles.groupedRowSelected : ''} ${styles.clickableRow}`} onClick={onSelect}>
+    <div className={styles.groupedName}><div className={styles.skillNameRow}><div className={styles.skillName}><span>{skill.name}</span>{skill.isProject && <Badge variant="info">{t('common.projects')}</Badge>}<OriginBadge origin={skill.origin} /><SkillHealthText issue={issue} reasons={reasons} /></div><SkillUpdateText update={update} onClick={onUpdate} /></div><p className={styles.skillDescription}>{skill.description || t('skills.noDescriptionAvailable')}</p></div>
     <div><span className={styles.sourceChip}>{skillSourceLabel(skill)}</span></div>
     <div><AgentAvatarGroup roots={discoverableRoots} /></div>
     <div><span className={styles.tokenValue} title={`${t('skills.tokensPerTurn', { n: skill.descTokens.toLocaleString() })} · ${t('skills.tokenCostHint')}`} aria-label={t('skills.tokensPerTurn', { n: skill.descTokens.toLocaleString() })}><Coins size={12} aria-hidden="true" />{skill.descTokens.toLocaleString()}</span></div>
     <div><div className={styles.quickActions}>{onUninstall && <Button variant="ghost" size="xs" className="text-destructive" title={t('common.uninstallSkill')} aria-label={t('common.uninstallSkill')} onClick={(event) => { event.stopPropagation(); onUninstall() }}><Trash2 size={14} /></Button>}</div></div>
-  </div>
+  </motion.div>
 }
 
 function SkillCard({ skill, roots, links, issues, update, selected, onSelect, onUpdate, onUninstall, showIcon = true, showSource = true }: { skill: Skill; roots: Root[]; links: Link[]; issues: Issue[]; update?: UpdateItem; selected: boolean; onSelect: () => void; onUpdate?: () => void; onUninstall?: () => void; showIcon?: boolean; showSource?: boolean }) {
   const { discoverableRoots, issue, reasons } = summarize(skill, roots, links, issues)
-  return <div role="button" tabIndex={0} data-skill-id={skill.id} onClick={onSelect} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect() } }} className={`${styles.skillCard} ${selected ? styles.skillCardSelected : ''}`}>
+  return <motion.div layout="position" transition={{ layout: layoutTransition }} role="button" tabIndex={0} data-skill-id={skill.id} onClick={onSelect} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect() } }} className={`${styles.skillCard} ${selected ? styles.skillCardSelected : ''}`}>
     <div className={styles.skillCardHead}><div className={styles.skillCardTitle}>{showIcon && <SkillIcon skill={skill} className="size-6" />}<strong>{skill.name}</strong>{skill.isProject && <Badge variant="info">{t('common.projects')}</Badge>}<OriginBadge origin={skill.origin} /><SkillHealthText issue={issue} reasons={reasons} /><SkillUpdateText update={update} onClick={onUpdate} /></div><span className={styles.skillCardToken} title={`${t('skills.tokensPerTurn', { n: skill.descTokens.toLocaleString() })} · ${t('skills.tokenCostHint')}`}><Coins size={11} aria-hidden="true" />{skill.descTokens.toLocaleString()}</span></div>
     <p className={styles.skillCardDescription}>{skill.description || t('skills.noDescriptionAvailable')}</p>
     {showSource && <div className={styles.skillCardSource}><span className={styles.sourceChip}>{skillSourceLabel(skill)}</span></div>}
     <div className={styles.skillCardFoot}><div className={styles.skillCardAgents}><AgentAvatarGroup roots={discoverableRoots} /></div>{onUninstall && <Button variant="ghost" size="xs" className={styles.skillCardDelete} title={t('common.uninstallSkill')} aria-label={t('common.uninstallSkill')} onClick={(event) => { event.stopPropagation(); onUninstall() }}><Trash2 size={13} /></Button>}</div>
-  </div>
+  </motion.div>
 }
 
-function SkillDetail({ skill, roots, links, issues, clis, update, onUpdate, onCopyPath, onReveal, onRepairLinks, onAddLink, planning, planError, onSyncPlan, syncPlanning, syncError, onDisable, disabling, onUninstall, onOpenCLI }: { skill: Skill; roots: Root[]; links: Link[]; issues: Issue[]; clis: CLIInfo[]; update?: UpdateItem; onCopyPath?: () => void; onReveal?: () => void; onUpdate?: () => void; onRepairLinks?: () => void; onAddLink?: (rootID: string) => void; planning?: boolean; planError?: string; onSyncPlan?: () => void; syncPlanning?: boolean; syncError?: string; onDisable?: (rootID: string) => void; disabling?: boolean; onUninstall?: () => void; onOpenCLI?: (id: string) => void }) {
+function SkillDetail({ skill, roots, links, operations, issues, clis, update, onUpdate, onCopyPath, onReveal, onRepairLinks, onAddLink, planning, planError, onSyncPlan, syncPlanning, syncError, onDisable, disabling, onUninstall, onOpenCLI, onRestored }: { skill: Skill; roots: Root[]; links: Link[]; operations: Operation[]; issues: Issue[]; clis: CLIInfo[]; update?: UpdateItem; onCopyPath?: () => void; onReveal?: () => void; onUpdate?: () => void; onRepairLinks?: () => void; onAddLink?: (rootID: string) => void; planning?: boolean; planError?: string; onSyncPlan?: () => void; syncPlanning?: boolean; syncError?: string; onDisable?: (rootID: string) => void; disabling?: boolean; onUninstall?: () => void; onOpenCLI?: (id: string) => void; onRestored: () => void }) {
   const skillLinks = links.filter((link) => link.skillId === skill.id)
   const visibleCount = skillLinks.filter((link) => link.visible).length
   const linkForRoot = (rootID: string) => skillLinks.find((link) => link.rootId === rootID)
@@ -413,6 +439,7 @@ function SkillDetail({ skill, roots, links, issues, clis, update, onUpdate, onCo
       })}</div>
     </section>}
 
+    <SkillVersionHistory skill={skill} operations={operations} onRestored={onRestored} />
     <section className={styles.detailSection}>
       <h3>{t('skills.sourceBaseline')}</h3>
       <dl className={styles.definition}><dt>{t('skills.localPath')}</dt><dd><code className={styles.detailPath}>{skill.path}</code></dd><dt>{t('common.sourceLabel')}</dt><dd>{skillSourceLabel(skill)}</dd><dt>{t('skills.upstreamPath')}</dt><dd>{skill.skillPath || '—'}</dd><dt>{t('skills.contentBaseline')}</dt><dd><code>{skill.folderHash ? skill.folderHash.slice(0, 16) : t('skills.notCalculated')}</code></dd></dl>
@@ -421,5 +448,30 @@ function SkillDetail({ skill, roots, links, issues, clis, update, onUpdate, onCo
   </div>
 }
 
+
+
+function SkillVersionHistory({ skill, operations, onRestored }: { skill: Skill; operations: Operation[]; onRestored: () => void }) {
+  const [target, setTarget] = useState<Operation>()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const versions = operations.filter((operation) => (operation.operation === 'skill_update' || operation.operation === 'uninstall_skill') && operation.status === 'success' && (operation.changes ?? []).some((change) => change.endsWith(':' + skill.path)))
+  const restore = async () => {
+    if (!target || busy) return
+    setBusy(true); setError('')
+    try { await backend.rollbackOperation(target.id); toastSuccess(t('skills.versionRestored')); setTarget(undefined); onRestored() } catch (cause) { setError(backendErrorMessage(cause, t('skills.versionRestoreFailed'))) } finally { setBusy(false) }
+  }
+  return <section className={styles.detailSection}>
+    <h3>{t('skills.versionHistory')} <span className={styles.sectionCount}>{versions.length}</span></h3>
+    {versions.length === 0 ? <p className={styles.versionEmpty}>{t('skills.noVersionHistoryYet')}</p> : <div className={styles.versionList}>{versions.slice(0, 8).map((operation) => <div key={operation.id} className={styles.versionRow}>
+      <span className={styles.versionIcon}><HistoryIcon size={13} aria-hidden="true" /></span>
+      <span className={styles.versionMain}><strong>{operation.operation === 'uninstall_skill' ? t('skills.versionBeforeDelete') : t('skills.versionBeforeUpdate')}</strong><small>{formatTime(operation.createdAt) || '—'}</small></span>
+      <Button variant="outline" size="xs" onClick={() => { setError(''); setTarget(operation) }}><RotateCcw size={12} />{t('history.restore')}</Button>
+    </div>)}</div>}
+    {error && <p className={styles.planError} role="alert">{error}</p>}
+    {target && <Dialog open onOpenChange={(open) => { if (!open) setTarget(undefined) }}>
+      <DialogContent><DialogHeader><DialogTitle>{t('skills.restoreVersion')}</DialogTitle><DialogDescription>{t('skills.restoreVersionDescription')}</DialogDescription></DialogHeader><div className="p-6"><p className={styles.updateMessage}>{target.operation === 'uninstall_skill' ? t('skills.versionBeforeDelete') : t('skills.versionBeforeUpdate')} · {formatTime(target.createdAt) || '—'}</p>{error && <p className={styles.planError} role="alert">{error}</p>}</div><DialogFooter><Button size="sm" variant="outline" onClick={() => setTarget(undefined)} disabled={busy}>{t('common.cancel')}</Button><Button size="sm" disabled={busy} onClick={() => void restore()}>{busy ? t('common.restoring') : t('history.restore')}</Button></DialogFooter></DialogContent>
+    </Dialog>}
+  </section>
+}
 
 export { SkillsView }

@@ -10,14 +10,13 @@ import { MCPRemoveDialog } from '../../components/MCPRemoveDialog'
 const MCPAddSheet = lazy(() => import('../../components/MCPAddSheet').then((module) => ({ default: module.MCPAddSheet })))
 import { MCPEditDialog } from '../../components/MCPEditDialog'
 import { AssetSearch } from '../../components/AssetSearch'
-import { PlanDialog } from '../../components/PlanDialog'
 import { backend } from '../../backend'
 import styles from '../../App.module.css'
 import { t } from '../../i18n'
 import { backendErrorMessage } from '../../lib/backendError'
 import { shortPath } from '../../lib/format'
 import { toastError, toastSuccess } from '../../lib/toast'
-import type { CLIInfo, MCPAgent, MCPServer, Plan } from '../../types'
+import type { CLIInfo, MCPAgent, MCPServer } from '../../types'
 import { commandBasename } from '../../lib/relations'
 
 type Filter = 'all' | 'issues' | 'enabled' | 'disabled'
@@ -36,7 +35,6 @@ function MCPView({ servers, clis, onRefresh, focusMCP, onFocusConsumed, onOpenCL
   const [agentFilter, setAgentFilter] = useState('all')
   const [selectedId, setSelectedId] = useState<string>()
   const [removeTarget, setRemoveTarget] = useState<MCPServer>()
-  const [plan, setPlan] = useState<Plan>()
   const [addOpen, setAddOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [agentBusy, setAgentBusy] = useState('')
@@ -119,8 +117,7 @@ function MCPView({ servers, clis, onRefresh, focusMCP, onFocusConsumed, onOpenCL
     </Sheet>}
     {selected && editOpen && <MCPEditDialog server={selected} onClose={() => setEditOpen(false)} onSaved={() => void onRefresh()} />}
     {addOpen && <Suspense fallback={null}><MCPAddSheet open={addOpen} existingNames={servers.map((server) => server.name)} onClose={() => setAddOpen(false)} onAdded={() => void onRefresh()} /></Suspense>}
-    {removeTarget && <MCPRemoveDialog server={removeTarget} onClose={() => setRemoveTarget(undefined)} onPlan={(next) => { setRemoveTarget(undefined); setPlan(next) }} />}
-    {plan && <PlanDialog plan={plan} onClose={() => setPlan(undefined)} onApplied={() => { setPlan(undefined); setSelectedId(undefined); void onRefresh() }} />}
+    {removeTarget && <MCPRemoveDialog server={removeTarget} onClose={() => setRemoveTarget(undefined)} onApplied={() => { setRemoveTarget(undefined); setSelectedId(undefined); void onRefresh() }} />}
   </section>
 }
 

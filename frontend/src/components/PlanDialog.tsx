@@ -27,6 +27,7 @@ export function PlanDialog({ plan, onClose, onApplied }: { plan: Plan; onClose: 
   const [applying, setApplying] = useState(false)
   const [error, setError] = useState('')
   const meta = operationMeta(plan.operation)
+  const needsExplicitConfirm = meta.tone === 'danger'
   const OperationIcon = meta.icon
   const warnings = plan.warningMessages?.length ? plan.warningMessages.map((message) => t(message.code, message.params)) : (plan.warnings ?? []).filter((item) => !item.includes('快照') && !item.includes('snapshot'))
   const coreChanges = (plan.changes ?? []).filter((change) => change.action !== 'already_linked')
@@ -69,10 +70,10 @@ export function PlanDialog({ plan, onClose, onApplied }: { plan: Plan; onClose: 
           {plan.command && <p className={styles.planFlatCommand}>{t('common.command')}<code>{[plan.command, ...(plan.args ?? [])].join(' ')}</code></p>}
         </div>}
         {warnings.length > 0 && <div className={styles.planWarning}><AlertTriangle size={15} aria-hidden="true" /><div>{warnings.map((item) => <p key={item}>{item}</p>)}</div></div>}
-        <label className={styles.planConfirm}><Checkbox checked={confirmed} onCheckedChange={(checked) => setConfirmed(Boolean(checked))} /><span className={styles.planConfirmLabel}>{t('common.confirmOperationSnapshotFirst')}</span><span className={styles.planConfirmInfo} title={t('common.aSnapshotIsCreatedFirstFailuresFollowTheOperationPolicy')} aria-label={t('common.aSnapshotIsCreatedFirstFailuresFollowTheOperationPolicy')}><Info size={12} /></span></label>
+        {needsExplicitConfirm ? <label className={styles.planConfirm}><Checkbox checked={confirmed} onCheckedChange={(checked) => setConfirmed(Boolean(checked))} /><span className={styles.planConfirmLabel}>{t('common.confirmOperationSnapshotFirst')}</span><span className={styles.planConfirmInfo} title={t('common.aSnapshotIsCreatedFirstFailuresFollowTheOperationPolicy')} aria-label={t('common.aSnapshotIsCreatedFirstFailuresFollowTheOperationPolicy')}><Info size={12} /></span></label> : <div className={styles.planConfirm}><Info size={12} aria-hidden="true" /><span className={styles.planConfirmLabel}>{t('common.aSnapshotIsCreatedFirstFailuresFollowTheOperationPolicy')}</span></div>}
         {error && <p className={styles.planError} role="alert">{error}</p>}
       </div>
-      <DialogFooter className={styles.planFooter}><Button size="sm" variant="outline" onClick={onClose} disabled={applying}>{t('common.cancel')}</Button><Button size="sm" variant={meta.tone === 'danger' ? 'destructive' : 'default'} disabled={!confirmed || applying} onClick={() => void apply()}>{applying ? t('common.running') : meta.confirm}</Button></DialogFooter>
+      <DialogFooter className={styles.planFooter}><Button size="sm" variant="outline" onClick={onClose} disabled={applying}>{t('common.cancel')}</Button><Button size="sm" variant={meta.tone === 'danger' ? 'destructive' : 'default'} disabled={(needsExplicitConfirm && !confirmed) || applying} onClick={() => void apply()}>{applying ? t('common.running') : meta.confirm}</Button></DialogFooter>
     </DialogContent>
   </Dialog>
 }
