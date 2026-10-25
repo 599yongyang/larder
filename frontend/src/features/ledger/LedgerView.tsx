@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { MotionConfig, motion } from 'framer-motion'
-import { AlertTriangle, CheckCircle2, Coins, History as HistoryIcon, Layers2, LayoutGrid, List, Plus, RefreshCw, RotateCcw, Sparkles, Trash2, Wrench } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Coins, GitCompareArrows, History as HistoryIcon, Layers2, LayoutGrid, List, Plus, RefreshCw, RotateCcw, Sparkles, Trash2, Wrench } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { AgentIcon } from '../../components/AgentIcon'
 import { SkillIcon } from '../../components/SkillIcon'
@@ -10,6 +10,7 @@ import { PlanDialog } from '../../components/PlanDialog'
 import { IssueRepairDialog } from '../../components/IssueRepairDialog'
 import { BatchUpdateDialog, type BatchUpdateItem } from '../../components/BatchUpdateDialog'
 import { SkillUpdateDialog } from '../../components/SkillUpdateDialog'
+import { VersionDiffDialog } from '../../components/VersionDiffDialog'
 const DiscoverSheet = lazy(() => import('../../components/DiscoverSheet').then((module) => ({ default: module.DiscoverSheet })))
 import { AssetSearch } from '../../components/AssetSearch'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
@@ -452,6 +453,7 @@ function SkillDetail({ skill, roots, links, operations, issues, clis, update, on
 
 function SkillVersionHistory({ skill, operations, onRestored }: { skill: Skill; operations: Operation[]; onRestored: () => void }) {
   const [target, setTarget] = useState<Operation>()
+  const [diffTarget, setDiffTarget] = useState<Operation>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const versions = operations.filter((operation) => (operation.operation === 'skill_update' || operation.operation === 'uninstall_skill') && operation.status === 'success' && (operation.changes ?? []).some((change) => change.endsWith(':' + skill.path)))
@@ -465,12 +467,14 @@ function SkillVersionHistory({ skill, operations, onRestored }: { skill: Skill; 
     {versions.length === 0 ? <p className={styles.versionEmpty}>{t('skills.noVersionHistoryYet')}</p> : <div className={styles.versionList}>{versions.slice(0, 8).map((operation) => <div key={operation.id} className={styles.versionRow}>
       <span className={styles.versionIcon}><HistoryIcon size={13} aria-hidden="true" /></span>
       <span className={styles.versionMain}><strong>{operation.operation === 'uninstall_skill' ? t('skills.versionBeforeDelete') : t('skills.versionBeforeUpdate')}</strong><small>{formatTime(operation.createdAt) || '—'}</small></span>
+      <Button variant="ghost" size="xs" onClick={() => setDiffTarget(operation)}><GitCompareArrows size={12} />{t('skills.viewDiff')}</Button>
       <Button variant="outline" size="xs" onClick={() => { setError(''); setTarget(operation) }}><RotateCcw size={12} />{t('history.restore')}</Button>
     </div>)}</div>}
     {error && <p className={styles.planError} role="alert">{error}</p>}
     {target && <Dialog open onOpenChange={(open) => { if (!open) setTarget(undefined) }}>
       <DialogContent><DialogHeader><DialogTitle>{t('skills.restoreVersion')}</DialogTitle><DialogDescription>{t('skills.restoreVersionDescription')}</DialogDescription></DialogHeader><div className="p-6"><p className={styles.updateMessage}>{target.operation === 'uninstall_skill' ? t('skills.versionBeforeDelete') : t('skills.versionBeforeUpdate')} · {formatTime(target.createdAt) || '—'}</p>{error && <p className={styles.planError} role="alert">{error}</p>}</div><DialogFooter><Button size="sm" variant="outline" onClick={() => setTarget(undefined)} disabled={busy}>{t('common.cancel')}</Button><Button size="sm" disabled={busy} onClick={() => void restore()}>{busy ? t('common.restoring') : t('history.restore')}</Button></DialogFooter></DialogContent>
     </Dialog>}
+    {diffTarget && <VersionDiffDialog operation={diffTarget} onClose={() => setDiffTarget(undefined)} />}
   </section>
 }
 

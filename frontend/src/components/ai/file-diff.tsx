@@ -25,6 +25,9 @@ interface FileDiffProps extends Omit<React.ComponentProps<'figure'>, 'onCopy'> {
   hunks?: DiffHunk[]
   lines?: DiffLine[]
   onCopy?: (patch: string) => void
+  onOpenChange?: (open: boolean) => void
+  loading?: boolean
+  loadingLabel?: string
 }
 
 const ease = [0.23, 1, 0.32, 1] as const
@@ -56,6 +59,9 @@ export function FileDiff({
   hunks,
   lines = [],
   onCopy,
+  onOpenChange,
+  loading = false,
+  loadingLabel = 'Loading…',
   ...props
 }: FileDiffProps) {
   const bodyId = React.useId()
@@ -90,13 +96,12 @@ export function FileDiff({
         {...props}
       >
         <figcaption className="flex h-10 items-center gap-2 border-b border-[var(--line)] bg-[var(--paper)] pr-2 pl-1.5 text-[10px] uppercase tracking-[.06em]">
-          <button aria-controls={bodyId} aria-expanded={open} aria-label={open ? `Collapse ${filename}` : `Expand ${filename}`} className={iconButton} onClick={() => setOpen((value) => !value)} type="button">
+          <button aria-controls={bodyId} aria-expanded={open} aria-label={open ? `Collapse ${filename}` : `Expand ${filename}`} className={iconButton} onClick={() => setOpen((value) => { const next = !value; onOpenChange?.(next); return next })} type="button">
             <ChevronRight className={cn('size-3.5 transition-[rotate] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none', open && 'rotate-90')} />
           </button>
           <FileCode2 aria-hidden="true" className="size-4 shrink-0" />
           <span className="min-w-0 truncate normal-case tracking-normal text-foreground/80">{filename}</span>
-          <span className="ml-auto text-emerald-600 tabular-nums">+{added}</span>
-          <span className="text-red-500 tabular-nums">−{removed}</span>
+          {all.length > 0 || additions !== undefined || deletions !== undefined ? <><span className="ml-auto text-emerald-600 tabular-nums">+{added}</span><span className="text-red-500 tabular-nums">−{removed}</span></> : <span className="ml-auto" />}
           <button aria-label={copied ? 'Copied' : 'Copy patch'} className={iconButton} onClick={copy} type="button">
             <span className="grid *:col-start-1 *:row-start-1 *:transition-[opacity,scale] *:duration-150 motion-reduce:*:transition-opacity">
               <Copy className={cn('size-3.5', copied && 'scale-75 opacity-0')} />
@@ -106,8 +111,8 @@ export function FileDiff({
         </figcaption>
         <AnimatePresence initial={false}>
           {open && (
-            <motion.div animate={{ height: 'auto', opacity: 1 }} className="overflow-hidden" exit={{ height: 0, opacity: 0 }} id={bodyId} initial={{ height: 0, opacity: 0 }} transition={{ duration: 0.22, ease }}>
-              <pre className="max-h-[320px] overflow-auto border-t border-[var(--line)] py-2 text-[12px] leading-5">
+            <motion.div layout animate={{ height: 'auto', opacity: 1 }} className="overflow-hidden" exit={{ height: 0, opacity: 0 }} id={bodyId} initial={{ height: 0, opacity: 0 }} transition={{ layout: { duration: 0.2, ease }, duration: 0.22, ease }}>
+              {loading ? <div className="flex items-center justify-center gap-2 border-t border-[var(--line)] px-3 py-5 text-[11px] text-muted-foreground"><span className="size-1.5 animate-pulse rounded-full bg-current" />{loadingLabel}</div> : <pre className="max-h-[320px] overflow-auto border-t border-[var(--line)] py-2 text-[12px] leading-5">
                 <code className="block">
                   {groups.map((hunk) => {
                     const showHidden = expanded.has(hunk.id)
@@ -136,7 +141,7 @@ export function FileDiff({
                     )
                   })}
                 </code>
-              </pre>
+              </pre>}
             </motion.div>
           )}
         </AnimatePresence>

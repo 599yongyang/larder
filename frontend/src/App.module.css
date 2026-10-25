@@ -696,3 +696,11 @@
 
 .settingsPanel{width:100%;max-width:none}
 .settingsGrid{width:100%}
+
+.versionDiffBody{display:grid;align-content:start;gap:10px;min-height:0;flex:1;overflow-y:auto;padding:2px 24px 16px}
+.versionDiffSummary{display:flex;gap:18px;color:var(--text-muted);font-size:10.5px}
+.versionDiffSummary strong{margin-right:4px;color:var(--ink);font:600 18px var(--font-mono)}
+.versionDiffList{display:grid;gap:6px}
+.versionDiffError{display:flex;align-items:flex-start;gap:7px;padding:9px 10px;border-radius:6px;background:var(--status-warn-bg);color:var(--amber);font-size:10.5px;line-height:1.5}
+.versionDiffError svg{flex:none;margin-top:1px}
+.versionDiffEmpty{margin:0;padding:22px;color:var(--text-muted);font-size:11px;text-align:center}

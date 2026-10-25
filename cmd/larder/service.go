@@ -378,6 +378,14 @@ func (s *AppService) PurgeTrash(operationID string) error {
 	return s.core.PurgeTrash(s.context(), operationID)
 }
 
+func (s *AppService) PreviewSkillFileDiff(skillID, path string) (model.SkillUpdateFile, error) {
+	return s.core.PreviewSkillFileDiff(s.context(), skillID, path)
+}
+
+func (s *AppService) PreviewVersionDiff(operationID string) (model.SkillUpdateDiff, error) {
+	return s.core.PreviewVersionDiff(s.context(), operationID)
+}
+
 func (s *AppService) PreviewSkillUpdate(skillID string) (model.SkillUpdateDiff, error) {
 	return s.core.PreviewSkillUpdate(s.context(), skillID)
 }

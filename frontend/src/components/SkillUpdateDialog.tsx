@@ -6,6 +6,7 @@ import { backend } from '../backend'
 import styles from '../App.module.css'
 import { t } from '../i18n'
 import { backendErrorMessage } from '../lib/backendError'
+import { toastError } from '../lib/toast'
 import { FileDiff, type DiffLine } from './ai/file-diff'
 import type { SkillUpdateDiff, SkillUpdateFile } from '../types'
 
@@ -38,6 +39,9 @@ export function SkillUpdateDialog({ skillID, skillName, source, onClose, onAppli
   const [diffError, setDiffError] = useState('')
   const [resolutions, setResolutions] = useState<Record<string, string>>({})
   const [resolved, setResolved] = useState<Set<string>>(() => new Set())
+  const [fileDiffs, setFileDiffs] = useState<Record<string, SkillUpdateFile>>({})
+  const [loadingFiles, setLoadingFiles] = useState<Set<string>>(() => new Set())
+  const loadFileDiff = async (file: SkillUpdateFile) => { if (fileDiffs[file.path] || loadingFiles.has(file.path)) return; setLoadingFiles((current) => new Set(current).add(file.path)); try { const next = await backend.previewSkillFileDiff(skillID, file.path) as SkillUpdateFile; setFileDiffs((current) => ({ ...current, [file.path]: next })) } catch (cause) { toastError(cause, t('skills.versionDiffFailed')) } finally { setLoadingFiles((current) => { const next = new Set(current); next.delete(file.path); return next }) } }
   useEffect(() => {
     let active = true
     const cached = diffCache.get(skillID)
@@ -91,9 +95,10 @@ export function SkillUpdateDialog({ skillID, skillName, source, onClose, onAppli
           {diff.conflicted > 0 && <div className={`${styles.updatePreviewNotice} ${styles.updatePreviewWarn}`}><AlertTriangle size={13} aria-hidden="true" /><span>{t('skills.updateConflictedFilesKept', { n: diff.conflicted })}</span></div>}
           {files.length > 0 && <div className={styles.updatePreviewDiffList}>{files.slice(0, 20).map((file) => {
             const label = file.binary ? `${fileStatusLabel(file.status, Boolean(diff?.hasBaseline))} · ${t('skills.binaryFile')}` : file.truncated ? `${fileStatusLabel(file.status, Boolean(diff?.hasBaseline))} · ${t('skills.diffTruncated')}` : fileStatusLabel(file.status, Boolean(diff?.hasBaseline))
-            const lines: DiffLine[] = (file.lines ?? []).map((line) => ({ content: line.text, oldNumber: line.oldLine, newNumber: line.newLine, type: line.kind === 'add' ? 'addition' : line.kind === 'del' ? 'deletion' : 'context' }))
-            return <div key={`${file.status}:${file.path}`} className={styles.updatePreviewFileBlock}>
-              <FileDiff filename={`${file.path}  ·  ${label}`} additions={file.additions} deletions={file.deletions} lines={lines} defaultOpen={false} />
+            const loaded = fileDiffs[file.path]
+            const lines: DiffLine[] = (loaded?.lines ?? []).map((line) => ({ content: line.text, oldNumber: line.oldLine, newNumber: line.newLine, type: line.kind === 'add' ? 'addition' : line.kind === 'del' ? 'deletion' : 'context' }))
+            return <div key={`${file.status}:${file.path}`} className={styles.updatePreviewFileBlock} onPointerEnter={() => void loadFileDiff(file)}>
+              <FileDiff filename={`${file.path}  ·  ${label}`} additions={loaded?.additions} deletions={loaded?.deletions} lines={lines} defaultOpen={false} loading={loadingFiles.has(file.path)} loadingLabel={t('skills.diffLoading')} onOpenChange={(open) => { if (open) void loadFileDiff(file) }} />
               {needsResolution(file) && <div className={styles.updateResolutionRow}><span>{t('skills.resolveChange')}</span><div role="group" aria-label={t('skills.resolveChange')}>{[['local', 'skills.resolveLocal'], ['upstream', file.status === 'local' ? 'skills.resolveDeleteLocal' : 'skills.resolveUpstream'], ...(file.status !== 'local' ? [['both', 'skills.resolveBoth']] : [])].map(([value, key]) => <Button key={value} type="button" size="xs" variant={(resolutions[file.path] ?? 'local') === value ? 'secondary' : 'ghost'} onClick={() => choose(file.path, value)}>{t(key)}</Button>)}{resolved.has(file.path) && <span className={styles.resolvedMark}><Check size={11} aria-hidden="true" />{t('skills.resolved')}</span>}</div></div>}
             </div>
           })}{files.length > 20 && <div className={styles.updatePreviewMore}>{t('skills.moreFiles', { n: files.length - 20 })}</div>}</div>}

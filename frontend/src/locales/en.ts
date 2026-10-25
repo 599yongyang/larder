@@ -733,6 +733,15 @@ const en: Record<string, string> = {
   'history.noHistoryYet': 'No history yet. Larder operations and external Skill file changes will appear here.',
   'history.historyFeedHint': 'Larder operations and external Skill file changes in one timeline.',
   'history.allRecords': 'All',
+  'skills.filesRemoved': 'removed',
+  'skills.versionDiffTitle': 'Version changes',
+  'skills.versionDiffDescription': 'Compare the version before this operation with the current Skill.',
+  'skills.versionDiffLoading': 'Loading changes…',
+  'skills.versionDiffFailed': 'Could not load version changes',
+  'skills.versionDiffEmpty': 'No file changes between this version and the current Skill.',
+  'skills.viewDiff': 'View changes',
+  'skills.versionFileRemoved': 'deleted',
+  'skills.diffLoading': 'Loading changes…',
 }
 
 export default en

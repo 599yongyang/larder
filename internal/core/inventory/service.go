@@ -1262,6 +1262,66 @@ func (s *Service) saveSkillBaseline(ctx context.Context, path string, files map[
 	_ = s.store.SaveSkillBaseline(ctx, model.SkillBaseline{Path: path, Files: files, UpdatedAt: time.Now()})
 }
 
+func (s *Service) PreviewSkillFileDiff(ctx context.Context, skillID, path string) (model.SkillUpdateFile, error) {
+	var skill *model.Skill
+	for i := range s.Snapshot().Skills {
+		if s.Snapshot().Skills[i].ID == skillID || s.Snapshot().Skills[i].Name == skillID {
+			item := s.Snapshot().Skills[i]
+			skill = &item
+			break
+		}
+	}
+	if skill == nil {
+		return model.SkillUpdateFile{}, errors.New("skill not found")
+	}
+	repo := ops.GitHubRepo(*skill)
+	if repo == "" {
+		return model.SkillUpdateFile{}, errors.New("skill has no GitHub source")
+	}
+	baseline := map[string]string{}
+	if s.store != nil {
+		if saved, ok, err := s.store.LoadSkillBaseline(ctx, skill.Path); err == nil && ok {
+			baseline = saved.Files
+		}
+	}
+	return ops.BuildSkillUpdateFileDiff(ctx, *skill, repo, path, s.fetcher, baseline)
+}
+
+func (s *Service) PreviewVersionDiff(ctx context.Context, operationID string) (model.SkillUpdateDiff, error) {
+	if s.store == nil {
+		return model.SkillUpdateDiff{}, errors.New("operation store is unavailable")
+	}
+	operation, ok, err := s.store.GetOperation(ctx, operationID)
+	if err != nil {
+		return model.SkillUpdateDiff{}, err
+	}
+	if !ok {
+		return model.SkillUpdateDiff{}, errors.New("operation not found")
+	}
+	path := ""
+	for _, change := range operation.Changes {
+		for _, prefix := range []string{"updated:", "uninstalled:"} {
+			if strings.HasPrefix(change, prefix) {
+				path = strings.TrimPrefix(change, prefix)
+			}
+		}
+	}
+	if path == "" {
+		return model.SkillUpdateDiff{}, errors.New("operation has no skill path")
+	}
+	var skill model.Skill
+	for _, item := range s.Snapshot().Skills {
+		if item.Path == path {
+			skill = item
+			break
+		}
+	}
+	if skill.Path == "" {
+		skill = model.Skill{ID: path, Name: filepath.Base(path), Path: path}
+	}
+	return ops.BuildVersionDiff(ctx, operation, skill)
+}
+
 func (s *Service) PreviewSkillUpdate(ctx context.Context, skillID string) (model.SkillUpdateDiff, error) {
 	var skill *model.Skill
 	snapshot := s.Snapshot()
@@ -1285,7 +1345,7 @@ func (s *Service) PreviewSkillUpdate(ctx context.Context, skillID string) (model
 			baseline = saved.Files
 		}
 	}
-	return ops.BuildSkillUpdateDiff(ctx, *skill, repo, s.fetcher, baseline)
+	return ops.BuildSkillUpdateDiff(ctx, *skill, repo, s.fetcher, baseline, false)
 }
 
 func (s *Service) Updates() model.UpdateReport {

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"larder/internal/core/model"
@@ -24,7 +25,11 @@ type fileFingerprint struct {
 
 // BuildSkillUpdateDiff downloads the upstream Skill and compares it with the
 // current local folder and its installation baseline. Read-only.
-func BuildSkillUpdateDiff(ctx context.Context, skill model.Skill, repo string, fetcher platform.Fetcher, baseline map[string]string) (model.SkillUpdateDiff, error) {
+func BuildSkillUpdateDiff(ctx context.Context, skill model.Skill, repo string, fetcher platform.Fetcher, baseline map[string]string, includeLines ...bool) (model.SkillUpdateDiff, error) {
+	withLines := true
+	if len(includeLines) > 0 {
+		withLines = includeLines[0]
+	}
 	plan, err := PlanSkillUpdate(skill, repo)
 	if err != nil {
 		return model.SkillUpdateDiff{}, err
@@ -41,17 +46,12 @@ func BuildSkillUpdateDiff(ctx context.Context, skill model.Skill, repo string, f
 		files, scanErr := fingerprintTree(skill.Path)
 		localCh <- localScan{files: files, err: scanErr}
 	}()
-	tarball, err := fetcher.Fetch(ctx, plan.SourceURL)
+	incomingDir, err := upstreamTree(ctx, plan, fetcher)
 	if err != nil {
 		return model.SkillUpdateDiff{}, err
 	}
-	incomingDir, err := os.MkdirTemp("", "larder-update-")
-	if err != nil {
-		return model.SkillUpdateDiff{}, err
-	}
-	defer os.RemoveAll(incomingDir)
-	if err := extractSkillFolder(tarball, plan.SourcePath, incomingDir); err != nil {
-		return model.SkillUpdateDiff{}, err
+	if !cacheableFetcher(fetcher) {
+		defer os.RemoveAll(incomingDir)
 	}
 	incoming, err := fingerprintTree(incomingDir)
 	if err != nil {
@@ -94,7 +94,7 @@ func BuildSkillUpdateDiff(ctx context.Context, skill model.Skill, repo string, f
 			}
 			file.LocalSize = localFile.size
 			file.Binary = localFile.binary
-			if !file.Binary {
+			if withLines && !file.Binary {
 				content, _ := os.ReadFile(filepath.Join(skill.Path, filepath.FromSlash(path)))
 				file.Lines, file.Truncated = lineDiffBytes(content, nil)
 				file.Additions, file.Deletions = countDiffLines(file.Lines)
@@ -103,7 +103,7 @@ func BuildSkillUpdateDiff(ctx context.Context, skill model.Skill, repo string, f
 			file.UpstreamChanged = true
 			file.IncomingSize = incomingFile.size
 			file.Binary = incomingFile.binary
-			if !file.Binary {
+			if withLines && !file.Binary {
 				content, _ := os.ReadFile(filepath.Join(incomingDir, filepath.FromSlash(path)))
 				file.Lines, file.Truncated = lineDiffBytes(nil, content)
 				file.Additions, file.Deletions = countDiffLines(file.Lines)
@@ -140,7 +140,7 @@ func BuildSkillUpdateDiff(ctx context.Context, skill model.Skill, repo string, f
 				file.Status = "modified"
 				diff.Modified++
 			}
-			if !file.Binary {
+			if withLines && !file.Binary {
 				file.Lines, file.Truncated = lineDiff(
 					filepath.Join(skill.Path, filepath.FromSlash(path)),
 					filepath.Join(incomingDir, filepath.FromSlash(path)),
@@ -328,6 +328,77 @@ func splitLines(content []byte) []string {
 	return strings.Split(strings.TrimSuffix(text, "\n"), "\n")
 }
 
+type cachedUpstream struct {
+	dir string
+	at  time.Time
+}
+
+var upstreamCache = struct {
+	sync.Mutex
+	entries map[string]cachedUpstream
+}{entries: map[string]cachedUpstream{}}
+
+func cacheableFetcher(fetcher platform.Fetcher) bool {
+	switch fetcher.(type) {
+	case platform.HTTPFetcher, *platform.CachedFetcher:
+		return true
+	default:
+		return false
+	}
+}
+
+func upstreamTree(ctx context.Context, plan model.Plan, fetcher platform.Fetcher) (string, error) {
+	key := plan.SourceURL + "\x00" + plan.SourcePath
+	if cacheableFetcher(fetcher) {
+		upstreamCache.Lock()
+		entry, ok := upstreamCache.entries[key]
+		if ok && time.Since(entry.at) < 2*time.Minute {
+			if _, err := os.Stat(entry.dir); err == nil {
+				upstreamCache.Unlock()
+				return entry.dir, nil
+			}
+		}
+		delete(upstreamCache.entries, key)
+		upstreamCache.Unlock()
+	}
+	tarball, err := fetcher.Fetch(ctx, plan.SourceURL)
+	if err != nil {
+		return "", err
+	}
+	dir, err := os.MkdirTemp("", "larder-upstream-")
+	if err != nil {
+		return "", err
+	}
+	if err := extractSkillFolder(tarball, plan.SourcePath, dir); err != nil {
+		_ = os.RemoveAll(dir)
+		return "", err
+	}
+	if !cacheableFetcher(fetcher) {
+		return dir, nil
+	}
+	upstreamCache.Lock()
+	if old, ok := upstreamCache.entries[key]; ok && old.dir != dir {
+		_ = os.RemoveAll(old.dir)
+	}
+	upstreamCache.entries[key] = cachedUpstream{dir: dir, at: time.Now()}
+	// Keep the cache small; previews are interactive, not a general cache.
+	if len(upstreamCache.entries) > 6 {
+		var oldestKey string
+		var oldest time.Time
+		for currentKey, entry := range upstreamCache.entries {
+			if oldestKey == "" || entry.at.Before(oldest) {
+				oldestKey, oldest = currentKey, entry.at
+			}
+		}
+		if oldestKey != "" && oldestKey != key {
+			_ = os.RemoveAll(upstreamCache.entries[oldestKey].dir)
+			delete(upstreamCache.entries, oldestKey)
+		}
+	}
+	upstreamCache.Unlock()
+	return dir, nil
+}
+
 // FileHashes returns a stable path→SHA-256 map for a folder. It is used to
 // capture a new baseline after an install or update.
 func FileHashes(root string) (map[string]string, error) {
@@ -364,4 +435,54 @@ func LoadBaselineManifest(snapshotDir string) (map[string]string, error) {
 		return nil, err
 	}
 	return files, nil
+}
+
+// BuildSkillUpdateFileDiff computes the line diff for one file only. The
+// update preview can therefore stay small and only load code when a user
+// expands a file.
+func BuildSkillUpdateFileDiff(ctx context.Context, skill model.Skill, repo, path string, fetcher platform.Fetcher, baseline map[string]string) (model.SkillUpdateFile, error) {
+	plan, err := PlanSkillUpdate(skill, repo)
+	if err != nil {
+		return model.SkillUpdateFile{}, err
+	}
+	clean := filepath.Clean(filepath.FromSlash(path))
+	if clean == "." || filepath.IsAbs(clean) || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || clean == ".." {
+		return model.SkillUpdateFile{}, os.ErrInvalid
+	}
+	if fetcher == nil {
+		fetcher = platform.HTTPFetcher{}
+	}
+	incomingDir, err := upstreamTree(ctx, plan, fetcher)
+	if err != nil {
+		return model.SkillUpdateFile{}, err
+	}
+	if !cacheableFetcher(fetcher) {
+		defer os.RemoveAll(incomingDir)
+	}
+	localPath := filepath.Join(skill.Path, clean)
+	incomingPath := filepath.Join(incomingDir, clean)
+	local, localErr := os.ReadFile(localPath)
+	incoming, incomingErr := os.ReadFile(incomingPath)
+	if localErr != nil && incomingErr != nil {
+		return model.SkillUpdateFile{}, os.ErrNotExist
+	}
+	file := model.SkillUpdateFile{Path: filepath.ToSlash(clean)}
+	oldContent, newContent := local, incoming
+	if localErr != nil {
+		oldContent = nil
+		file.Status = "added"
+	}
+	if incomingErr != nil {
+		newContent = nil
+		file.Status = "removed"
+	}
+	if file.Status == "" {
+		file.Status = "modified"
+	}
+	file.Binary = isBinary(oldContent) || isBinary(newContent)
+	if !file.Binary {
+		file.Lines, file.Truncated = lineDiffBytes(oldContent, newContent)
+		file.Additions, file.Deletions = countDiffLines(file.Lines)
+	}
+	return file, nil
 }

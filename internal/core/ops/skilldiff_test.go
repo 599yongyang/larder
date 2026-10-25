@@ -101,3 +101,30 @@ func TestBuildSkillUpdateDiffUsesBaselineForConflict(t *testing.T) {
 		t.Fatal("expected line diff for conflict")
 	}
 }
+
+func TestBuildSkillUpdateDiffCanReturnMetadataOnly(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "alpha")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "SKILL.md"), []byte("old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	skill := model.Skill{ID: "s1", Name: "alpha", Path: target, Locked: true, SourceType: "github", Source: "owner/repo", SourceURL: "https://github.com/owner/repo.git", SkillPath: "skills/alpha/SKILL.md"}
+	data := tarWithFiles(t, map[string]string{"repo-HEAD/skills/alpha/SKILL.md": "new\n"})
+	diff, err := ops.BuildSkillUpdateDiff(context.Background(), skill, "owner/repo", fakeFetcher{data: data}, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(diff.Files) != 1 || len(diff.Files[0].Lines) != 0 || diff.Files[0].Additions != 0 {
+		t.Fatalf("metadata diff should not contain lines: %#v", diff)
+	}
+	fileDiff, err := ops.BuildSkillUpdateFileDiff(context.Background(), skill, "owner/repo", "SKILL.md", fakeFetcher{data: data}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fileDiff.Lines) == 0 || fileDiff.Additions != 1 || fileDiff.Deletions != 1 {
+		t.Fatalf("lazy file diff = %#v", fileDiff)
+	}
+}

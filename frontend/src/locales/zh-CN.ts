@@ -733,6 +733,15 @@ const zh: Record<string, string> = {
   'history.noHistoryYet': '还没有历史记录。Larder 操作和外部 Skill 文件变化会显示在这里。',
   'history.historyFeedHint': 'Larder 操作与外部 Skill 文件变化合并展示。',
   'history.allRecords': '全部',
+  'skills.filesRemoved': '删除',
+  'skills.versionDiffTitle': '版本差异',
+  'skills.versionDiffDescription': '对比操作前版本与当前 Skill 的内容。',
+  'skills.versionDiffLoading': '正在加载差异…',
+  'skills.versionDiffFailed': '无法加载版本差异',
+  'skills.versionDiffEmpty': '这个版本与当前 Skill 没有文件差异。',
+  'skills.viewDiff': '查看差异',
+  'skills.versionFileRemoved': '已删除',
+  'skills.diffLoading': '正在加载差异…',
 }
 
 export default zh

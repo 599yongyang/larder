@@ -176,8 +176,16 @@ export function PlanUninstallSkill(skillID: string): $CancellablePromise<model$0
     return $Call.ByID(1745518445, skillID);
 }
 
+export function PreviewSkillFileDiff(skillID: string, path: string): $CancellablePromise<model$0.SkillUpdateFile> {
+    return $Call.ByID(1552718341, skillID, path);
+}
+
 export function PreviewSkillUpdate(skillID: string): $CancellablePromise<model$0.SkillUpdateDiff> {
     return $Call.ByID(981182705, skillID);
+}
+
+export function PreviewVersionDiff(operationID: string): $CancellablePromise<model$0.SkillUpdateDiff> {
+    return $Call.ByID(2655019298, operationID);
 }
 
 export function PurgeTrash(operationID: string): $CancellablePromise<void> {
