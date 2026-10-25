@@ -178,3 +178,30 @@ func TestCheckMapsWingetUpgrades(t *testing.T) {
 		t.Fatalf("item = %#v", report.Items[0])
 	}
 }
+
+func TestCheckMarksSkillRemovedWhenSourceDirectoryDisappears(t *testing.T) {
+	root := t.TempDir()
+	makeSkill := func(name string) model.Skill {
+		dir := filepath.Join(root, name)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(name+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return model.Skill{Name: name, Path: dir, FolderHash: folderHash(t, dir), Locked: true, SourceType: "github", Source: "owner/repo", SourceURL: "https://github.com/owner/repo.git", SkillPath: "skills/" + name + "/SKILL.md"}
+	}
+	alpha, beta := makeSkill("alpha"), makeSkill("beta")
+	fetcher := fakeFetcher{content: map[string][]byte{
+		"https://codeload.github.com/owner/repo/tar.gz/HEAD": makeTar(t, "repo-HEAD", map[string]string{"skills/alpha/SKILL.md": "alpha\n"}),
+	}}
+	report := updates.Check(context.Background(), updates.Options{Skills: []model.Skill{alpha, beta}, FS: platform.OSFileSystem{}, Fetcher: fetcher})
+	if report.SkillCurrent != 1 || report.SkillRemoved != 1 || report.SkillErrors != 0 {
+		t.Fatalf("report = %#v", report)
+	}
+	for _, item := range report.Items {
+		if item.Name == "beta" && item.State != "removed" {
+			t.Fatalf("beta item = %#v", item)
+		}
+	}
+}

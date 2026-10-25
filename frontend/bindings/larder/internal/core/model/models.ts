@@ -260,6 +260,7 @@ export interface Settings {
     "autoCheckUpdates": boolean;
     "updateCheckIntervalHours": number;
     "snapshotRetention": number;
+    "trashRetentionDays": number;
 }
 
 export enum Severity {
@@ -368,6 +369,7 @@ export interface UpdateReport {
     "current": number;
     "skillScanned": number;
     "skillChanged": number;
+    "skillRemoved": number;
     "skillCurrent": number;
     "skillErrors": number;
 }

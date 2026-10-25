@@ -122,6 +122,7 @@ func checkSkills(ctx context.Context, opts Options, report *model.UpdateReport) 
 			for _, candidate := range group.candidates {
 				remote, ok := hashes[candidate.dir]
 				if !ok {
+					candidate.state = "removed"
 					if err := missing[candidate.dir]; err != "" {
 						candidate.msg = err
 					} else {
@@ -153,6 +154,8 @@ func checkSkills(ctx context.Context, opts Options, report *model.UpdateReport) 
 			report.SkillChanged++
 		case "current":
 			report.SkillCurrent++
+		case "removed":
+			report.SkillRemoved++
 		default:
 			report.SkillErrors++
 		}

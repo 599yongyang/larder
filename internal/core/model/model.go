@@ -185,6 +185,7 @@ type UpdateReport struct {
 	Current      int          `json:"current"`
 	SkillScanned int          `json:"skillScanned"`
 	SkillChanged int          `json:"skillChanged"`
+	SkillRemoved int          `json:"skillRemoved"`
 	SkillCurrent int          `json:"skillCurrent"`
 	SkillErrors  int          `json:"skillErrors"`
 }
@@ -328,6 +329,7 @@ type Settings struct {
 	AutoCheckUpdates      bool           `json:"autoCheckUpdates"`
 	UpdateCheckIntervalHr int            `json:"updateCheckIntervalHours"`
 	SnapshotRetention     int            `json:"snapshotRetention"`
+	TrashRetentionDays    int            `json:"trashRetentionDays"`
 }
 
 type MCPAgent struct {

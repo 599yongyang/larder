@@ -89,6 +89,7 @@ function normalizeSettings(value: any) {
     autoCheckUpdates: Boolean(value?.autoCheckUpdates),
     updateCheckIntervalHours: Number(value?.updateCheckIntervalHours || 24),
     snapshotRetention: Number(value?.snapshotRetention || 50),
+    trashRetentionDays: Number(value?.trashRetentionDays ?? 30),
   }
 }
 

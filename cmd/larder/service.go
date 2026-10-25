@@ -115,6 +115,7 @@ func (s *AppService) Startup() {
 	if retention <= 0 {
 		retention = 50
 	}
+	_ = s.core.PruneTrash(s.context(), settings.TrashRetentionDays)
 	_ = s.core.PruneSnapshots(retention)
 	_ = s.core.PruneTimeline(s.context())
 	s.mu.Lock()
@@ -862,7 +863,11 @@ func (s *AppService) PickFolder() (string, error) {
 
 func (s *AppService) SaveSettings(settings model.Settings) (model.Settings, error) {
 	ctx := s.context()
-	return s.core.SaveSettings(ctx, settings)
+	saved, err := s.core.SaveSettings(ctx, settings)
+	if err == nil {
+		_ = s.core.PruneTrash(ctx, saved.TrashRetentionDays)
+	}
+	return saved, err
 }
 
 func (s *AppService) Shutdown() {

@@ -461,7 +461,7 @@ func (s *Store) LoadSettings(ctx context.Context) (model.Settings, error) {
 	var raw string
 	err := s.db.QueryRowContext(ctx, `SELECT value_json FROM settings WHERE key='settings'`).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
-		return model.Settings{AutoCheckUpdates: true, UpdateCheckIntervalHr: 24, SnapshotRetention: 50}, nil
+		return model.Settings{AutoCheckUpdates: true, UpdateCheckIntervalHr: 24, SnapshotRetention: 50, TrashRetentionDays: 30}, nil
 	}
 	if err != nil {
 		return model.Settings{}, err
@@ -478,6 +478,9 @@ func (s *Store) LoadSettings(ctx context.Context) (model.Settings, error) {
 	}
 	if settings.SnapshotRetention <= 0 {
 		settings.SnapshotRetention = 50
+	}
+	if settings.TrashRetentionDays == 0 {
+		settings.TrashRetentionDays = 30
 	}
 	return settings, nil
 }

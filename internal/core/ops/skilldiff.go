@@ -361,8 +361,9 @@ type cachedUpstream struct {
 
 var upstreamCache = struct {
 	sync.Mutex
-	entries map[string]cachedUpstream
-}{entries: map[string]cachedUpstream{}}
+	entries  map[string]cachedUpstream
+	inflight map[string]chan struct{}
+}{entries: map[string]cachedUpstream{}, inflight: map[string]chan struct{}{}}
 
 func cacheableFetcher(fetcher platform.Fetcher) bool {
 	switch fetcher.(type) {
@@ -371,6 +372,15 @@ func cacheableFetcher(fetcher platform.Fetcher) bool {
 	default:
 		return false
 	}
+}
+
+func finishUpstream(key string) {
+	upstreamCache.Lock()
+	if wait, ok := upstreamCache.inflight[key]; ok {
+		delete(upstreamCache.inflight, key)
+		close(wait)
+	}
+	upstreamCache.Unlock()
 }
 
 func upstreamTree(ctx context.Context, plan model.Plan, fetcher platform.Fetcher) (string, error) {
@@ -384,19 +394,28 @@ func upstreamTree(ctx context.Context, plan model.Plan, fetcher platform.Fetcher
 				return entry.dir, nil
 			}
 		}
+		if wait, waiting := upstreamCache.inflight[key]; waiting {
+			upstreamCache.Unlock()
+			<-wait
+			return upstreamTree(ctx, plan, fetcher)
+		}
+		upstreamCache.inflight[key] = make(chan struct{})
 		delete(upstreamCache.entries, key)
 		upstreamCache.Unlock()
 	}
 	tarball, err := fetcher.Fetch(ctx, plan.SourceURL)
 	if err != nil {
+		finishUpstream(key)
 		return "", err
 	}
 	dir, err := os.MkdirTemp("", "larder-upstream-")
 	if err != nil {
+		finishUpstream(key)
 		return "", err
 	}
 	if err := extractSkillFolder(tarball, plan.SourcePath, dir); err != nil {
 		_ = os.RemoveAll(dir)
+		finishUpstream(key)
 		return "", err
 	}
 	if !cacheableFetcher(fetcher) {
@@ -422,6 +441,7 @@ func upstreamTree(ctx context.Context, plan model.Plan, fetcher platform.Fetcher
 		}
 	}
 	upstreamCache.Unlock()
+	finishUpstream(key)
 	return dir, nil
 }
 

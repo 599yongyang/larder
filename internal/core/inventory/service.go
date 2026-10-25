@@ -427,6 +427,16 @@ func (s *Service) PruneSnapshots(max int) error {
 		}
 		return err
 	}
+	trashSnapshots := map[string]bool{}
+	if s.store != nil {
+		if operations, err := s.store.LoadOperations(context.Background(), 500); err == nil {
+			for _, operation := range operations {
+				if operation.Status == "success" && (operation.Operation == "uninstall_skill" || operation.Operation == "mcp_remove") && operation.SnapshotPath != "" {
+					trashSnapshots[filepath.Clean(operation.SnapshotPath)] = true
+				}
+			}
+		}
+	}
 	type snapshot struct {
 		path    string
 		modTime time.Time
@@ -440,7 +450,12 @@ func (s *Service) PruneSnapshots(max int) error {
 		if err != nil {
 			continue
 		}
-		snapshots = append(snapshots, snapshot{path: filepath.Join(s.snapshotRoot, entry.Name()), modTime: info.ModTime()})
+		path := filepath.Join(s.snapshotRoot, entry.Name())
+		if trashSnapshots[filepath.Clean(path)] {
+			// Trash retention controls these, not the version snapshot count.
+			continue
+		}
+		snapshots = append(snapshots, snapshot{path: path, modTime: info.ModTime()})
 	}
 	sort.Slice(snapshots, func(i, j int) bool { return snapshots[i].modTime.After(snapshots[j].modTime) })
 	if len(snapshots) <= max {
@@ -1195,7 +1210,7 @@ func (s *Service) RollbackOperation(ctx context.Context, operationID string) (mo
 	if !ok {
 		return model.Operation{}, errors.New("operation not found")
 	}
-	if (original.Operation != "link_skill" && original.Operation != "replace_copy" && original.Operation != "sync_copy" && original.Operation != "disable_link" && original.Operation != "skill_update" && original.Operation != "install_skill" && original.Operation != "uninstall_skill" && original.Operation != "mcp_remove") || original.Status != "success" {
+	if (original.Operation != "link_skill" && original.Operation != "replace_copy" && original.Operation != "sync_copy" && original.Operation != "disable_link" && original.Operation != "skill_update" && original.Operation != "install_skill" && original.Operation != "uninstall_skill" && original.Operation != "mcp_remove" && original.Operation != "rollback") || original.Status != "success" {
 		return model.Operation{}, errors.New("operation is not rollback-able")
 	}
 	safetySnapshot, err := ops.CreateRestoreSnapshot(original.SnapshotPath, s.snapshotRoot)
@@ -1229,6 +1244,31 @@ func (s *Service) Rollback(ctx context.Context, snapshotPath string) error {
 		return errors.New("snapshot path is outside the snapshot directory")
 	}
 	return ops.RollbackSnapshot(snapshotPath, s.fs, s.linker)
+}
+
+func (s *Service) PruneTrash(ctx context.Context, days int) error {
+	if s.store == nil || days <= 0 {
+		return nil
+	}
+	cutoff := time.Now().AddDate(0, 0, -days)
+	operations, err := s.store.LoadOperations(ctx, 500)
+	if err != nil {
+		return err
+	}
+	for _, operation := range operations {
+		if operation.Status != "success" || (operation.Operation != "uninstall_skill" && operation.Operation != "mcp_remove") || operation.CreatedAt.After(cutoff) {
+			continue
+		}
+		if operation.SnapshotPath != "" && s.snapshotRoot != "" {
+			clean := filepath.Clean(operation.SnapshotPath)
+			if strings.HasPrefix(clean, filepath.Clean(s.snapshotRoot)+string(filepath.Separator)) {
+				_ = os.RemoveAll(clean)
+			}
+		}
+		operation.Status = "deleted"
+		_ = s.store.SaveOperation(ctx, operation)
+	}
+	return nil
 }
 
 func (s *Service) PurgeTrash(ctx context.Context, operationID string) error {
