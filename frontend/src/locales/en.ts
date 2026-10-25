@@ -724,11 +724,8 @@ const en: Record<string, string> = {
   'history.snapshot': 'Snapshot',
   'history.rollbackDirectHint': 'The current files are backed up before restoring the linked snapshot. Records and snapshots are kept.',
   'history.history': 'History',
-  'history.externalChanges': 'External changes',
   'history.recordType': 'Type',
   'history.noHistoryYet': 'No history yet. Larder operations and external Skill file changes will appear here.',
-  'history.historyFeedHint': 'Larder operations and external Skill file changes in one timeline.',
-  'history.allRecords': 'All',
   'skills.filesRemoved': 'removed',
   'skills.versionDiffTitle': 'Version changes',
   'skills.versionDiffDescription': 'Compare the version before this operation with the current Skill.',
@@ -740,6 +737,14 @@ const en: Record<string, string> = {
   'skills.diffLoading': 'Loading changes…',
   'skills.batchPreparing': 'Checking updates {done}/{total}…',
   'skills.batchPreviewPartial': '{n} Skill(s) could not be previewed and will be skipped. The rest can still be applied.',
+  'skills.upstreamRemoved': 'removed upstream',
+  'skills.upstreamRemovedBanner': '{n} installed Skill(s) no longer exist in their source repository.',
+  'skills.upstreamRemovedTitle': 'Removed from the source repository',
+  'skills.upstreamRemovedDescription': 'The Skill may have been deleted, moved, or renamed upstream. Keep the local copy, or move it to Trash.',
+  'skills.moveToTrash': 'Move to Trash',
+  'settings.trashRetention': 'Trash retention',
+  'settings.days': '{n} days',
+  'common.forever': 'Forever',
 }
 
 export default en

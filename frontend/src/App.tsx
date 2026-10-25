@@ -31,6 +31,7 @@ import type { ThemeMode } from './lib/theme'
 import { switchTheme } from './lib/themeTransition'
 import { pageTransition } from './lib/pageTransition'
 import { t } from './i18n'
+import { sortAgentRoots } from './lib/agentOrder'
 import { backendErrorMessage } from './lib/backendError'
 import { cycleZoom, resetZoom } from './lib/zoom'
 import { ariaShortcut, shortcutLabel } from './lib/platform'
@@ -216,7 +217,7 @@ function App() {
   const ignoredAgents = settings.ignoredAgents ?? []
   const ignoredAgentPaths = new Set(ignoredAgents.map((agent) => agent.path))
   const hasGlobalSkills = snapshot.skills.some((skill) => skill.rootKind === 'global')
-  const agentRoots = snapshot.roots.filter((root) => (root.kind === 'known_agent' || root.kind === 'unknown_agent') && !ignoredAgentPaths.has(root.path) && ((root.status === 'available' && root.entryCount > 0) || (root.sharedSkills && hasGlobalSkills)))
+  const agentRoots = sortAgentRoots(snapshot.roots.filter((root) => (root.kind === 'known_agent' || root.kind === 'unknown_agent') && !ignoredAgentPaths.has(root.path) && ((root.status === 'available' && root.entryCount > 0) || (root.sharedSkills && hasGlobalSkills))))
   const clis = snapshot.clis ?? []
   const visibleClis = clis
   const ignoreAgent = async (root: { id: string; label: string; path: string }) => {
@@ -314,13 +315,13 @@ function App() {
         {view === 'instructions' && <InstructionsView files={instructions} projects={settings.projectWorkspaces} onRefresh={refresh} />}
         {view === 'project' && scope?.kind === 'project' && <ProjectView path={scope.path} skills={snapshot.skills} servers={mcps} instructions={instructions} projects={settings.projectWorkspaces} issues={snapshot.issues} onRefresh={refresh} />}
         {view === 'cli' && <CLIView clis={visibleClis} skills={snapshot.skills} mcps={mcps} onOpenSkill={(id) => pageTransition(() => { setScope(undefined); setView('skills'); setSelectedId(id) })} onOpenMCP={() => pageTransition(() => { setScope(undefined); setView('mcp') })} onRefresh={refresh} updates={updates} updatesLoading={updatesLoading} onCheckUpdates={() => void checkUpdates(true)} focusCLI={cliFocus} onFocusConsumed={() => setCliFocus(undefined)} />}
-        {view === 'history' && <HistoryView events={timeline} usage={usage} operations={operations} onRefresh={refresh} onRollback={async (id) => { await backend.rollbackOperation(id); await refresh() }} />}
-        {view === 'settings' && <SettingsView settings={settings} onToggle={(value) => void backend.saveSettings({ ...settings, showAgentBuiltins: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} onUsageToggle={(value) => void backend.saveSettings({ ...settings, usageStatsEnabled: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} onAutoCheckToggle={(value) => void backend.saveSettings({ ...settings, autoCheckUpdates: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} onInterval={(value) => void backend.saveSettings({ ...settings, updateCheckIntervalHours: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} onRetention={(value) => void backend.saveSettings({ ...settings, snapshotRetention: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} themeMode={themeMode} onThemeMode={changeTheme} info={appInfo} onBackup={() => void backend.exportBackup().then((path) => toastSuccess(t('app.backupExported'), path)).catch((error) => toastError(error, t('app.failedToExportBackup')))} onRestored={() => void refresh()} />}
+        {view === 'history' && <HistoryView events={timeline} usage={usage} operations={operations} onRefresh={refresh} onRollback={async (id) => { const operation = await backend.rollbackOperation(id) as Operation; await refresh(); return operation }} />}
+        {view === 'settings' && <SettingsView settings={settings} onToggle={(value) => void backend.saveSettings({ ...settings, showAgentBuiltins: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} onUsageToggle={(value) => void backend.saveSettings({ ...settings, usageStatsEnabled: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} onAutoCheckToggle={(value) => void backend.saveSettings({ ...settings, autoCheckUpdates: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} onInterval={(value) => void backend.saveSettings({ ...settings, updateCheckIntervalHours: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} onRetention={(value) => void backend.saveSettings({ ...settings, snapshotRetention: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} onTrashRetention={(value) => void backend.saveSettings({ ...settings, trashRetentionDays: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} themeMode={themeMode} onThemeMode={changeTheme} info={appInfo} onBackup={() => void backend.exportBackup().then((path) => toastSuccess(t('app.backupExported'), path)).catch((error) => toastError(error, t('app.failedToExportBackup')))} onRestored={() => void refresh()} />}
         </>}
       </div>
       {projectManagerOpen && <ProjectManagerDialog projects={projectItems} onClose={() => setProjectManagerOpen(false)} onAdd={addProject} onRemove={removeProject} />}
       {agentManagerOpen && <AgentManagerDialog
-        agents={snapshot.roots.filter((root) => (root.kind === 'known_agent' || root.kind === 'unknown_agent') && !ignoredAgentPaths.has(root.path) && ((root.status === 'available') || (root.sharedSkills && hasGlobalSkills)))}
+        agents={sortAgentRoots(snapshot.roots.filter((root) => (root.kind === 'known_agent' || root.kind === 'unknown_agent') && !ignoredAgentPaths.has(root.path) && ((root.status === 'available') || (root.sharedSkills && hasGlobalSkills))))}
         ignored={ignoredAgents}
         onClose={() => setAgentManagerOpen(false)}
         onIgnore={ignoreAgent}

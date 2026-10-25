@@ -21,7 +21,7 @@ function labelForPath(path: string) {
   return path.split('/').filter(Boolean).pop() || path
 }
 
-export function TrashView({ operations, onRollback, onRefresh }: { operations: Operation[]; onRollback: (id: string) => Promise<void>; onRefresh?: () => Promise<void> }) {
+export function TrashView({ operations, onRollback, onRefresh }: { operations: Operation[]; onRollback: (id: string) => Promise<Operation>; onRefresh?: () => Promise<void> }) {
   const [target, setTarget] = useState<Operation>()
   const [busyID, setBusyID] = useState<string>()
   const [error, setError] = useState('')
@@ -30,8 +30,11 @@ export function TrashView({ operations, onRollback, onRefresh }: { operations: O
     if (busyID) return
     setBusyID(operation.id); setError('')
     try {
-      await onRollback(operation.id)
-      toastSuccess(t('history.restored'), labelForPath(deletedPath(operation)))
+      const rolledBack = await onRollback(operation.id)
+      toastSuccess(t('history.restored'), labelForPath(deletedPath(operation)), {
+        label: t('skills.undo'),
+        onClick: () => { void onRollback(rolledBack.id).then(() => toastSuccess(t('history.restored'))).catch((cause) => toastError(cause, t('history.restoreFailed'))) },
+      })
     } catch (cause) {
       toastError(cause, t('history.restoreFailed'))
     } finally {

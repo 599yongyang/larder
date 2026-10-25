@@ -1,4 +1,3 @@
-import { toCanvas } from 'html-to-image'
 import { getMotionMode, type MotionMode } from './motion'
 
 const easeOut = 'cubic-bezier(.23,1,.32,1)'
@@ -98,6 +97,7 @@ type Texture = {
 async function captureTexture(element: HTMLElement): Promise<Texture | null> {
   const rect = element.getBoundingClientRect()
   if (rect.width < 8 || rect.height < 8) return null
+  const { toCanvas } = await import('html-to-image')
   const image = await toCanvas(element, {
     cacheBust: true,
     pixelRatio: Math.min(window.devicePixelRatio || 1, 2),

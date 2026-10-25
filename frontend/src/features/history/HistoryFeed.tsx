@@ -1,16 +1,17 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import styles from '../../App.module.css'
 import { t } from '../../i18n'
 import { backendErrorMessage } from '../../lib/backendError'
+import { toastError, toastSuccess } from '../../lib/toast'
 import { formatTime, shortPath } from '../../lib/format'
 import type { Operation, TimelineEvent, UsageStat } from '../../types'
 
 export const operationStatusKeys: Record<string, string> = { success: 'history.success', failed: 'history.failed', rolled_back: 'history.rolledBack', deleted: 'history.deleted' }
 export const operationKeys: Record<string, string> = { link_skill: 'common.repairLinks', replace_copy: 'common.useSharedVersion', sync_copy: 'common.syncContent', disable_link: 'history.disableVisibility', cli_update: 'history.cliUpdate', cli_uninstall: 'history.cliUninstall', skill_update: 'history.skillUpdate', install_skill: 'common.installSkill', uninstall_skill: 'common.uninstallSkill', mcp_remove: 'history.removeMcp', mcp_add: 'common.addMcp', mcp_update: 'history.editMcp', mcp_detach: 'history.disableMcp', mcp_attach: 'history.enableMcp', rollback: 'history.rollBack' }
-const rollbackable = new Set(['link_skill', 'replace_copy', 'sync_copy', 'disable_link', 'skill_update', 'install_skill', 'uninstall_skill', 'mcp_remove'])
+const rollbackable = new Set(['link_skill', 'replace_copy', 'sync_copy', 'disable_link', 'skill_update', 'install_skill', 'uninstall_skill', 'mcp_remove', 'rollback'])
 const prefixes = ['installed:', 'uninstalled:', 'updated:', 'removed:', 'changed:', 'added:']
 const operationLabel = (value: string) => t(operationKeys[value] ?? value)
 const statusLabel = (value: string) => t(operationStatusKeys[value] ?? value)
@@ -34,15 +35,19 @@ function OperationTarget({ operation }: { operation: Operation }) {
   return <span className={styles.operationTarget} title={paths.join('\n')}><strong>{targetName(paths[0])}</strong><small>{paths.length > 1 ? t('history.targetCount', { n: paths.length }) : shortPath(paths[0])}</small></span>
 }
 
-function OperationDetail({ operation, onClose, onRollback }: { operation: Operation; onClose: () => void; onRollback: (id: string) => Promise<void> }) {
+function OperationDetail({ operation, onClose, onRollback }: { operation: Operation; onClose: () => void; onRollback: (id: string) => Promise<Operation> }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const rollback = async () => {
     if (busy) return
     setBusy(true); setError('')
     try {
-      await onRollback(operation.id)
+      const restored = await onRollback(operation.id)
       onClose()
+      toastSuccess(t('history.restored'), operationLabel(operation.operation), {
+        label: t('skills.undo'),
+        onClick: () => { void onRollback(restored.id).then(() => toastSuccess(t('history.restored'))).catch((cause) => toastError(cause, t('history.rollbackFailed'))) },
+      })
     } catch (cause) {
       setError(backendErrorMessage(cause, t('history.rollbackFailed')))
     } finally {
@@ -74,9 +79,9 @@ function OperationDetail({ operation, onClose, onRollback }: { operation: Operat
   </Dialog>
 }
 
-export function HistoryFeed({ events, operations, usage, query = '', onRollback }: { events: TimelineEvent[]; operations: Operation[]; usage: UsageStat[]; query?: string; onRollback: (id: string) => Promise<void> }) {
-  const [filter, setFilter] = useState<'all' | 'operations' | 'external'>('all')
+export function HistoryFeed({ events, operations, usage, query = '', onRollback }: { events: TimelineEvent[]; operations: Operation[]; usage: UsageStat[]; query?: string; onRollback: (id: string) => Promise<Operation> }) {
   const [detail, setDetail] = useState<Operation>()
+  const [eventDetail, setEventDetail] = useState<number>()
   const needle = query.trim().toLowerCase()
 
   const operationPaths = useMemo(() => operations.filter((operation) => operation.status === 'success').flatMap((operation) => {
@@ -93,23 +98,13 @@ export function HistoryFeed({ events, operations, usage, query = '', onRollback 
       ...externalEvents.map((event) => ({ key: `ev:${event.id}`, at: Date.parse(event.at), kind: 'event' as const, event })),
     ]
     return rows.filter((row) => {
-      if (filter === 'operations' && row.kind !== 'operation') return false
-      if (filter === 'external' && row.kind !== 'event') return false
       if (!needle) return true
       const haystack = row.kind === 'operation' ? [operationLabel(row.operation.operation), statusLabel(row.operation.status), row.operation.message ?? '', ...pathsOf(row.operation)] : [row.event.skillName, row.event.path ?? '', eventLabel(row.event.kind)]
       return haystack.some((value) => value.toLowerCase().includes(needle))
     }).sort((a, b) => b.at - a.at)
-  }, [operations, externalEvents, filter, needle])
+  }, [operations, externalEvents, needle])
 
   return <section className={styles.historyContent}>
-    <div className={styles.historyFeedFilters}>
-      <div className={styles.segmentedControl} role="group" aria-label={t('history.historyView')}>
-        <Button variant={filter === 'all' ? 'secondary' : 'ghost'} size="xs" onClick={() => setFilter('all')}>{t('history.allRecords')}<span className={styles.tabCount}>{operations.length + externalEvents.length}</span></Button>
-        <Button variant={filter === 'operations' ? 'secondary' : 'ghost'} size="xs" onClick={() => setFilter('operations')}>{t('history.operations')}<span className={styles.tabCount}>{operations.length}</span></Button>
-        <Button variant={filter === 'external' ? 'secondary' : 'ghost'} size="xs" onClick={() => setFilter('external')}>{t('history.externalChanges')}<span className={styles.tabCount}>{externalEvents.length}</span></Button>
-      </div>
-      <span className={styles.historyFeedHint}>{t('history.historyFeedHint')}</span>
-    </div>
     <div className={styles.historyTableWrap}><table className={styles.historyTable}>
       <thead><tr><th>{t('common.time')}</th><th>{t('history.recordType')}</th><th>{t('history.object')}</th><th>{t('history.summary')}</th><th>{t('common.status')}</th><th>{t('history.details')}</th></tr></thead>
       <tbody>{feed.length === 0 ? <tr><td colSpan={6} className={styles.historyEmptyRow}>{needle ? t('history.noMatchingHistory') : t('history.noHistoryYet')}</td></tr> : feed.map((row) => row.kind === 'operation' ? <tr key={row.key} className={styles.clickableRow} tabIndex={0} onClick={() => setDetail(row.operation)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setDetail(row.operation) } }}>
@@ -119,16 +114,19 @@ export function HistoryFeed({ events, operations, usage, query = '', onRollback 
         <td><span className={styles.historyMessage} title={row.operation.message}>{row.operation.message || '—'}</span></td>
         <td><Badge variant={row.operation.status === 'success' ? 'success' : row.operation.status === 'rolled_back' ? 'outline' : 'error'}>{statusLabel(row.operation.status)}</Badge></td>
         <td><Button variant="ghost" size="xs" onClick={(event) => { event.stopPropagation(); setDetail(row.operation) }}>{t('history.viewDetails')}</Button></td>
-      </tr> : <tr key={row.key}>
-        <td><code>{formatTime(row.event.at) || row.event.at}</code></td>
-        <td><Badge variant={row.event.kind === 'added' ? 'success' : row.event.kind === 'removed' ? 'error' : 'warning'}>{eventLabel(row.event.kind)}</Badge></td>
-        <td><strong>{row.event.skillName}</strong></td>
-        <td><span className={styles.historyPath} title={row.event.path}>{row.event.path ? shortPath(row.event.path) : '—'}</span></td>
-        <td>—</td>
-        <td>—</td>
-      </tr>)}</tbody>
+      </tr> : <Fragment key={row.key}>
+        <tr className={styles.clickableRow} onClick={() => setEventDetail(row.event.id === eventDetail ? undefined : row.event.id)}>
+          <td><code>{formatTime(row.event.at) || row.event.at}</code></td>
+          <td><Badge variant={row.event.kind === 'added' ? 'success' : row.event.kind === 'removed' ? 'error' : 'warning'}>{eventLabel(row.event.kind)}</Badge></td>
+          <td><strong>{row.event.skillName}</strong></td>
+          <td><span className={styles.historyPath} title={row.event.path}>{row.event.path ? shortPath(row.event.path) : '—'}</span></td>
+          <td>—</td>
+          <td><Button variant="ghost" size="xs" onClick={() => setEventDetail(row.event.id === eventDetail ? undefined : row.event.id)}>{t('history.viewDetails')}</Button></td>
+        </tr>
+        {eventDetail === row.event.id && <tr><td colSpan={6} className={styles.historyEventDetails}><dl><dt>{t('common.path')}</dt><dd><code>{row.event.path || '—'}</code></dd><dt>{t('history.oldHash')}</dt><dd><code>{row.event.oldHash || '—'}</code></dd><dt>{t('history.newHash')}</dt><dd><code>{row.event.newHash || '—'}</code></dd></dl></td></tr>}
+      </Fragment>)}</tbody>
     </table></div>
-    {usage.length > 0 && filter !== 'operations' && <section className={styles.historySection}><div className={styles.historySectionHead}><h3>{t('history.cliUsage')}</h3><small>{t('history.fromLocalZshHistory')}</small></div><div className={styles.historyTableWrap}><table className={styles.historyTable}><thead><tr><th>{t('common.commandLabel')}</th><th className={styles.numeric}>{t('history.uses')}</th></tr></thead><tbody>{usage.map((item) => <tr key={item.name}><td><strong>{item.name}</strong></td><td className={styles.numeric}>{item.count}</td></tr>)}</tbody></table></div></section>}
+    {usage.length > 0 && <section className={styles.historySection}><div className={styles.historySectionHead}><h3>{t('history.cliUsage')}</h3><small>{t('history.fromLocalZshHistory')}</small></div><div className={styles.historyTableWrap}><table className={styles.historyTable}><thead><tr><th>{t('common.commandLabel')}</th><th className={styles.numeric}>{t('history.uses')}</th></tr></thead><tbody>{usage.map((item) => <tr key={item.name}><td><strong>{item.name}</strong></td><td className={styles.numeric}>{item.count}</td></tr>)}</tbody></table></div></section>}
     {detail && <OperationDetail operation={detail} onClose={() => setDetail(undefined)} onRollback={onRollback} />}
   </section>
 }

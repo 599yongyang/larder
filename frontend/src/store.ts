@@ -17,7 +17,7 @@ type AppStore = {
 
 export const useAppStore = create<AppStore>((set) => ({
   state: initialState,
-  settings: { projectWorkspaces: [], ignoredAgents: [], showAgentBuiltins: false, usageStatsEnabled: false, autoCheckUpdates: true, updateCheckIntervalHours: 24, snapshotRetention: 50 },
+  settings: { projectWorkspaces: [], ignoredAgents: [], showAgentBuiltins: false, usageStatsEnabled: false, autoCheckUpdates: true, updateCheckIntervalHours: 24, snapshotRetention: 50, trashRetentionDays: 30 },
   setState: (state) => set({ state }),
   setSettings: (settings) => set({ settings }),
 }))

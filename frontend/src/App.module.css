@@ -684,8 +684,6 @@
 .operationChanges{border-top:1px solid var(--line);padding-top:12px}.operationChanges h3{display:flex;align-items:center;gap:6px;margin:0 0 7px;color:var(--text-muted);font:500 9px var(--font-mono);letter-spacing:.08em;text-transform:uppercase}.operationChanges h3 span{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;border-radius:8px;background:var(--paper);color:var(--ink-soft);font:9px var(--font-mono)}.operationChanges ul{display:grid;gap:4px;margin:0;padding:0;list-style:none}.operationChanges li{font-size:9.5px;line-height:1.5}.operationChanges code{overflow-wrap:anywhere}
 .operationRollbackHint{margin:0;padding:9px 10px;border-radius:6px;background:var(--status-warn-bg);color:var(--amber);font-size:10px;line-height:1.5}
 
-.historyFeedFilters{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:0 2px 2px}
-.historyFeedHint{color:var(--text-muted);font-size:9.5px}
 
 
 .settingsPanel{max-width:760px}
@@ -714,3 +712,21 @@
 .batchExpand{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border:0;border-radius:4px;background:transparent;color:var(--text-muted);cursor:pointer}
 .batchExpand:hover{background:var(--brand-soft);color:var(--ink)}
 .batchUpdateFiles{display:grid;gap:6px;padding:0 8px 10px 26px}
+
+.historyEventDetails{padding:0!important;background:var(--paper)}
+.historyEventDetails dl{display:grid;grid-template-columns:80px minmax(0,1fr);gap:6px 12px;margin:0;padding:10px 14px;border-top:1px solid var(--line);font-size:10px}
+.historyEventDetails dt{color:var(--text-muted)}
+.historyEventDetails dd{margin:0;overflow-wrap:anywhere}
+.historyEventDetails code{font-size:9.5px}
+
+.skillRemovedText{display:inline-flex;align-items:center;gap:3px;flex:none;color:var(--red);font-size:10.5px;font-weight:500;white-space:nowrap}
+.updateRemovalBadge{display:inline-flex;align-items:center;gap:3px;color:var(--red);font-size:11px;font-weight:500;white-space:nowrap}
+.upstreamRemovedBanner{display:flex;align-items:center;gap:8px;margin:0 0 8px;padding:8px 10px;border:1px solid color-mix(in srgb,var(--red) 30%,var(--line));border-radius:7px;background:color-mix(in srgb,var(--red) 8%,transparent);color:var(--ink-soft);font-size:10.5px}
+.upstreamRemovedBanner svg{flex:none;color:var(--red)}
+.upstreamRemovedBanner .Button,.upstreamRemovedBanner button{margin-left:auto}
+.upstreamRemovedNotice{display:flex;align-items:flex-start;gap:8px;color:var(--ink-soft);font-size:10.5px;line-height:1.5}
+.upstreamRemovedNotice>svg{flex:none;margin-top:1px;color:var(--red)}
+.upstreamRemovedNotice>div{display:grid;gap:3px;min-width:0}
+.upstreamRemovedNotice strong{font-size:11px}
+.upstreamRemovedNotice p{margin:0!important;color:var(--text-muted)!important;font-size:10px!important}
+.upstreamRemovedNotice>button{margin-left:auto;flex:none}

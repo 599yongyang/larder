@@ -724,11 +724,8 @@ const zh: Record<string, string> = {
   'history.snapshot': '快照',
   'history.rollbackDirectHint': '回滚会先备份当前内容，再恢复该操作关联的快照；记录和快照仍会保留。',
   'history.history': '历史',
-  'history.externalChanges': '外部变化',
   'history.recordType': '类型',
   'history.noHistoryYet': '还没有历史记录。Larder 操作和外部 Skill 文件变化会显示在这里。',
-  'history.historyFeedHint': 'Larder 操作与外部 Skill 文件变化合并展示。',
-  'history.allRecords': '全部',
   'skills.filesRemoved': '删除',
   'skills.versionDiffTitle': '版本差异',
   'skills.versionDiffDescription': '对比操作前版本与当前 Skill 的内容。',
@@ -740,6 +737,14 @@ const zh: Record<string, string> = {
   'skills.diffLoading': '正在加载差异…',
   'skills.batchPreparing': '正在检查更新 {done}/{total}…',
   'skills.batchPreviewPartial': '有 {n} 个 Skill 无法预览，应用时会跳过；其余仍可继续。',
+  'skills.upstreamRemoved': '上游已删除',
+  'skills.upstreamRemovedBanner': '有 {n} 个本地 Skill 已不在来源仓库中。',
+  'skills.upstreamRemovedTitle': '来源仓库已删除这个 Skill',
+  'skills.upstreamRemovedDescription': '可能是官方删除、目录迁移或重命名。可以保留本地，或移入回收站。',
+  'skills.moveToTrash': '移入回收站',
+  'settings.trashRetention': '回收站保留',
+  'settings.days': '{n} 天',
+  'common.forever': '永久',
 }
 
 export default zh

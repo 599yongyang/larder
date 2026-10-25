@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { MotionConfig, motion } from 'framer-motion'
 import { AlertTriangle, CheckCircle2, Coins, GitCompareArrows, History as HistoryIcon, Layers2, LayoutGrid, List, Plus, RefreshCw, RotateCcw, Sparkles, Trash2, Wrench } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -69,11 +69,13 @@ function SkillsView({ skills, allSkills, roots, links, operations, selected, onS
   useEffect(() => { try { localStorage.setItem('larder.skills.query', query) } catch {} }, [query])
   const [batchItems, setBatchItems] = useState<BatchUpdateItem[]>([])
   const [batchProgress, setBatchProgress] = useState<{ done: number; total: number }>()
+  const batchCancelled = useRef(false)
   const [updateTarget, setUpdateTarget] = useState<Skill>()
   const updateItems = (updates?.items ?? []).filter((item) => item.kind === 'skill')
   const updateFor = (skill: Skill) => updateItems.find((item) => item.name === skill.name)
   const updateBySkill = new Map(allSkills.map((skill) => [skill.id, updateFor(skill)]).filter(([, item]) => Boolean(item)) as [string, UpdateItem][])
   const hasUpdate = (skill: Skill) => { const state = updateBySkill.get(skill.id)?.state; return state === 'changed' || state === 'available' }
+  const removedSkills = allSkills.filter((skill) => updateBySkill.get(skill.id)?.state === 'removed')
   const queryText = query.trim().toLowerCase()
   const displayedSkills = [...skills].filter((skill) => statusFilter === 'all' || (statusFilter === 'issues' ? hasIssue(skill, links, issues) : hasUpdate(skill))).filter((skill) => !queryText || [skill.name, skill.description ?? '', skillSourceLabel(skill), skill.path].some((value) => value.toLowerCase().includes(queryText))).sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
   const groups = Array.from(displayedSkills.reduce((map, skill) => { const key = skillSourceLabel(skill); if (!map.has(key)) map.set(key, []); map.get(key)!.push(skill); return map }, new Map<string, Skill[]>())).sort(([a], [b]) => a.localeCompare(b))
@@ -195,6 +197,7 @@ function SkillsView({ skills, allSkills, roots, links, operations, selected, onS
     const targets = items.filter((skill) => { const state = updateBySkill.get(skill.id)?.state; return state === 'changed' || state === 'available' })
     if (targets.length === 0 || batchProgress) return
     setPlanError('')
+    batchCancelled.current = false
     setBatchProgress({ done: 0, total: targets.length })
     try {
       const plans: Array<{ skill: Skill; plan: Plan }> = []
@@ -204,6 +207,7 @@ function SkillsView({ skills, allSkills, roots, links, operations, selected, onS
       let done = 0
       const worker = async () => {
         while (true) {
+          if (batchCancelled.current) return
           const index = next++
           if (index >= plans.length) return
           const { skill, plan } = plans[index]
@@ -218,7 +222,7 @@ function SkillsView({ skills, allSkills, roots, links, operations, selected, onS
         }
       }
       await Promise.all(Array.from({ length: Math.min(3, plans.length) }, () => worker()))
-      setBatchItems(results.filter(Boolean))
+      if (!batchCancelled.current) setBatchItems(results.filter(Boolean))
     } catch (error) {
       setPlanError(backendErrorMessage(error, t('skills.failedToCreateBatchUpdatePlan')))
     } finally {
@@ -257,7 +261,8 @@ function SkillsView({ skills, allSkills, roots, links, operations, selected, onS
         <Button variant="outline" size="sm" onClick={() => setDiscoverOpen(true)}><Plus size={14} />{t('common.installSkill')}</Button>
       </div>
     </div>
-    {batchProgress && <div className={styles.batchPreparing} role="status"><span className={styles.batchPreparingDot} />{t('skills.batchPreparing', { done: batchProgress.done, total: batchProgress.total })}</div>}
+    {removedSkills.length > 0 && <div className={styles.upstreamRemovedBanner}><AlertTriangle size={14} aria-hidden="true" /><span>{t('skills.upstreamRemovedBanner', { n: removedSkills.length })}</span><Button variant="ghost" size="xs" onClick={() => onSelect(removedSkills[0].id)}>{t('skills.viewDetails')}</Button></div>}
+    {batchProgress && <div className={styles.batchPreparing} role="status"><span className={styles.batchPreparingDot} />{t('skills.batchPreparing', { done: batchProgress.done, total: batchProgress.total })}<Button variant="ghost" size="xs" className="ml-auto" onClick={() => { batchCancelled.current = true }}>{t('common.cancel')}</Button></div>}
     {displayedSkills.length === 0 ? <div className={styles.skillsEmpty}><span className={styles.emptyIcon}><Sparkles size={20} aria-hidden="true" /></span>{skills.length === 0 ? <><strong>{t('skills.noScanResultsYet')}</strong><p>{t('skills.scanThisMachineOrInstallDirectlyFromADirectory')}</p><div className={styles.emptyActions}><Button size="sm" onClick={() => void onRefresh()}><RefreshCw size={14} />{t('skills.scanThisMachine')}</Button><Button size="sm" variant="outline" onClick={() => setDiscoverOpen(true)}><Plus size={14} />{t('common.installSkill')}</Button></div></> : <><strong>{t('skills.noMatchingSkills')}</strong><p>{t('skills.noResultsUnderTheCurrentFilters')}</p><div className={styles.emptyActions}><Button size="sm" variant="outline" onClick={() => { setQuery(''); setStatusFilter('all'); onSource('all') }}>{t('skills.clearFilters')}</Button></div></>}</div> : display === 'list' ? (grouped ? <div className={styles.groupedList}><div className={styles.groupedColumns}><span>{t('common.name')}</span><span>{t('common.sourceLabel')}</span><span>{t('skills.agentVisibility')}</span><span>Tokens</span><span>{t('common.actions')}</span></div>{visibleGroups.map(([label, items, visibleItems]) => <section key={label} className={styles.groupedSection}>
       <header className={styles.groupedGroupHeader}><SkillIcon skill={items[0]} className="size-5" /><span>{label}</span><small>{t('common.skillCount', { n: items.length })}</small>{items.some((skill) => hasUpdate(skill)) && <Button size="xs" variant="outline" className={styles.groupUpdateButton} disabled={Boolean(batchProgress)} onClick={() => void requestGroupUpdate(items)}>{t('skills.updateAll')}</Button>}</header>
       {visibleItems.map((skill) => <SkillListRow key={skill.id} skill={skill} roots={roots} links={links} issues={issues} update={updateBySkill.get(skill.id)} selected={selected?.id === skill.id} onSelect={() => onSelect(skill.id)} onUpdate={() => setUpdateTarget(skill)} onUninstall={skill.rootKind === 'global' ? () => void deleteSkillNow(skill) : undefined} />)}
@@ -339,6 +344,7 @@ function SkillHealthText({ issue, reasons }: { issue: boolean; reasons: string[]
 }
 
 function SkillUpdateText({ update, onClick }: { update?: UpdateItem; onClick?: () => void }) {
+  if (update?.state === 'removed') return <span className={styles.skillRemovedText} title={update.message || t('skills.upstreamRemoved')}><AlertTriangle size={12} aria-hidden="true" />{t('skills.upstreamRemoved')}</span>
   const canUpdate = update?.state === 'changed' || update?.state === 'available'
   if (!canUpdate) return null
   const content = <><RefreshCw size={12} aria-hidden="true" />{t('common.updateAvailable')}</>
@@ -347,7 +353,9 @@ function SkillUpdateText({ update, onClick }: { update?: UpdateItem; onClick?: (
 }
 
 function UpdateBadge({ update, onClick }: { update?: UpdateItem; onClick?: () => void }) {
-  if (!update || (update.state !== 'changed' && update.state !== 'available')) return null
+  if (!update) return null
+  if (update.state === 'removed') return <span className={styles.updateRemovalBadge} title={update.message || t('skills.upstreamRemoved')}><AlertTriangle size={12} aria-hidden="true" />{t('skills.upstreamRemoved')}</span>
+  if (update.state !== 'changed' && update.state !== 'available') return null
   const content = <><RefreshCw size={12} aria-hidden="true" />{t('common.updateAvailable')}</>
   if (onClick) return <button type="button" className={styles.updateInlineButton} title={update.message || t('skills.sourceChanged')} onClick={onClick}>{content}</button>
   return <span className={styles.updateInline} title={update.message || t('skills.sourceChanged')}>{content}</span>
@@ -456,6 +464,7 @@ function SkillDetail({ skill, roots, links, operations, issues, clis, update, on
       })}</div>
     </section>}
 
+    {update?.state === 'removed' && <section className={styles.detailSection}><div className={styles.upstreamRemovedNotice}><AlertTriangle size={15} aria-hidden="true" /><div><strong>{t('skills.upstreamRemovedTitle')}</strong><p>{t('skills.upstreamRemovedDescription')}</p></div>{onUninstall && <Button variant="outline" size="xs" className={styles.dangerAction} onClick={onUninstall}>{t('skills.moveToTrash')}</Button>}</div></section>}
     <SkillVersionHistory skill={skill} operations={operations} onRestored={onRestored} />
     <section className={styles.detailSection}>
       <h3>{t('skills.sourceBaseline')}</h3>
@@ -476,7 +485,12 @@ function SkillVersionHistory({ skill, operations, onRestored }: { skill: Skill; 
   const restore = async () => {
     if (!target || busy) return
     setBusy(true); setError('')
-    try { await backend.rollbackOperation(target.id); toastSuccess(t('skills.versionRestored')); setTarget(undefined); onRestored() } catch (cause) { setError(backendErrorMessage(cause, t('skills.versionRestoreFailed'))) } finally { setBusy(false) }
+    try {
+      const rolledBack = await backend.rollbackOperation(target.id) as Operation
+      setTarget(undefined)
+      onRestored()
+      toastSuccess(t('skills.versionRestored'), undefined, { label: t('skills.undo'), onClick: () => { void backend.rollbackOperation(rolledBack.id).then(() => { onRestored(); toastSuccess(t('skills.versionRestored')) }).catch((cause) => toastError(cause, t('skills.versionRestoreFailed'))) } })
+    } catch (cause) { setError(backendErrorMessage(cause, t('skills.versionRestoreFailed'))) } finally { setBusy(false) }
   }
   return <section className={styles.detailSection}>
     <h3>{t('skills.versionHistory')} <span className={styles.sectionCount}>{versions.length}</span></h3>

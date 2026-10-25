@@ -10,7 +10,7 @@ import { HistoryFeed } from './HistoryFeed'
 import { TrashView } from './TrashView'
 import type { Operation, TimelineEvent, UsageStat } from '../../types'
 
-function HistoryView({ events, usage, operations, onRollback, onRefresh }: { events: TimelineEvent[]; usage: UsageStat[]; operations: Operation[]; onRollback: (id: string) => Promise<void>; onRefresh?: () => Promise<void> }) {
+function HistoryView({ events, usage, operations, onRollback, onRefresh }: { events: TimelineEvent[]; usage: UsageStat[]; operations: Operation[]; onRollback: (id: string) => Promise<Operation>; onRefresh?: () => Promise<void> }) {
   const [tab, setTab] = useState<'history' | 'trash'>('history')
   const [query, setQuery] = useState('')
   const trashCount = operations.filter((operation) => (operation.operation === 'uninstall_skill' || operation.operation === 'mcp_remove') && operation.status === 'success').length
