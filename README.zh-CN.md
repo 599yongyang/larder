@@ -6,7 +6,7 @@
 
 Larder 是一个本地优先的桌面应用，面向同时使用多个 AI Agent 的开发者。它把本机真实存在的 Skills、MCP Server、CLI 和指令文件集中展示出来，并让你安全地管理它们。
 
-![Skills 页面](docs/screenshots/skills-cards.png)
+![Skills 页面](docs/screenshots/skills-cards-zh.png)
 
 ## 能做什么
 
@@ -17,7 +17,7 @@ Larder 是一个本地优先的桌面应用，面向同时使用多个 AI Agent 
 - **项目**：在一个页面里看到项目自己的 Skills、MCP 和指令文件。
 - **语言**：在设置中切换中文和英文；首次启动会跟随系统语言。
 
-![MCP 页面](docs/screenshots/mcp.png)
+![MCP 页面](docs/screenshots/mcp-zh.png)
 
 ## 默认安全
 

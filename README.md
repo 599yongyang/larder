@@ -6,7 +6,7 @@
 
 Larder is a local-first desktop app for developers who work with multiple AI agents. It shows what is actually installed on your machine — Skills, MCP servers, CLI tools, and instruction files — and lets you manage them safely.
 
-![Skills overview](docs/screenshots/skills-cards.png)
+![Skills overview](docs/screenshots/skills-cards-en.png)
 
 ## What it does
 
@@ -17,7 +17,7 @@ Larder is a local-first desktop app for developers who work with multiple AI age
 - **Projects** — see the Skills, MCP servers and instruction files that belong to a project in one place.
 - **Language** — switch between English and Chinese in Settings; the app follows the system language on first launch.
 
-![MCP overview](docs/screenshots/mcp.png)
+![MCP overview](docs/screenshots/mcp-en.png)
 
 ## Safe by default
 
