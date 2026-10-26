@@ -45,7 +45,7 @@ type AppState struct {
 	UpdatedAt     time.Time          `json:"updatedAt"`
 }
 
-var Version = "0.0.2"
+var Version = "0.0.3"
 
 type MCPTestResult struct {
 	OK      bool   `json:"ok"`
@@ -235,6 +235,14 @@ func (s *AppService) PlanDisableLink(skillID string, rootIDs []string) (model.Pl
 
 func (s *AppService) PlanInstallSkill(repo string, skillPath string, name string) (model.Plan, error) {
 	return s.core.PlanInstallSkill(s.context(), repo, skillPath, name)
+}
+
+func (s *AppService) InstallUpstreamSkills(repo string, items []model.UpstreamSkillInstall) ([]model.Operation, error) {
+	return s.core.InstallUpstreamSkills(s.context(), repo, items, func(done, total int, name string) {
+		if s.app != nil {
+			s.app.Event.Emit("larder:install-progress", map[string]any{"done": done, "total": total, "name": name})
+		}
+	})
 }
 
 func (s *AppService) PlanInstallCatalogSkill(repo, skillID, name string) (model.Plan, error) {

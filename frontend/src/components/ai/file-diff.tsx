@@ -36,6 +36,7 @@ const sign = { addition: '+', context: ' ', deletion: '−' }
 function Row({ line }: { line: DiffLine }) {
   return (
     <span
+      data-diff-line={line.type}
       className={cn(
         'grid min-w-max grid-cols-[2rem_2rem_1rem_1fr] px-2 transition-colors duration-100 hover:brightness-95 dark:hover:brightness-125',
         line.type === 'addition' && 'bg-emerald-500/10',
@@ -72,6 +73,23 @@ export function FileDiff({
   const [open, setOpen] = React.useState(defaultOpen)
   const [expanded, setExpanded] = React.useState<Set<string>>(() => new Set())
   const [copied, setCopied] = React.useState(false)
+  const preRef = React.useRef<HTMLPreElement>(null)
+  const diffKey = groups.map((hunk) => `${hunk.id}:${hunk.lines.length}`).join('|')
+
+  React.useEffect(() => {
+    if (!open || loading) return
+    const pre = preRef.current
+    if (!pre) return
+    const timer = window.setTimeout(() => {
+      const target = pre.querySelector<HTMLElement>('[data-diff-line="addition"], [data-diff-line="deletion"]')
+      if (!target) return
+      const delta = target.getBoundingClientRect().top - pre.getBoundingClientRect().top
+      // Keep roughly four context lines above the first change.
+      const lead = Math.min(80, pre.clientHeight * 0.3)
+      pre.scrollTop = Math.max(0, pre.scrollTop + delta - lead)
+    }, 180)
+    return () => window.clearTimeout(timer)
+  }, [open, loading, diffKey])
 
   React.useEffect(() => {
     if (!copied) return
@@ -112,7 +130,7 @@ export function FileDiff({
         <AnimatePresence initial={false}>
           {open && (
             <motion.div layout animate={{ height: 'auto', opacity: 1 }} className="overflow-hidden" exit={{ height: 0, opacity: 0 }} id={bodyId} initial={{ height: 0, opacity: 0 }} transition={{ layout: { duration: 0.2, ease }, duration: 0.22, ease }}>
-              {loading ? <div className="flex items-center justify-center gap-2 border-t border-[var(--line)] px-3 py-5 text-[11px] text-muted-foreground"><span className="size-1.5 animate-pulse rounded-full bg-current" />{loadingLabel}</div> : <pre className="max-h-[320px] overflow-auto border-t border-[var(--line)] py-2 text-[12px] leading-5">
+              {loading ? <div className="flex items-center justify-center gap-2 border-t border-[var(--line)] px-3 py-5 text-[11px] text-muted-foreground"><span className="size-1.5 animate-pulse rounded-full bg-current" />{loadingLabel}</div> : <pre ref={preRef} className="max-h-[320px] overflow-auto border-t border-[var(--line)] py-2 text-[12px] leading-5">
                 <code className="block">
                   {groups.map((hunk) => {
                     const showHidden = expanded.has(hunk.id)

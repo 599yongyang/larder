@@ -33,3 +33,6 @@ frontend/.vite/
 .preview/
 
 preview/
+
+# Social exports are local-only
+docs/screenshots/social/

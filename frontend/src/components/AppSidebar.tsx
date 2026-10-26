@@ -8,7 +8,7 @@ import { t } from '../i18n'
 import type { View } from '../types'
 
 type Scope = { kind: 'library'; label: string } | { kind: 'agent'; id: string; label: string } | { kind: 'project'; path: string; label: string } | undefined
-type Item = { id?: string; label: string; count?: number; path?: string }
+type Item = { id?: string; label: string; icon?: string; count?: number; path?: string }
 
 type Props = {
   view: View
@@ -51,13 +51,13 @@ export function AppSidebar({ view, scope, onView, onScope, onManageAgents, onMan
       </SidebarGroup>
       <SidebarGroup className="shrink-0" style={{ paddingTop: 4, paddingBottom: 4 }}>
         <SidebarGroupLabel asChild><button type="button" className={styles.sidebarGroupToggle} aria-expanded={openGroup === 'agents'} onClick={() => toggleGroup('agents')}><ChevronDown size={13} className={openGroup === 'agents' ? styles.sidebarChevronOpen : undefined} /><span>{t('nav.agents')}</span></button></SidebarGroupLabel>
-        <SidebarGroupAction title={t('common.manageAgents')} onClick={onManageAgents}><Settings2 size={12} style={{ width: 12, height: 12 }} /></SidebarGroupAction>
+        <SidebarGroupAction title={t('common.manageAgents')} aria-label={t('common.manageAgents')} onClick={onManageAgents}><Settings2 size={12} style={{ width: 12, height: 12 }} /></SidebarGroupAction>
         <div className={`${styles.sidebarGroupBody} ${openGroup === 'agents' ? styles.sidebarGroupBodyOpen : ''}`} aria-hidden={openGroup !== 'agents'}>
           <div className={styles.sidebarGroupBodyInner}><div className={styles.agentsScroll}>
           <SidebarMenu>
             {agents.map((agent) => <SidebarMenuItem key={agent.id ?? agent.label}>
               <SidebarMenuButton isActive={scope?.kind === 'agent' && scope.id === agent.id} onClick={() => onScope({ kind: 'agent', id: agent.id ?? '', label: agent.label })} title={`${agent.label}: ${agent.count ?? 0} ${t('nav.discoverableSkills')}`} className="h-[28px] text-[12.5px]">
-                <AgentIcon name={agent.label} className="size-4" /><span>{agent.label}</span>
+                <AgentIcon name={agent.icon ?? agent.label} className="size-4" /><span>{agent.label}</span>
               </SidebarMenuButton>
               {agent.count !== undefined && <SidebarMenuBadge title={`${agent.count} ${t('nav.discoverableSkills')}`}>{agent.count}</SidebarMenuBadge>}
             </SidebarMenuItem>)}
@@ -67,7 +67,7 @@ export function AppSidebar({ view, scope, onView, onScope, onManageAgents, onMan
       </SidebarGroup>
       <SidebarGroup className="shrink-0" style={{ paddingTop: 4, paddingBottom: 4 }}>
         <SidebarGroupLabel asChild><button type="button" className={styles.sidebarGroupToggle} aria-expanded={openGroup === 'projects'} onClick={() => toggleGroup('projects')}><ChevronDown size={13} className={openGroup === 'projects' ? styles.sidebarChevronOpen : undefined} /><span>{t('common.projects')}</span></button></SidebarGroupLabel>
-        <SidebarGroupAction title={t('common.manageProjects')} onClick={onManageProjects}><FolderPlus size={12} style={{ width: 12, height: 12 }} /></SidebarGroupAction>
+        <SidebarGroupAction title={t('common.manageProjects')} aria-label={t('common.manageProjects')} onClick={onManageProjects}><FolderPlus size={12} style={{ width: 12, height: 12 }} /></SidebarGroupAction>
         <div className={`${styles.sidebarGroupBody} ${openGroup === 'projects' ? styles.sidebarGroupBodyOpen : ''}`} aria-hidden={openGroup !== 'projects'}>
           <div className={styles.sidebarGroupBodyInner}><div className={styles.agentsScroll}><SidebarMenu>
           {projects.map((project) => <SidebarMenuItem key={project.path}>

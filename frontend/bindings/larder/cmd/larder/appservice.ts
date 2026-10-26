@@ -96,6 +96,10 @@ export function InspectBackup(path: string): $CancellablePromise<backup$0.Info> 
     return $Call.ByID(1617118777, path);
 }
 
+export function InstallUpstreamSkills(repo: string, items: model$0.UpstreamSkillInstall[] | null): $CancellablePromise<model$0.Operation[] | null> {
+    return $Call.ByID(775681907, repo, items);
+}
+
 export function InstructionContent(path: string): $CancellablePromise<string> {
     return $Call.ByID(2219239884, path);
 }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { BookOpen, Bug, Cpu, Palette, Puzzle, Search, Sparkles, Terminal, Workflow, Wrench, type LucideIcon } from 'lucide-react'
+import { BookOpen, Bug, Cpu, FolderGit2, Palette, Puzzle, Search, Sparkles, Terminal, Workflow, Wrench, type LucideIcon } from 'lucide-react'
 import { backend } from '../backend'
 import type { Skill } from '../types'
 import { githubAvatarUrls } from '../lib/github'
@@ -170,7 +170,25 @@ export function SkillIcon({ skill, className = 'size-7', loading = 'lazy' }: { s
     return <img ref={(node) => { hostRef.current = node }} src={src} alt="" aria-hidden="true" loading={loading} decoding="async" referrerPolicy="no-referrer" onError={() => { if (avatarAttempt + 1 < urls.length) setAvatarAttempt(avatarAttempt + 1); else setOwnerFailed(true) }} className={`${className} shrink-0 rounded-md border border-line object-cover`} />
   }
 
-  const Icon = glyphFor(skill.name, skill.description ?? '')
-  const hash = [...skill.name].reduce((sum, char) => sum + char.codePointAt(0)!, 0)
-  return <span ref={(node) => { hostRef.current = node }} className={`${className} inline-flex shrink-0 items-center justify-center rounded-md ${palettes[hash % palettes.length]}`} aria-hidden="true"><Icon className="size-[58%]" strokeWidth={1.8} /></span>
+  return <SkillGlyph name={skill.name} description={skill.description} className={className} />
+}
+
+export function SkillGlyph({ name, description = '', className = 'size-7' }: { name: string; description?: string; className?: string }) {
+  const Icon = glyphFor(name, description)
+  const hash = [...name].reduce((sum, char) => sum + char.codePointAt(0)!, 0)
+  return <span className={`${className} inline-flex shrink-0 items-center justify-center rounded-md ${palettes[hash % palettes.length]}`} aria-hidden="true"><Icon className="size-[58%]" strokeWidth={1.8} /></span>
+}
+
+export function RepoIcon({ repo, className = 'size-4' }: { repo: string; className?: string }) {
+  const owner = repo.replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '').split('/')[0].trim()
+  const [avatar, setAvatar] = useState<string | undefined>(() => owner ? avatarCache.get(owner) : undefined)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    if (!owner || avatar) return
+    let live = true
+    void loadOwnerAvatar(owner).then((value) => { if (live && value) setAvatar(value) })
+    return () => { live = false }
+  }, [owner, avatar])
+  if (avatar && !failed) return <img src={avatar} alt="" aria-hidden="true" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} className={`${className} shrink-0 rounded-md border border-line object-cover`} />
+  return <span className={`${className} inline-flex shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground`} aria-hidden="true"><FolderGit2 className="size-[62%]" strokeWidth={1.8} /></span>
 }

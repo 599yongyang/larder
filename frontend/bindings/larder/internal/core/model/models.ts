@@ -352,10 +352,13 @@ export interface UpdateItem {
     "owner": string;
     "package"?: string;
     "name": string;
+    "description"?: string;
     "commands"?: string[] | null;
     "currentVersion"?: string;
     "latestVersion"?: string;
     "source"?: string;
+    "skillPath"?: string;
+    "copies"?: number;
     "state": string;
     "message"?: string;
 }
@@ -368,10 +371,16 @@ export interface UpdateReport {
     "available": number;
     "current": number;
     "skillScanned": number;
+    "skillAdded": number;
     "skillChanged": number;
     "skillRemoved": number;
     "skillCurrent": number;
     "skillErrors": number;
+}
+
+export interface UpstreamSkillInstall {
+    "name": string;
+    "skillPath": string;
 }
 
 export interface UsageStat {

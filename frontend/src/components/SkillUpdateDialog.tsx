@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Check, FolderLock, GitCompareArrows } from 'lucide-react'
+import { Check, GitCompareArrows } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { backend } from '../backend'
 import styles from '../App.module.css'
 import { t } from '../i18n'
@@ -40,6 +41,7 @@ export function SkillUpdateDialog({ skillID, skillName, source, onClose, onAppli
   const [resolutions, setResolutions] = useState<Record<string, string>>({})
   const [resolved, setResolved] = useState<Set<string>>(() => new Set())
   const [fileDiffs, setFileDiffs] = useState<Record<string, SkillUpdateFile>>({})
+  const [showAutomatic, setShowAutomatic] = useState(false)
   const [loadingFiles, setLoadingFiles] = useState<Set<string>>(() => new Set())
   const loadFileDiff = async (file: SkillUpdateFile) => { if (fileDiffs[file.path] || loadingFiles.has(file.path)) return; setLoadingFiles((current) => new Set(current).add(file.path)); try { const next = await backend.previewSkillFileDiff(skillID, file.path) as SkillUpdateFile; setFileDiffs((current) => ({ ...current, [file.path]: next })) } catch (cause) { toastError(cause, t('skills.versionDiffFailed')) } finally { setLoadingFiles((current) => { const next = new Set(current); next.delete(file.path); return next }) } }
   useEffect(() => {
@@ -73,40 +75,49 @@ export function SkillUpdateDialog({ skillID, skillName, source, onClose, onAppli
   const files = diff?.files ?? []
   const needsResolution = (file: SkillUpdateFile) => file.status === 'conflict' || file.status === 'local_modified' || file.status === 'local' || (!diff?.hasBaseline && file.status === 'modified')
   const resolvable = files.filter(needsResolution)
+  const automaticFiles = files.filter((file) => !needsResolution(file))
+  const summary = diff ? [diff.added > 0 && `${diff.added} ${t('skills.filesAdded')}`, diff.modified > 0 && `${diff.modified} ${t('skills.filesModified')}`, diff.conflicted > 0 && `${diff.conflicted} ${t('skills.filesConflicted')}`, diff.localOnly > 0 && `${diff.localOnly} ${t('skills.filesLocalOnly')}`].filter(Boolean).join(' · ') : ''
   const choose = (path: string, value: string) => { setResolutions((current) => ({ ...current, [path]: value })); setResolved((current) => new Set(current).add(path)) }
   const setAll = (value: 'local' | 'upstream' | 'both') => { setResolutions(Object.fromEntries(resolvable.map((file) => [file.path, value === 'both' && file.status === 'local' ? 'local' : value]))); setResolved(new Set(resolvable.map((file) => file.path))) }
+  const initialFiles = resolvable.length > 0 ? resolvable : automaticFiles
+  const renderFile = (file: SkillUpdateFile) => {
+    const label = file.binary ? `${fileStatusLabel(file.status, Boolean(diff?.hasBaseline))} · ${t('skills.binaryFile')}` : file.truncated ? `${fileStatusLabel(file.status, Boolean(diff?.hasBaseline))} · ${t('skills.diffTruncated')}` : fileStatusLabel(file.status, Boolean(diff?.hasBaseline))
+    const loaded = fileDiffs[file.path]
+    const lines: DiffLine[] = (loaded?.lines ?? []).map((line) => ({ content: line.text, oldNumber: line.oldLine, newNumber: line.newLine, type: line.kind === 'add' ? 'addition' : line.kind === 'del' ? 'deletion' : 'context' }))
+    return <div key={`${file.status}:${file.path}`} className={styles.updatePreviewFileBlock} onPointerEnter={() => void loadFileDiff(file)}>
+      <FileDiff filename={`${file.path}  ·  ${label}`} additions={loaded?.additions} deletions={loaded?.deletions} lines={lines} defaultOpen={false} loading={loadingFiles.has(file.path)} loadingLabel={t('skills.diffLoading')} onOpenChange={(open) => { if (open) void loadFileDiff(file) }} />
+      {needsResolution(file) && <div className={styles.updateResolutionRow}><span>{t('skills.resolutionMode')}</span><div role="group" aria-label={t('skills.resolutionMode')}>{[['local', 'skills.resolveLocal'], ['upstream', file.status === 'local' ? 'skills.resolveDeleteLocal' : 'skills.resolveUpstream'], ...(file.status !== 'local' ? [['both', 'skills.resolveBoth']] : [])].map(([value, key]) => <Button key={value} type="button" size="xs" variant={(resolutions[file.path] ?? 'local') === value ? 'secondary' : 'ghost'} onClick={() => choose(file.path, value)}>{t(key)}</Button>)}{resolved.has(file.path) && <span className={styles.resolvedMark}><Check size={11} aria-hidden="true" />{t('skills.resolved')}</span>}</div></div>}
+    </div>
+  }
   return <Dialog open onOpenChange={(open) => { if (!open && !applying) onClose() }}>
     <DialogContent className="flex max-h-[84vh] max-w-[680px] flex-col gap-0 overflow-hidden">
-      <DialogHeader><DialogTitle className="text-base">{t('common.update', { name: skillName })}</DialogTitle><DialogDescription className="text-xs leading-5">{t('common.theLocalSkillFolderIsReplacedWithTheLatestContentFromItsSourceASnapshotIsTakenFirst')}</DialogDescription></DialogHeader>
+      <DialogHeader><DialogTitle className="text-base">{t('common.update', { name: skillName })}</DialogTitle><DialogDescription className="flex items-center gap-1.5 text-xs leading-5"><code className="truncate rounded bg-[var(--panel)] px-1.5 py-0.5 text-[10px] text-[var(--ink-soft)]">{source || 'GitHub'}</code><span className="text-[var(--text-muted)]">·</span>{t('skills.updatePreviewIntro')}</DialogDescription></DialogHeader>
       <div className={styles.updatePreview}>
-        <div className={styles.updateConfirmSource}><span>{t('common.sourceLabel')}</span><code>{source || 'GitHub'}</code></div>
         {!diff && !diffError && <p className={styles.updatePreviewState}>{t('skills.updatePreviewLoading')}</p>}
         {diffError && <p className={styles.updatePreviewState}>{diffError}</p>}
         {diff && <>
-          <div className={styles.updatePreviewSummary}>
-            <span><strong>{diff.added}</strong>{t('skills.filesAdded')}</span>
-            <span><strong>{diff.modified}</strong>{t('skills.filesModified')}</span>
-            <span><strong>{diff.conflicted}</strong>{t('skills.filesConflicted')}</span>
-            <span><strong>{diff.localOnly}</strong>{t('skills.filesLocalOnly')}</span>
-          </div>
-          {resolvable.length > 0 && <div className={styles.updateResolveAll}><span>{t('skills.resolveAll')} · {t('skills.resolvedProgress', { done: resolved.size, total: resolvable.length })}</span><div><Button type="button" size="xs" variant="ghost" onClick={() => setAll('local')}>{t('skills.resolveAllLocal')}</Button><Button type="button" size="xs" variant="ghost" onClick={() => setAll('upstream')}>{t('skills.resolveAllOfficial')}</Button>{resolvable.some((file) => file.status !== 'local') && <Button type="button" size="xs" variant="ghost" onClick={() => setAll('both')}>{t('skills.resolveAllBoth')}</Button>}</div></div>}
-          {!diff.hasBaseline && <div className={styles.updatePreviewNotice}><GitCompareArrows size={13} aria-hidden="true" /><span>{t('skills.noBaselineDescription')}</span></div>}
-          {diff.localOnly > 0 && <div className={styles.updatePreviewNotice}><FolderLock size={13} aria-hidden="true" /><span>{t('skills.updateLocalFilesKept', { n: diff.localOnly })}</span></div>}
-          {diff.conflicted > 0 && <div className={`${styles.updatePreviewNotice} ${styles.updatePreviewWarn}`}><AlertTriangle size={13} aria-hidden="true" /><span>{t('skills.updateConflictedFilesKept', { n: diff.conflicted })}</span></div>}
-          {files.length > 0 && <div className={styles.updatePreviewDiffList}>{files.slice(0, 20).map((file) => {
-            const label = file.binary ? `${fileStatusLabel(file.status, Boolean(diff?.hasBaseline))} · ${t('skills.binaryFile')}` : file.truncated ? `${fileStatusLabel(file.status, Boolean(diff?.hasBaseline))} · ${t('skills.diffTruncated')}` : fileStatusLabel(file.status, Boolean(diff?.hasBaseline))
-            const loaded = fileDiffs[file.path]
-            const lines: DiffLine[] = (loaded?.lines ?? []).map((line) => ({ content: line.text, oldNumber: line.oldLine, newNumber: line.newLine, type: line.kind === 'add' ? 'addition' : line.kind === 'del' ? 'deletion' : 'context' }))
-            return <div key={`${file.status}:${file.path}`} className={styles.updatePreviewFileBlock} onPointerEnter={() => void loadFileDiff(file)}>
-              <FileDiff filename={`${file.path}  ·  ${label}`} additions={loaded?.additions} deletions={loaded?.deletions} lines={lines} defaultOpen={false} loading={loadingFiles.has(file.path)} loadingLabel={t('skills.diffLoading')} onOpenChange={(open) => { if (open) void loadFileDiff(file) }} />
-              {needsResolution(file) && <div className={styles.updateResolutionRow}><span>{t('skills.resolveChange')}</span><div role="group" aria-label={t('skills.resolveChange')}>{[['local', 'skills.resolveLocal'], ['upstream', file.status === 'local' ? 'skills.resolveDeleteLocal' : 'skills.resolveUpstream'], ...(file.status !== 'local' ? [['both', 'skills.resolveBoth']] : [])].map(([value, key]) => <Button key={value} type="button" size="xs" variant={(resolutions[file.path] ?? 'local') === value ? 'secondary' : 'ghost'} onClick={() => choose(file.path, value)}>{t(key)}</Button>)}{resolved.has(file.path) && <span className={styles.resolvedMark}><Check size={11} aria-hidden="true" />{t('skills.resolved')}</span>}</div></div>}
-            </div>
-          })}{files.length > 20 && <div className={styles.updatePreviewMore}>{t('skills.moreFiles', { n: files.length - 20 })}</div>}</div>}
+          <div className={styles.updateSummaryLine}><span>{summary || t('skills.noFileChanges')}</span>{diff.files.length > 0 && <span className={styles.updateSummaryCount}>{diff.files.length} {t('skills.filesChanged')}</span>}</div>
+          {!diff.hasBaseline && <div className={`${styles.updatePreviewNotice} ${styles.updateBaselineNotice}`}><GitCompareArrows size={13} aria-hidden="true" /><span>{t('skills.noBaselineDescription')}</span></div>}
+          {resolvable.length > 1 && <div className={styles.updateDecisionBar}>
+            <div className={styles.updateDecisionMeta}><strong>{t('skills.decisionCount', { n: resolvable.length })}</strong><span>{resolved.size === resolvable.length ? <><Check size={11} aria-hidden="true" />{t('skills.allResolved')}</> : t('skills.resolvedProgress', { done: resolved.size, total: resolvable.length })}</span></div>
+            <Select key={`bulk-${resolved.size}`} onValueChange={(value) => setAll(value as 'local' | 'upstream' | 'both')}>
+              <SelectTrigger size="sm" className={styles.updateBatchSelect} aria-label={t('skills.batchApply')}><SelectValue placeholder={t('skills.batchApply')} /></SelectTrigger>
+              <SelectContent position="popper" align="end" className="min-w-[132px]">
+                <SelectItem value="local">{t('skills.resolveAllLocal')}</SelectItem>
+                <SelectItem value="upstream">{t('skills.resolveAllOfficial')}</SelectItem>
+                {resolvable.some((file) => file.status !== 'local') && <SelectItem value="both">{t('skills.resolveAllBoth')}</SelectItem>}
+              </SelectContent>
+            </Select>
+          </div>}
+          {files.length > 0 && <>
+            <div className={styles.updatePreviewDiffList}>{initialFiles.map(renderFile)}</div>
+            {resolvable.length > 0 && automaticFiles.length > 0 && <Button type="button" size="xs" variant="ghost" className={styles.automaticFilesToggle} onClick={() => setShowAutomatic((value) => !value)}>{showAutomatic ? t('skills.hideAutomaticFiles', { n: automaticFiles.length }) : t('skills.showAutomaticFiles', { n: automaticFiles.length })}</Button>}
+            {showAutomatic && automaticFiles.length > 0 && <div className={styles.updatePreviewDiffList}>{automaticFiles.map(renderFile)}</div>}
+          </>}
         </>}
       </div>
       {error && <p className={`${styles.planError} px-6`} role="alert">{error}</p>}
       <DialogFooter><Button size="sm" variant="outline" onClick={onClose} disabled={applying}>{t('common.cancel')}</Button><Button size="sm" disabled={applying || (!diff && !diffError)} onClick={() => void update()}>{applying ? t('common.updating') : t('common.updateAction')}</Button></DialogFooter>
     </DialogContent>
-
   </Dialog>
 }

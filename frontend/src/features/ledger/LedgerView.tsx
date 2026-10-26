@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { MotionConfig, motion } from 'framer-motion'
-import { AlertTriangle, CheckCircle2, Coins, GitCompareArrows, History as HistoryIcon, Layers2, LayoutGrid, List, Plus, RefreshCw, RotateCcw, Sparkles, Trash2, Wrench } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Coins, Crosshair, GitCompareArrows, History as HistoryIcon, Layers2, LayoutGrid, List, Plus, RefreshCw, RotateCcw, Sparkles, Trash2, Wrench, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { AgentIcon } from '../../components/AgentIcon'
 import { SkillIcon } from '../../components/SkillIcon'
@@ -11,14 +11,17 @@ import { IssueRepairDialog } from '../../components/IssueRepairDialog'
 import { BatchUpdateDialog, type BatchUpdateItem } from '../../components/BatchUpdateDialog'
 import { SkillUpdateDialog } from '../../components/SkillUpdateDialog'
 import { VersionDiffDialog } from '../../components/VersionDiffDialog'
+import { NewUpstreamSkillsDialog } from '../../components/NewUpstreamSkillsDialog'
 const DiscoverSheet = lazy(() => import('../../components/DiscoverSheet').then((module) => ({ default: module.DiscoverSheet })))
 import { AssetSearch } from '../../components/AssetSearch'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Kbd } from '@/components/ui/kbd'
 import styles from '../../App.module.css'
 import { backend } from '../../backend'
 import { formatTime, skillSourceLabel } from '../../lib/format'
+import { modifierLabel } from '../../lib/platform'
 import { toastError, toastSuccess } from '../../lib/toast'
 import type { CLIInfo, Issue, Link, Operation, Plan, Root, Skill, UpdateItem, UpdateReport } from '../../types'
 import { t, tValue } from '../../i18n'
@@ -28,7 +31,10 @@ import { findSkillElement, playDeleteAnimation } from '../../lib/deleteAnimation
 
 const layoutTransition = { duration: 0.24, ease: [0.23, 1, 0.32, 1] as const }
 
-function SkillsView({ skills, allSkills, roots, links, operations, selected, onSelect, onCloseDetail, source, sources, onSource, onRefresh, issues, updates, updatesLoading, onCheckUpdates, clis, onOpenCLI }: { skills: Skill[]; allSkills: Skill[]; roots: Root[]; links: Link[]; operations: Operation[]; selected?: Skill; onSelect: (id: string) => void; onCloseDetail: () => void; source: string; sources: string[]; onSource: (value: string) => void; onRefresh: () => Promise<void>; issues: Issue[]; updates?: UpdateReport; updatesLoading: boolean; onCheckUpdates: () => void; clis: CLIInfo[]; onOpenCLI?: (id: string) => void }) {
+function SkillsView({ skills, allSkills, roots, links, operations, selected, onSelect, onCloseDetail, scopeKind, source, sources, onSource, onRefresh, issues, updates, updatesLoading, onCheckUpdates, clis, onOpenCLI }: { skills: Skill[]; allSkills: Skill[]; roots: Root[]; links: Link[]; operations: Operation[]; selected?: Skill; onSelect: (id: string) => void; onCloseDetail: () => void; scopeKind?: 'library' | 'agent' | 'project'; source: string; sources: string[]; onSource: (value: string) => void; onRefresh: () => Promise<void>; issues: Issue[]; updates?: UpdateReport; updatesLoading: boolean; onCheckUpdates: () => void; clis: CLIInfo[]; onOpenCLI?: (id: string) => void }) {
+  const uniqueSkills = new Map(allSkills.map((skill) => [skill.contentHash || skill.folderHash || skill.id, skill]))
+  const uniqueSkillCount = uniqueSkills.size
+  const descriptionTokens = Array.from(uniqueSkills.values()).reduce((sum, skill) => sum + skill.descTokens, 0)
   const issueSkills = allSkills.filter((skill) => hasIssue(skill, links, issues))
   const issueCount = issueSkills.length
   const [repairOpen, setRepairOpen] = useState(false)
@@ -76,6 +82,79 @@ function SkillsView({ skills, allSkills, roots, links, operations, selected, onS
   const updateBySkill = new Map(allSkills.map((skill) => [skill.id, updateFor(skill)]).filter(([, item]) => Boolean(item)) as [string, UpdateItem][])
   const hasUpdate = (skill: Skill) => { const state = updateBySkill.get(skill.id)?.state; return state === 'changed' || state === 'available' }
   const removedSkills = allSkills.filter((skill) => updateBySkill.get(skill.id)?.state === 'removed')
+  const removedSignature = removedSkills.map((skill) => skill.id).sort().join('|')
+  const mod = modifierLabel()
+  const [dismissedRemovedSignature, setDismissedRemovedSignature] = useState<string>()
+  const [focusId, setFocusId] = useState<string>()
+  const showRemovedBanner = removedSkills.length > 0 && dismissedRemovedSignature !== removedSignature
+  const sourceFolder = (value?: string) => (value ?? '').replace(/\/SKILL\.md$/i, '')
+  const installedFolders = new Set(allSkills.map((skill) => sourceFolder(skill.skillPath)))
+  const installedSkillSources = new Map<string, Set<string>>()
+  for (const skill of allSkills) {
+    const name = skill.name.toLowerCase()
+    const sources = installedSkillSources.get(name) ?? new Set<string>()
+    if (skill.source) sources.add(skill.source.toLowerCase())
+    installedSkillSources.set(name, sources)
+  }
+  const isInstalledSource = (item: UpdateItem) => {
+    const sources = installedSkillSources.get((item.name ?? '').toLowerCase())
+    if (!sources) return false
+    if (sources.size === 0) return true
+    return sources.has((item.package ?? '').toLowerCase()) || sources.has((item.source ?? '').toLowerCase())
+  }
+  const scopedSources = new Set(skills.map((skill) => skill.source).filter(Boolean) as string[])
+  const showUpstreamAdditions = !scopeKind || scopeKind === 'library'
+  const pathRank = (value?: string) => {
+    const dir = (value ?? '').replace(/\/SKILL\.md$/i, '')
+    const parts = dir.split('/').filter(Boolean)
+    let score = parts.length
+    if (dir.startsWith('skills/')) score -= 2
+    if (parts.some((part) => part.startsWith('.'))) score += 10
+    return score
+  }
+  const dedupeNewSkills = (items: UpdateItem[]) => {
+    const groups = new Map<string, UpdateItem[]>()
+    for (const item of items) {
+      const key = `${item.package}:${(item.name ?? '').toLowerCase()}`
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key)!.push(item)
+    }
+    return Array.from(groups.values()).filter((group) => !group.some((item) => installedFolders.has(sourceFolder(item.skillPath)) || isInstalledSource(item))).map((group) => {
+      if (group.length === 1) return { ...group[0], copies: group[0].copies ?? 1 }
+      const sorted = [...group].sort((a, b) => pathRank(a.skillPath) - pathRank(b.skillPath) || (a.skillPath ?? '').localeCompare(b.skillPath ?? ''))
+      return { ...sorted[0], copies: Math.max(sorted[0].copies ?? 1, group.length) }
+    })
+  }
+  const newSkills = dedupeNewSkills((updates?.items ?? []).filter((item) => item.kind === 'skill' && item.state === 'new' && item.package && item.skillPath && scopedSources.size > 0 && (scopedSources.has(item.package) || scopedSources.has(item.source ?? ''))))
+  const newSkillKey = (item: UpdateItem) => `${item.package}:${item.skillPath}`
+  const [dismissedNewSignature, setDismissedNewSignature] = useState<string>()
+  const [newSkillsTarget, setNewSkillsTarget] = useState<UpdateItem[]>()
+  const groupNewSkills = (items: Skill[]) => newSkills.filter((item) => items.some((skill) => skill.source === item.package || skill.source === item.source))
+  const focusSkill = (id: string) => {
+    setFocusId(id)
+    setQuery('')
+    setStatusFilter('all')
+    onSource('all')
+  }
+  const moveRemovedFocus = (direction: 1 | -1) => {
+    if (removedSkills.length === 0) return
+    const index = removedSkills.findIndex((skill) => skill.id === focusId)
+    const next = index < 0 ? 0 : (index + direction + removedSkills.length) % removedSkills.length
+    focusSkill(removedSkills[next].id)
+  }
+  const selectSkill = (id: string) => { setFocusId(undefined); onSelect(id) }
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || (event.key !== 'ArrowDown' && event.key !== 'ArrowUp')) return
+      const target = event.target as HTMLElement | null
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+      if (removedSkills.length === 0) return
+      event.preventDefault()
+      moveRemovedFocus(event.key === 'ArrowDown' ? 1 : -1)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
   const queryText = query.trim().toLowerCase()
   const displayedSkills = [...skills].filter((skill) => statusFilter === 'all' || (statusFilter === 'issues' ? hasIssue(skill, links, issues) : hasUpdate(skill))).filter((skill) => !queryText || [skill.name, skill.description ?? '', skillSourceLabel(skill), skill.path].some((value) => value.toLowerCase().includes(queryText))).sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
   const groups = Array.from(displayedSkills.reduce((map, skill) => { const key = skillSourceLabel(skill); if (!map.has(key)) map.set(key, []); map.get(key)!.push(skill); return map }, new Map<string, Skill[]>())).sort(([a], [b]) => a.localeCompare(b))
@@ -83,12 +162,24 @@ function SkillsView({ skills, allSkills, roots, links, operations, selected, onS
   let groupBudget = visibleCount
   const visibleGroups = groups.map(([label, items]) => { const shown = items.slice(0, Math.max(0, groupBudget)); groupBudget -= shown.length; return [label, items, shown] as const }).filter(([, , shown]) => shown.length > 0)
   const remainingSkills = Math.max(0, displayedSkills.length - visibleCount)
+  const newSkillsSignature = newSkills.map(newSkillKey).sort().join('|')
+  const showNewBanner = showUpstreamAdditions && newSkills.length > 0 && dismissedNewSignature !== newSkillsSignature
   useEffect(() => { setVisibleCount(120) }, [query, statusFilter, source, display, grouped])
   useEffect(() => {
     if (!selected) return
     const index = displayedSkills.findIndex((skill) => skill.id === selected.id)
     if (index >= visibleCount) setVisibleCount(index + 1)
   }, [selected?.id, displayedSkills.length, visibleCount])
+  useEffect(() => {
+    if (!focusId) return
+    const index = displayedSkills.findIndex((skill) => skill.id === focusId)
+    if (index >= visibleCount) setVisibleCount(index + 1)
+    const frame = requestAnimationFrame(() => {
+      const element = Array.from(document.querySelectorAll<HTMLElement>('[data-skill-id]')).find((item) => item.dataset.skillId === focusId)
+      element?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [focusId, displayedSkills.length, visibleCount])
   const brokenRoots = selected ? roots.filter((root) => links.find((item) => item.skillId === selected.id && item.rootId === root.id)?.mode === 'broken') : []
   const copiedRoots = selected ? roots.filter((root) => links.find((item) => item.skillId === selected.id && item.rootId === root.id)?.mode === 'copied') : []
   const requestLinkPlan = async (targetRoots: Root[]) => {
@@ -234,9 +325,9 @@ function SkillsView({ skills, allSkills, roots, links, operations, selected, onS
   const revealPath = async () => { if (!selected) return; try { await backend.revealSkill(selected.id) } catch (error) { toastError(error, t('common.failedToOpenLocation')) } }
   return <MotionConfig reducedMotion="user" transition={{ duration: getMotionMode() === 'off' ? 0 : 0.24, ease: [0.23, 1, 0.32, 1] }}><section className={styles.ledgerPanel}>
     <div className={styles.metrics}>
-      <Metric label={t('common.skills')} value={allSkills.length} detail={t('skills.skillsScanned')} />
+      <Metric label={t('skills.uniqueSkills')} value={uniqueSkillCount} detail={t('skills.skillPlacements', { n: allSkills.length })} />
       <Metric label={t('skills.agentDirectories')} value={roots.length} detail={t('skills.actualDirectoryRoots')} />
-      <Metric label={t('common.contextCost')} value={`${allSkills.reduce((sum, skill) => sum + skill.descTokens, 0).toLocaleString()} tokens`} detail={t('skills.estimatedPerTurn')} />
+      <Metric label={t('skills.descriptionTokens')} value={descriptionTokens.toLocaleString()} detail={t('skills.discoveryCostHint')} />
       <Metric label={t('skills.needsAttention')} value={issueCount} detail={issueCount ? t('skills.contentDriftBrokenLinksOrMissingFilesBatchFix') : t('skills.contentDriftBrokenLinksOrMissingFiles')} tone={issueCount ? 'warn' : undefined} onClick={issueCount > 0 ? () => setRepairOpen(true) : undefined} />
     </div>
     <div className={styles.filterBar}>
@@ -252,6 +343,7 @@ function SkillsView({ skills, allSkills, roots, links, operations, selected, onS
         </Select>
       </div>
       <div className={styles.filterRight}>
+        <span className={styles.resultCount}>{displayedSkills.length === skills.length ? t('skills.totalCount', { n: skills.length }) : t('skills.filteredCount', { shown: displayedSkills.length, total: skills.length })}</span>
         <div className={`${styles.segmentedControl} ${styles.iconSegmented}`} role="group" aria-label={t('skills.displayMode')}>
           <Button variant={display === 'list' ? 'secondary' : 'ghost'} size="icon-sm" aria-pressed={display === 'list'} title={t('skills.listView')} aria-label={t('skills.listView')} onClick={() => setDisplay('list')}><List size={14} /></Button>
           <Button variant={display === 'grid' ? 'secondary' : 'ghost'} size="icon-sm" aria-pressed={display === 'grid'} title={t('skills.cardView')} aria-label={t('skills.cardView')} onClick={() => setDisplay('grid')}><LayoutGrid size={14} /></Button>
@@ -261,15 +353,16 @@ function SkillsView({ skills, allSkills, roots, links, operations, selected, onS
         <Button variant="outline" size="sm" onClick={() => setDiscoverOpen(true)}><Plus size={14} />{t('common.installSkill')}</Button>
       </div>
     </div>
-    {removedSkills.length > 0 && <div className={styles.upstreamRemovedBanner}><AlertTriangle size={14} aria-hidden="true" /><span>{t('skills.upstreamRemovedBanner', { n: removedSkills.length })}</span><Button variant="ghost" size="xs" onClick={() => onSelect(removedSkills[0].id)}>{t('skills.viewDetails')}</Button></div>}
+    {showRemovedBanner && <div className={styles.upstreamRemovedBanner}><AlertTriangle size={14} aria-hidden="true" /><span>{t('skills.upstreamRemovedBanner', { n: removedSkills.length })}</span><div className={styles.upstreamRemovedActions}><Button variant="ghost" size="xs" onClick={() => focusSkill(removedSkills[0].id)} title={t('skills.nextRemovedHint')}><Crosshair size={11} aria-hidden="true" />{t('skills.locate')}<Kbd className={styles.removedShortcut}>{mod}↓</Kbd></Button><Button variant="ghost" size="icon-sm" className={styles.upstreamRemovedClose} aria-label={t('common.close')} title={t('common.close')} onClick={() => setDismissedRemovedSignature(removedSignature)}><X size={11} /></Button></div></div>}
+    {showNewBanner && <div className={styles.upstreamAddedBanner}><Sparkles size={14} aria-hidden="true" /><span>{t('skills.upstreamAddedBanner', { n: newSkills.length })}</span><div className={styles.upstreamRemovedActions}><Button variant="ghost" size="xs" onClick={() => setNewSkillsTarget(newSkills)}>{t('skills.viewDetails')}</Button><Button variant="ghost" size="icon-sm" className={styles.upstreamRemovedClose} aria-label={t('common.close')} title={t('common.close')} onClick={() => setDismissedNewSignature(newSkillsSignature)}><X size={11} /></Button></div></div>}
     {batchProgress && <div className={styles.batchPreparing} role="status"><span className={styles.batchPreparingDot} />{t('skills.batchPreparing', { done: batchProgress.done, total: batchProgress.total })}<Button variant="ghost" size="xs" className="ml-auto" onClick={() => { batchCancelled.current = true }}>{t('common.cancel')}</Button></div>}
-    {displayedSkills.length === 0 ? <div className={styles.skillsEmpty}><span className={styles.emptyIcon}><Sparkles size={20} aria-hidden="true" /></span>{skills.length === 0 ? <><strong>{t('skills.noScanResultsYet')}</strong><p>{t('skills.scanThisMachineOrInstallDirectlyFromADirectory')}</p><div className={styles.emptyActions}><Button size="sm" onClick={() => void onRefresh()}><RefreshCw size={14} />{t('skills.scanThisMachine')}</Button><Button size="sm" variant="outline" onClick={() => setDiscoverOpen(true)}><Plus size={14} />{t('common.installSkill')}</Button></div></> : <><strong>{t('skills.noMatchingSkills')}</strong><p>{t('skills.noResultsUnderTheCurrentFilters')}</p><div className={styles.emptyActions}><Button size="sm" variant="outline" onClick={() => { setQuery(''); setStatusFilter('all'); onSource('all') }}>{t('skills.clearFilters')}</Button></div></>}</div> : display === 'list' ? (grouped ? <div className={styles.groupedList}><div className={styles.groupedColumns}><span>{t('common.name')}</span><span>{t('common.sourceLabel')}</span><span>{t('skills.agentVisibility')}</span><span>Tokens</span><span>{t('common.actions')}</span></div>{visibleGroups.map(([label, items, visibleItems]) => <section key={label} className={styles.groupedSection}>
-      <header className={styles.groupedGroupHeader}><SkillIcon skill={items[0]} className="size-5" /><span>{label}</span><small>{t('common.skillCount', { n: items.length })}</small>{items.some((skill) => hasUpdate(skill)) && <Button size="xs" variant="outline" className={styles.groupUpdateButton} disabled={Boolean(batchProgress)} onClick={() => void requestGroupUpdate(items)}>{t('skills.updateAll')}</Button>}</header>
-      {visibleItems.map((skill) => <SkillListRow key={skill.id} skill={skill} roots={roots} links={links} issues={issues} update={updateBySkill.get(skill.id)} selected={selected?.id === skill.id} onSelect={() => onSelect(skill.id)} onUpdate={() => setUpdateTarget(skill)} onUninstall={skill.rootKind === 'global' ? () => void deleteSkillNow(skill) : undefined} />)}
+    {displayedSkills.length === 0 ? <div className={styles.skillsEmpty}><span className={styles.emptyIcon}><Sparkles size={20} aria-hidden="true" /></span>{skills.length === 0 ? <><strong>{t('skills.noScanResultsYet')}</strong><p>{t('skills.scanThisMachineOrInstallDirectlyFromADirectory')}</p><div className={styles.emptyActions}><Button size="sm" onClick={() => void onRefresh()}><RefreshCw size={14} />{t('skills.scanThisMachine')}</Button><Button size="sm" variant="outline" onClick={() => setDiscoverOpen(true)}><Plus size={14} />{t('common.installSkill')}</Button></div></> : <><strong>{t('skills.noMatchingSkills')}</strong><p>{t('skills.noResultsUnderTheCurrentFilters')}</p><div className={styles.emptyActions}><Button size="sm" variant="outline" onClick={() => { setQuery(''); setStatusFilter('all'); onSource('all') }}>{t('skills.clearFilters')}</Button></div></>}</div> : display === 'list' ? (grouped ? <div className={styles.groupedList}><div className={styles.groupedColumns}><span>{t('common.name')}</span><span>{t('common.sourceLabel')}</span><span>{t('skills.agentVisibility')}</span><span>{t('skills.descriptionTokens')}</span><span>{t('common.actions')}</span></div>{visibleGroups.map(([label, items, visibleItems]) => <section key={label} className={styles.groupedSection}>
+      <header className={styles.groupedGroupHeader}><SkillIcon skill={items[0]} className="size-5" /><span>{label}</span><small>{t('common.skillCount', { n: items.length })}</small><div className={styles.groupUpdateActions}>{groupNewSkills(items).length > 0 && <Button size="xs" variant="outline" onClick={() => setNewSkillsTarget(groupNewSkills(items))}><Sparkles size={12} />{t('skills.upstreamAddedShort', { n: groupNewSkills(items).length })}</Button>}{items.some((skill) => hasUpdate(skill)) && <Button size="xs" variant="outline" disabled={Boolean(batchProgress)} onClick={() => void requestGroupUpdate(items)}>{t('skills.updateAll')}</Button>}</div></header>
+      {visibleItems.map((skill) => <SkillListRow key={skill.id} skill={skill} roots={roots} links={links} issues={issues} update={updateBySkill.get(skill.id)} selected={selected?.id === skill.id || focusId === skill.id} onSelect={() => selectSkill(skill.id)} onUpdate={() => setUpdateTarget(skill)} onUninstall={skill.rootKind === 'global' ? () => void deleteSkillNow(skill) : undefined} />)}
     </section>)}</div> : <div className={`${styles.tableWrap} ${styles.skillsTable}`}><table>
-      <thead><tr><th>{t('common.name')}</th><th>{t('common.sourceLabel')}</th><th>{t('skills.agentVisibility')}</th><th>Tokens</th><th>{t('common.actions')}</th></tr></thead>
-      <tbody>{visibleSkills.map((skill) => <SkillRow key={skill.id} skill={skill} roots={roots} links={links} issues={issues} update={updateBySkill.get(skill.id)} selected={selected?.id === skill.id} onSelect={() => onSelect(skill.id)} onUpdate={() => setUpdateTarget(skill)} onUninstall={skill.rootKind === 'global' ? () => void deleteSkillNow(skill) : undefined} />)}</tbody>
-    </table></div>) : grouped ? <div className={styles.skillGroups}>{visibleGroups.map(([label, items, visibleItems]) => <section key={label} className={styles.skillGroup}><header className={styles.skillGroupHeader}><div className={styles.skillGroupTitle}><SkillIcon skill={items[0]} className="size-5" /><strong>{label}</strong></div><div className={styles.skillGroupMeta}><span>{t('common.skillCount', { n: items.length })}</span>{items.some((skill) => hasUpdate(skill)) && <Button size="xs" variant="outline" disabled={Boolean(batchProgress)} onClick={() => void requestGroupUpdate(items)}>{batchProgress ? t('common.preparing') : t('skills.updateAll')}</Button>}</div></header><div className={styles.skillGrid}>{visibleItems.map((skill) => <SkillCard key={skill.id} skill={skill} roots={roots} links={links} issues={issues} update={updateBySkill.get(skill.id)} selected={selected?.id === skill.id} onSelect={() => onSelect(skill.id)} showIcon={false} showSource={false} onUpdate={() => setUpdateTarget(skill)} onUninstall={skill.rootKind === 'global' ? () => void deleteSkillNow(skill) : undefined} />)}</div></section>)}</div> : <div className={styles.skillGrid}>{visibleSkills.map((skill) => <SkillCard key={skill.id} skill={skill} roots={roots} links={links} issues={issues} update={updateBySkill.get(skill.id)} selected={selected?.id === skill.id} onSelect={() => onSelect(skill.id)} onUpdate={() => setUpdateTarget(skill)} onUninstall={skill.rootKind === 'global' ? () => void deleteSkillNow(skill) : undefined} />)}</div>}
+      <thead><tr><th>{t('common.name')}</th><th>{t('common.sourceLabel')}</th><th>{t('skills.agentVisibility')}</th><th>{t('skills.descriptionTokens')}</th><th>{t('common.actions')}</th></tr></thead>
+      <tbody>{visibleSkills.map((skill) => <SkillRow key={skill.id} skill={skill} roots={roots} links={links} issues={issues} update={updateBySkill.get(skill.id)} selected={selected?.id === skill.id || focusId === skill.id} onSelect={() => selectSkill(skill.id)} onUpdate={() => setUpdateTarget(skill)} onUninstall={skill.rootKind === 'global' ? () => void deleteSkillNow(skill) : undefined} />)}</tbody>
+    </table></div>) : grouped ? <div className={styles.skillGroups}>{visibleGroups.map(([label, items, visibleItems]) => <section key={label} className={styles.skillGroup}><header className={styles.skillGroupHeader}><div className={styles.skillGroupTitle}><SkillIcon skill={items[0]} className="size-5" /><strong>{label}</strong></div><div className={styles.skillGroupMeta}><span>{t('common.skillCount', { n: items.length })}</span>{groupNewSkills(items).length > 0 && <Button size="xs" variant="outline" onClick={() => setNewSkillsTarget(groupNewSkills(items))}><Sparkles size={12} />{t('skills.upstreamAddedShort', { n: groupNewSkills(items).length })}</Button>}{items.some((skill) => hasUpdate(skill)) && <Button size="xs" variant="outline" disabled={Boolean(batchProgress)} onClick={() => void requestGroupUpdate(items)}>{batchProgress ? t('common.preparing') : t('skills.updateAll')}</Button>}</div></header><div className={styles.skillGrid}>{visibleItems.map((skill) => <SkillCard key={skill.id} skill={skill} roots={roots} links={links} issues={issues} update={updateBySkill.get(skill.id)} selected={selected?.id === skill.id || focusId === skill.id} onSelect={() => selectSkill(skill.id)} showIcon={false} showSource={false} onUpdate={() => setUpdateTarget(skill)} onUninstall={skill.rootKind === 'global' ? () => void deleteSkillNow(skill) : undefined} />)}</div></section>)}</div> : <div className={styles.skillGrid}>{visibleSkills.map((skill) => <SkillCard key={skill.id} skill={skill} roots={roots} links={links} issues={issues} update={updateBySkill.get(skill.id)} selected={selected?.id === skill.id || focusId === skill.id} onSelect={() => selectSkill(skill.id)} onUpdate={() => setUpdateTarget(skill)} onUninstall={skill.rootKind === 'global' ? () => void deleteSkillNow(skill) : undefined} />)}</div>}
     {remainingSkills > 0 && <div className={styles.skillsMore}><Button variant="outline" size="sm" onClick={() => setVisibleCount((count) => count + 120)}>{t('skills.showMoreRemaining', { n: remainingSkills })}</Button></div>}
     {selected && <Sheet open onOpenChange={(open) => { if (!open) onCloseDetail() }}>
       <SheetContent side="right" className="w-[440px] sm:max-w-[440px]">
@@ -279,7 +372,7 @@ function SkillsView({ skills, allSkills, roots, links, operations, selected, onS
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2"><SheetTitle className="truncate text-[15px]">{selected.name}</SheetTitle><UpdateBadge update={updateBySkill.get(selected.id)} onClick={updateSelected} /><StatusBadge skill={selected} issue={issueReasons(selected, links, issues).length > 0} reasons={issueReasons(selected, links, issues)} /></div>
               <SheetDescription className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px]">
-                <span>{skillSourceLabel(selected)}</span><span>·</span><span>{t('skills.agentsCanDiscover', { visible: selectedVisibleCount, total: roots.length })}</span><span>·</span><span>{t('skills.tokensTurn', { n: selected.descTokens.toLocaleString() })}</span>
+                <span>{skillSourceLabel(selected)}</span><span>·</span><span>{t('skills.agentsCanDiscover', { visible: selectedVisibleCount, total: roots.length })}</span><span>·</span><span>{t('skills.descriptionTokensValue', { n: selected.descTokens.toLocaleString() })}</span>
               </SheetDescription>
             </div>
           </div>
@@ -292,6 +385,7 @@ function SkillsView({ skills, allSkills, roots, links, operations, selected, onS
     {repairOpen && <IssueRepairDialog issues={issueItems} onClose={() => setRepairOpen(false)} onLocate={(id) => { setRepairOpen(false); onSelect(id) }} onApplied={() => { setRepairOpen(false); void onRefresh() }} />}
     {updateTarget && <SkillUpdateDialog skillID={updateTarget.id} skillName={updateTarget.name} source={updateTarget.source} onClose={() => setUpdateTarget(undefined)} onApplied={() => { setUpdateTarget(undefined); onCloseDetail(); void onRefresh() }} />}
     {batchItems.length > 0 && <BatchUpdateDialog items={batchItems} onClose={() => setBatchItems([])} onApplied={() => { setBatchItems([]); void onRefresh() }} />}
+    {newSkillsTarget && <NewUpstreamSkillsDialog items={newSkillsTarget} onClose={() => setNewSkillsTarget(undefined)} onPlan={(next) => { setNewSkillsTarget(undefined); setPlan(next) }} onInstalled={async () => { await backend.scan().catch(() => undefined); await onRefresh() }} />}
     {plan && <PlanDialog plan={plan} onClose={() => setPlan(undefined)} onApplied={() => { setPlan(undefined); onCloseDetail(); void onRefresh() }} />}
   </section></MotionConfig>
 }
@@ -371,22 +465,22 @@ function StatusBadge({ issue, reasons = [] }: { skill?: Skill; issue: boolean; r
 
 function SkillRow({ skill, roots, links, issues, update, selected, onSelect, onUpdate, onUninstall, showIcon = true }: { skill: Skill; roots: Root[]; links: Link[]; issues: Issue[]; update?: UpdateItem; selected: boolean; onSelect: () => void; onUpdate?: () => void; onUninstall?: () => void; showIcon?: boolean }) {
   const { discoverableRoots, issue, reasons } = summarize(skill, roots, links, issues)
-  return <motion.tr layout="position" transition={{ layout: layoutTransition }} data-skill-id={skill.id} className={`${selected ? styles.selectedRow : ''} ${styles.clickableRow}`} onClick={onSelect}>
+  return <motion.tr layout="position" transition={{ layout: layoutTransition }} data-skill-id={skill.id} tabIndex={0} aria-selected={selected} className={`${selected ? styles.selectedRow : ''} ${styles.clickableRow}`} onClick={onSelect} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect() } }}>
     <td><div className={styles.skillNameRow}><div className={styles.skillName}>{showIcon && <SkillIcon skill={skill} className="size-7" />}<span>{skill.name}</span>{skill.isProject && <Badge variant="info">{t('common.projects')}</Badge>}<OriginBadge origin={skill.origin} /><SkillHealthText issue={issue} reasons={reasons} /></div><SkillUpdateText update={update} onClick={onUpdate} /></div><p className={styles.skillDescription}>{skill.description || t('skills.noDescriptionAvailable')}</p></td>
     <td><span className={styles.sourceChip}>{skillSourceLabel(skill)}</span></td>
     <td><AgentAvatarGroup roots={discoverableRoots} /></td>
-    <td><span className={styles.tokenValue} title={`${t('skills.tokensPerTurn', { n: skill.descTokens.toLocaleString() })} · ${t('skills.tokenCostHint')}`} aria-label={t('skills.tokensPerTurn', { n: skill.descTokens.toLocaleString() })}><Coins size={12} aria-hidden="true" />{skill.descTokens.toLocaleString()}</span></td>
+    <td><span className={styles.tokenValue} title={`${t('skills.descriptionTokensValue', { n: skill.descTokens.toLocaleString() })} · ${t('skills.tokenCostHint')}`} aria-label={t('skills.descriptionTokensValue', { n: skill.descTokens.toLocaleString() })}><Coins size={12} aria-hidden="true" />{skill.descTokens.toLocaleString()}</span></td>
     <td><div className={styles.quickActions}>{onUninstall && <Button variant="ghost" size="xs" className="text-destructive" title={t('common.uninstallSkill')} aria-label={t('common.uninstallSkill')} onClick={(event) => { event.stopPropagation(); onUninstall() }}><Trash2 size={14} /></Button>}</div></td>
   </motion.tr>
 }
 
 function SkillListRow({ skill, roots, links, issues, update, selected, onSelect, onUpdate, onUninstall }: { skill: Skill; roots: Root[]; links: Link[]; issues: Issue[]; update?: UpdateItem; selected: boolean; onSelect: () => void; onUpdate?: () => void; onUninstall?: () => void }) {
   const { discoverableRoots, issue, reasons } = summarize(skill, roots, links, issues)
-  return <motion.div layout="position" transition={{ layout: layoutTransition }} data-skill-id={skill.id} className={`${styles.groupedRow} ${selected ? styles.groupedRowSelected : ''} ${styles.clickableRow}`} onClick={onSelect}>
+  return <motion.div layout="position" transition={{ layout: layoutTransition }} data-skill-id={skill.id} role="button" tabIndex={0} aria-pressed={selected} className={`${styles.groupedRow} ${selected ? styles.groupedRowSelected : ''} ${styles.clickableRow}`} onClick={onSelect} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect() } }}>
     <div className={styles.groupedName}><div className={styles.skillNameRow}><div className={styles.skillName}><span>{skill.name}</span>{skill.isProject && <Badge variant="info">{t('common.projects')}</Badge>}<OriginBadge origin={skill.origin} /><SkillHealthText issue={issue} reasons={reasons} /></div><SkillUpdateText update={update} onClick={onUpdate} /></div><p className={styles.skillDescription}>{skill.description || t('skills.noDescriptionAvailable')}</p></div>
     <div><span className={styles.sourceChip}>{skillSourceLabel(skill)}</span></div>
     <div><AgentAvatarGroup roots={discoverableRoots} /></div>
-    <div><span className={styles.tokenValue} title={`${t('skills.tokensPerTurn', { n: skill.descTokens.toLocaleString() })} · ${t('skills.tokenCostHint')}`} aria-label={t('skills.tokensPerTurn', { n: skill.descTokens.toLocaleString() })}><Coins size={12} aria-hidden="true" />{skill.descTokens.toLocaleString()}</span></div>
+    <div><span className={styles.tokenValue} title={`${t('skills.descriptionTokensValue', { n: skill.descTokens.toLocaleString() })} · ${t('skills.tokenCostHint')}`} aria-label={t('skills.descriptionTokensValue', { n: skill.descTokens.toLocaleString() })}><Coins size={12} aria-hidden="true" />{skill.descTokens.toLocaleString()}</span></div>
     <div><div className={styles.quickActions}>{onUninstall && <Button variant="ghost" size="xs" className="text-destructive" title={t('common.uninstallSkill')} aria-label={t('common.uninstallSkill')} onClick={(event) => { event.stopPropagation(); onUninstall() }}><Trash2 size={14} /></Button>}</div></div>
   </motion.div>
 }
@@ -394,7 +488,7 @@ function SkillListRow({ skill, roots, links, issues, update, selected, onSelect,
 function SkillCard({ skill, roots, links, issues, update, selected, onSelect, onUpdate, onUninstall, showIcon = true, showSource = true }: { skill: Skill; roots: Root[]; links: Link[]; issues: Issue[]; update?: UpdateItem; selected: boolean; onSelect: () => void; onUpdate?: () => void; onUninstall?: () => void; showIcon?: boolean; showSource?: boolean }) {
   const { discoverableRoots, issue, reasons } = summarize(skill, roots, links, issues)
   return <motion.div layout="position" transition={{ layout: layoutTransition }} role="button" tabIndex={0} data-skill-id={skill.id} onClick={onSelect} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect() } }} className={`${styles.skillCard} ${selected ? styles.skillCardSelected : ''}`}>
-    <div className={styles.skillCardHead}><div className={styles.skillCardTitle}>{showIcon && <SkillIcon skill={skill} className="size-6" />}<strong>{skill.name}</strong>{skill.isProject && <Badge variant="info">{t('common.projects')}</Badge>}<OriginBadge origin={skill.origin} /><SkillHealthText issue={issue} reasons={reasons} /><SkillUpdateText update={update} onClick={onUpdate} /></div><span className={styles.skillCardToken} title={`${t('skills.tokensPerTurn', { n: skill.descTokens.toLocaleString() })} · ${t('skills.tokenCostHint')}`}><Coins size={11} aria-hidden="true" />{skill.descTokens.toLocaleString()}</span></div>
+    <div className={styles.skillCardHead}><div className={styles.skillCardTitle}>{showIcon && <SkillIcon skill={skill} className="size-6" />}<strong>{skill.name}</strong>{skill.isProject && <Badge variant="info">{t('common.projects')}</Badge>}<OriginBadge origin={skill.origin} /><SkillHealthText issue={issue} reasons={reasons} /><SkillUpdateText update={update} onClick={onUpdate} /></div><span className={styles.skillCardToken} title={`${t('skills.descriptionTokensValue', { n: skill.descTokens.toLocaleString() })} · ${t('skills.tokenCostHint')}`}><Coins size={11} aria-hidden="true" />{skill.descTokens.toLocaleString()}</span></div>
     <p className={styles.skillCardDescription}>{skill.description || t('skills.noDescriptionAvailable')}</p>
     {showSource && <div className={styles.skillCardSource}><span className={styles.sourceChip}>{skillSourceLabel(skill)}</span></div>}
     <div className={styles.skillCardFoot}><div className={styles.skillCardAgents}><AgentAvatarGroup roots={discoverableRoots} /></div>{onUninstall && <Button variant="ghost" size="xs" className={styles.skillCardDelete} title={t('common.uninstallSkill')} aria-label={t('common.uninstallSkill')} onClick={(event) => { event.stopPropagation(); onUninstall() }}><Trash2 size={13} /></Button>}</div>

@@ -357,6 +357,9 @@ func (s *Service) Scan(ctx context.Context) (model.ScanResult, error) {
 			s.mu.Unlock()
 		}
 	}
+	if scanErr == nil {
+		nextUpdates = s.pruneInstalledNewSkills(nextUpdates, result)
+	}
 	if scanErr == nil && s.store != nil {
 		if err := s.store.SaveScan(ctx, result); err != nil {
 			return result, err
@@ -372,6 +375,33 @@ func (s *Service) Scan(ctx context.Context) (model.ScanResult, error) {
 	return result, scanErr
 }
 
+func (s *Service) pruneInstalledNewSkills(report model.UpdateReport, result model.ScanResult) model.UpdateReport {
+	installed := make(map[string]bool, len(result.Skills))
+	for _, skill := range result.Skills {
+		if skill.HasSkillMD {
+			installed[skill.Name] = true
+		}
+	}
+	items := make([]model.UpdateItem, 0, len(report.Items))
+	removed := 0
+	for _, item := range report.Items {
+		if item.Kind == "skill" && item.State == "new" && installed[item.Name] {
+			removed++
+			continue
+		}
+		items = append(items, item)
+	}
+	if removed == 0 {
+		return report
+	}
+	report.Items = items
+	report.SkillAdded -= removed
+	if report.SkillAdded < 0 {
+		report.SkillAdded = 0
+	}
+	return report
+}
+
 func (s *Service) Doctor() []model.Finding {
 	return doctor.RunWithUpdates(s.Snapshot(), s.Updates())
 }
@@ -384,7 +414,7 @@ func (s *Service) CheckUpdates(ctx context.Context) (model.UpdateReport, error) 
 		return model.UpdateReport{}, err
 	}
 	snapshot := s.Snapshot()
-	checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	checkCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
 	npmCache := ""
 	if cache, err := os.UserCacheDir(); err == nil {
@@ -397,7 +427,7 @@ func (s *Service) CheckUpdates(ctx context.Context) (model.UpdateReport, error) 
 		Runner:      s.runner,
 		FS:          s.fs,
 		Fetcher:     s.fetcher,
-		Timeout:     20 * time.Second,
+		Timeout:     60 * time.Second,
 		NpmCacheDir: npmCache,
 	})
 	if s.store != nil {
@@ -543,6 +573,81 @@ func (s *Service) PlanInstallSkill(ctx context.Context, repo, skillPath, name st
 	s.pendingPlans[plan.ID] = plan
 	s.mu.Unlock()
 	return plan, nil
+}
+
+func (s *Service) InstallUpstreamSkills(ctx context.Context, repo string, items []model.UpstreamSkillInstall, progress func(done, total int, name string)) ([]model.Operation, error) {
+	if repo == "" || len(items) == 0 {
+		return nil, errors.New("repository and Skills are required")
+	}
+	home, err := s.paths.HomeDir()
+	if err != nil {
+		return nil, err
+	}
+	var globalPath string
+	for _, root := range s.paths.DefaultRoots(home) {
+		if root.ID == "global" {
+			globalPath = root.Path
+			break
+		}
+	}
+	if globalPath == "" {
+		return nil, errors.New("global skill root not found")
+	}
+	pending := make([]model.UpstreamSkillInstall, 0, len(items))
+	for _, item := range items {
+		if strings.ContainsAny(item.Name, "/\\") || item.Name == "." || item.Name == ".." || strings.TrimSpace(item.SkillPath) == "" {
+			return nil, errors.New("invalid Skill target")
+		}
+		if _, err := s.fs.Lstat(filepath.Join(globalPath, item.Name)); err == nil {
+			_ = s.registerInstalledSource(repo, item.Name, item.SkillPath)
+			continue
+		}
+		pending = append(pending, item)
+	}
+	items = pending
+	if len(items) == 0 {
+		_, _ = s.Scan(ctx)
+		return nil, nil
+	}
+	results := make([]model.Operation, 0, len(items))
+	if progress != nil {
+		progress(0, len(items), "")
+	}
+	defer func() { _, _ = s.Scan(ctx) }()
+	for _, item := range items {
+		plan, planErr := ops.PlanInstallSkill(repo, item.SkillPath, filepath.Join(globalPath, item.Name))
+		if planErr != nil {
+			return results, planErr
+		}
+		op, applyErr := ops.ApplyInstallSkill(ctx, plan, s.snapshotRoot, s.fetcher, s.fs)
+		if applyErr != nil || op.Status != "success" {
+			if s.store != nil {
+				_ = s.store.SaveOperation(ctx, op)
+			}
+			if applyErr != nil {
+				return results, applyErr
+			}
+			return results, fmt.Errorf("install failed: %s", item.Name)
+		}
+		if files, hashErr := ops.FileHashes(plan.TargetPath); hashErr == nil {
+			s.saveSkillBaseline(ctx, plan.TargetPath, files)
+		}
+		if home, homeErr := s.paths.HomeDir(); homeErr == nil {
+			_ = ops.SnapshotLockfile(op.SnapshotPath, s.paths.LockfilePath(home))
+		}
+		if sourceErr := s.registerInstalledSource(repo, item.Name, item.SkillPath); sourceErr != nil {
+			op.Message = strings.TrimSpace(op.Message + "；来源未登记")
+		}
+		s.markNewSkillInstalled(ctx, plan.SourcePath)
+		if s.store != nil {
+			_ = s.store.SaveOperation(ctx, op)
+		}
+		results = append(results, op)
+		if progress != nil {
+			progress(len(results), len(items), item.Name)
+		}
+	}
+	return results, nil
 }
 
 func (s *Service) PlanInstallCatalogSkill(ctx context.Context, repo, skillID, name string) (model.Plan, error) {
@@ -929,6 +1034,17 @@ func (s *Service) ApplyPlanWithResolutions(ctx context.Context, planID string, r
 			if files, hashErr := ops.FileHashes(plan.TargetPath); hashErr == nil {
 				s.saveSkillBaseline(ctx, plan.TargetPath, files)
 			}
+			repo := ""
+			if len(plan.Changes) > 0 {
+				repo = plan.Changes[0].Source
+			}
+			if home, homeErr := s.paths.HomeDir(); homeErr == nil {
+				_ = ops.SnapshotLockfile(op.SnapshotPath, s.paths.LockfilePath(home))
+			}
+			if sourceErr := s.registerInstalledSource(repo, filepath.Base(plan.TargetPath), plan.SourcePath); sourceErr != nil && !strings.Contains(op.Message, "来源未登记") {
+				op.Message = strings.TrimSpace(op.Message + "；来源未登记")
+			}
+			s.markNewSkillInstalled(ctx, plan.SourcePath)
 		}
 		if s.store != nil {
 			_ = s.store.SaveOperation(ctx, op)
@@ -984,6 +1100,38 @@ func (s *Service) ApplyPlanWithResolutions(ctx context.Context, planID string, r
 		return op, err
 	}
 	return s.ApplyLinkPlan(ctx, planID)
+}
+
+func (s *Service) markNewSkillInstalled(ctx context.Context, skillPath string) {
+	if skillPath == "" {
+		return
+	}
+	s.mu.Lock()
+	report := s.updates
+	items := make([]model.UpdateItem, 0, len(report.Items))
+	removed := 0
+	normalizedPath := strings.TrimSuffix(skillPath, "/SKILL.md")
+	for _, item := range report.Items {
+		if item.Kind == "skill" && item.State == "new" && (item.SkillPath == skillPath || strings.TrimSuffix(item.SkillPath, "/SKILL.md") == normalizedPath) {
+			removed++
+			continue
+		}
+		items = append(items, item)
+	}
+	if removed == 0 {
+		s.mu.Unlock()
+		return
+	}
+	report.Items = items
+	report.SkillAdded -= removed
+	if report.SkillAdded < 0 {
+		report.SkillAdded = 0
+	}
+	s.updates = report
+	s.mu.Unlock()
+	if s.store != nil {
+		_ = s.store.SaveUpdates(ctx, report)
+	}
 }
 
 func (s *Service) markSkillUpdateApplied(ctx context.Context, name string) {
@@ -1311,6 +1459,74 @@ func skillPathForOperation(operation model.Operation) string {
 		}
 	}
 	return ""
+}
+
+func (s *Service) registerInstalledSource(repo, name, skillPath string) error {
+	repo = strings.TrimSpace(repo)
+	name = strings.TrimSpace(name)
+	if repo == "" || name == "" {
+		return nil
+	}
+	home, err := s.paths.HomeDir()
+	if err != nil {
+		return err
+	}
+	path := s.paths.LockfilePath(home)
+	data := map[string]any{}
+	if raw, readErr := os.ReadFile(path); readErr == nil {
+		if err := json.Unmarshal(raw, &data); err != nil {
+			return err
+		}
+	} else if !errors.Is(readErr, os.ErrNotExist) {
+		return readErr
+	}
+	skills, _ := data["skills"].(map[string]any)
+	if skills == nil {
+		skills = map[string]any{}
+	}
+	entry, _ := skills[name].(map[string]any)
+	if entry == nil {
+		entry = map[string]any{}
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, ok := entry["installedAt"]; !ok {
+		entry["installedAt"] = now
+	}
+	entry["source"] = repo
+	entry["sourceType"] = "github"
+	entry["sourceUrl"] = "https://github.com/" + repo
+	entry["skillPath"] = skillPath
+	entry["updatedAt"] = now
+	skills[name] = entry
+	data["skills"] = skills
+	if _, ok := data["version"]; !ok {
+		data["version"] = 1
+	}
+	raw, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".skill-lock-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(raw); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
 
 func (s *Service) saveSkillBaseline(ctx context.Context, path string, files map[string]string) {

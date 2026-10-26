@@ -222,6 +222,7 @@
 .detailPathActions{display:flex;gap:6px;margin-top:8px}
 
 .groupUpdateButton{margin-left:auto}
+.groupUpdateActions{display:flex;align-items:center;gap:6px;margin-left:auto}
 .skillGroupMeta{display:flex;align-items:center;gap:8px}
 .updateConfirmSource{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 10px;border:1px solid var(--line);border-radius:6px;background:var(--paper);font-size:11px}
 .updateConfirmSource span{color:var(--text-muted)}
@@ -609,11 +610,12 @@
 .aboutDefinition{margin:2px 0 0;gap:10px 14px}
 .aboutUpdate{margin-top:10px;padding-top:12px;padding-bottom:3px;border-top:1px solid var(--line)!important}
 
-.updatePreview{display:grid;gap:10px;flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:2px 24px 12px}
+.updatePreview{display:grid;gap:10px;flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:2px 0 12px}
 .updatePreviewState{margin:0;color:var(--text-muted);font-size:11px}
-.updatePreviewSummary{display:flex;gap:18px;color:var(--text-muted);font-size:10.5px}
-.updatePreviewSummary strong{margin-right:4px;color:var(--ink);font:600 18px var(--font-mono)}
+.updateSummaryLine{display:flex;align-items:center;justify-content:space-between;gap:10px;color:var(--ink-soft);font-size:10.5px}
+.updateSummaryCount{color:var(--text-muted);font:9px var(--font-mono);white-space:nowrap}
 .updatePreviewNotice{display:flex;align-items:flex-start;gap:7px;padding:8px 10px;border-radius:6px;background:var(--brand-soft);color:var(--ink-soft);font-size:10.5px;line-height:1.5}
+.updateBaselineNotice{padding:7px 9px;font-size:10px}
 .updatePreviewNotice svg{flex:none;margin-top:1px}
 .updatePreviewWarn{background:var(--status-warn-bg);color:var(--amber)}
 .updatePreviewFiles{display:grid;gap:0;max-height:190px;margin:0;padding:0;overflow:auto;border:1px solid var(--line);border-radius:7px;list-style:none;background:var(--paper)}
@@ -648,9 +650,9 @@
 .diffEmpty{padding:26px;color:var(--text-muted);font-size:11px;text-align:center}
 
 .updatePreviewFileBlock{display:grid;gap:4px}
-.updateResolutionRow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:2px 2px 6px 30px;color:var(--text-muted);font-size:9.5px}
-.updateResolutionRow>div{display:flex;align-items:center;gap:2px;padding:2px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
-.updateResolutionRow button{height:22px!important;padding:0 7px!important;font-size:9.5px!important}
+.updateResolutionRow{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 10px;padding:2px 0 6px;color:var(--text-muted);font-size:9.5px}
+.updateResolutionRow>div{display:flex;align-items:center;gap:1px;max-width:100%;padding:2px;border:1px solid var(--line);border-radius:7px;background:var(--paper)}
+.updateResolutionRow button{height:24px!important;padding:0 8px!important;border:0!important;box-shadow:none!important;font-size:9.5px!important}
 .resolvedMark{display:inline-flex;align-items:center;gap:3px;margin-left:4px;color:var(--green);font-size:9px;white-space:nowrap}
 
 .updateResolveAll{display:flex;align-items:center;justify-content:space-between;gap:10px;color:var(--text-muted);font-size:9.5px}
@@ -723,10 +725,73 @@
 .updateRemovalBadge{display:inline-flex;align-items:center;gap:3px;color:var(--red);font-size:11px;font-weight:500;white-space:nowrap}
 .upstreamRemovedBanner{display:flex;align-items:center;gap:8px;margin:0 0 8px;padding:8px 10px;border:1px solid color-mix(in srgb,var(--red) 30%,var(--line));border-radius:7px;background:color-mix(in srgb,var(--red) 8%,transparent);color:var(--ink-soft);font-size:10.5px}
 .upstreamRemovedBanner svg{flex:none;color:var(--red)}
-.upstreamRemovedBanner .Button,.upstreamRemovedBanner button{margin-left:auto}
+.upstreamRemovedActions{display:flex;align-items:center;gap:2px;margin-left:auto;flex:none}
+.upstreamRemovedClose{width:20px!important;height:20px!important;padding:0!important;color:var(--text-muted)!important}
 .upstreamRemovedNotice{display:flex;align-items:flex-start;gap:8px;color:var(--ink-soft);font-size:10.5px;line-height:1.5}
 .upstreamRemovedNotice>svg{flex:none;margin-top:1px;color:var(--red)}
 .upstreamRemovedNotice>div{display:grid;gap:3px;min-width:0}
 .upstreamRemovedNotice strong{font-size:11px}
 .upstreamRemovedNotice p{margin:0!important;color:var(--text-muted)!important;font-size:10px!important}
 .upstreamRemovedNotice>button{margin-left:auto;flex:none}
+
+.agentNotice{display:flex;align-items:center;gap:8px;padding:8px 20px;border-bottom:1px solid var(--line);background:var(--brand-soft);color:var(--ink-soft);font-size:10.5px}
+.agentNotice>svg{flex:none;color:var(--brand)}
+.agentNotice>span{display:flex;align-items:center;gap:6px;min-width:0;flex:1}
+.agentNotice strong{font-weight:550;color:var(--ink)}
+.agentNotice>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.upstreamAddedBanner{display:flex;align-items:center;gap:8px;margin:0 0 8px;padding:8px 10px;border:1px solid color-mix(in srgb,var(--brand) 30%,var(--line));border-radius:7px;background:var(--brand-soft);color:var(--ink-soft);font-size:10.5px}
+.upstreamAddedBanner>svg{flex:none;color:var(--brand)}
+.newSkillList{display:grid;gap:4px;min-width:0}
+.newSkillRow{display:flex;align-items:center;gap:9px;min-width:0;max-width:100%;height:46px;padding:5px 9px;border:1px solid var(--line);border-radius:7px;background:var(--paper);box-sizing:border-box;transition:height .16s var(--ease-out),background .16s var(--ease-out)}
+.newSkillGlyph{width:22px!important;height:22px!important;flex:none;border-radius:6px}
+.newSkillToggle{display:flex;align-items:center;gap:9px;min-width:0;max-width:100%;flex:1;height:100%;overflow:hidden;padding:0;border:0;background:none;color:inherit;text-align:left;cursor:pointer}
+.newSkillInfo{display:flex;flex-direction:column;justify-content:center;gap:2px;min-width:0;max-width:100%;height:100%;flex:1;overflow:hidden}
+.newSkillInfo strong{overflow:hidden;color:var(--ink-soft);font-size:11px;font-weight:550;line-height:1.35;text-overflow:ellipsis;white-space:nowrap}
+.newSkillInfo small{overflow:hidden;color:var(--ink-soft);font-size:10px;line-height:1.35;text-overflow:ellipsis;white-space:nowrap}.newSkillInfo code{display:block;max-width:100%;overflow:hidden;color:var(--text-muted);font:9px var(--font-mono);overflow-wrap:anywhere;white-space:normal}
+
+.newSkillGroup{display:grid;gap:6px;margin-bottom:14px}
+.newSkillGroupHead{display:flex;align-items:center;gap:7px}
+.newSkillRepoCheck{margin-left:auto;width:14px!important;height:14px!important}
+.newSkillGroupHead h3{margin:0;color:var(--text-muted);font:500 9px var(--font-mono);letter-spacing:.06em;text-transform:uppercase}
+.newSkillRepoIcon{width:16px!important;height:16px!important;border-radius:4px}
+
+.removedShortcut{height:15px!important;min-width:15px!important;padding:0 3px!important;border:1px solid color-mix(in srgb,var(--ink) 18%,var(--line))!important;background:var(--paper)!important;color:var(--ink-soft)!important;font:9px var(--font-mono)!important}
+
+.newSkillInstall{height:26px!important;min-width:72px;padding:0 9px!important;gap:5px!important;font-size:10px!important;flex:none}
+.newSkillInstall svg{flex:none}
+
+.newSkillRowExpanded{height:auto;min-height:46px;align-items:flex-start}
+.newSkillRowExpanded .newSkillToggle{align-items:flex-start}
+.newSkillRowExpanded .newSkillInfo{overflow:visible}
+.newSkillRowExpanded .newSkillInfo small{white-space:normal;text-overflow:clip}
+.newSkillChevron{flex:none;color:var(--text-muted);transition:transform .16s var(--ease-out)}
+.newSkillRowExpanded .newSkillChevron{transform:rotate(180deg)}
+
+/* Keep every scroll surface on the same compact scrollbar as the Agent list. */
+*{scrollbar-width:thin;scrollbar-color:var(--line-strong) transparent}
+*::-webkit-scrollbar{width:6px;height:6px}
+*::-webkit-scrollbar-track{background:transparent}
+*::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:999px}
+*::-webkit-scrollbar-corner{background:transparent}
+*::-webkit-scrollbar-button{display:none}
+
+.updateDecisionBar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 10px;min-height:30px}
+.updateDecisionMeta{display:flex;align-items:center;gap:8px;min-width:150px;flex:1 1 auto;white-space:nowrap}
+.updateDecisionMeta strong{color:var(--ink-soft);font-size:10.5px;font-weight:550;white-space:nowrap}
+.updateDecisionMeta span{display:inline-flex;align-items:center;gap:4px;color:var(--text-muted);font:9px var(--font-mono);white-space:nowrap}
+.automaticFilesToggle{justify-self:start;margin-left:0!important;padding-left:0!important;color:var(--text-muted)!important;font-size:9.5px!important}
+.updateDecisionDone{display:inline-flex;align-items:center;gap:4px;color:var(--green);font-size:9.5px}
+
+.updateBatchSelect{width:104px!important;height:24px!important;min-height:0!important;padding:0 8px!important;gap:4px!important;font-size:9.5px!important}
+.updateBatchSelect svg{width:12px!important;height:12px!important;opacity:.55!important}
+
+.tableWrap tbody tr.clickableRow:focus-visible,.groupedRow:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
+
+.batchInstallHint{margin-right:auto;color:var(--text-muted);font-size:9.5px;line-height:1.4}
+
+.installProgress{display:flex;align-items:center;gap:8px;padding:8px 24px;border-bottom:1px solid var(--line);background:var(--brand-soft);color:var(--ink-soft);font-size:10px}
+.installProgress>div:first-child{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.installProgressBar{height:4px;flex:1;overflow:hidden;border-radius:999px;background:color-mix(in srgb,var(--brand) 15%,transparent)}
+.installProgressBar span{display:block;height:100%;border-radius:inherit;background:var(--brand);transition:width .2s var(--ease-out)}
+.installProgress small{min-width:28px;color:var(--text-muted);font:9px var(--font-mono);text-align:right}

@@ -34,5 +34,6 @@ export type {
     TimelineEvent,
     UpdateItem,
     UpdateReport,
+    UpstreamSkillInstall,
     UsageStat
 } from "./models.js";
