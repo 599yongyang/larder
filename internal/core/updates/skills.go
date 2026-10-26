@@ -126,20 +126,33 @@ func checkSkills(ctx context.Context, opts Options, report *model.UpdateReport) 
 					installed[candidate.dir] = true
 				}
 				for _, skill := range discovered {
-					if skill.Dir == "" || skill.Name == "" || installed[skill.Dir] {
+					if skill.Dir == "" || skill.Name == "" {
 						continue
 					}
-					nested := false
-					for dir := range installed {
-						if strings.HasPrefix(skill.Dir, dir+"/") {
-							nested = true
+					dirs := skill.dirs
+					if len(dirs) == 0 {
+						dirs = []string{skill.Dir}
+					}
+					alreadyInstalled, nested := false, false
+					for _, dir := range dirs {
+						if installed[dir] {
+							alreadyInstalled = true
+							break
+						}
+						for installedDir := range installed {
+							if strings.HasPrefix(dir, installedDir+"/") {
+								nested = true
+								break
+							}
+						}
+						if nested {
 							break
 						}
 					}
-					if nested {
+					if alreadyInstalled || nested {
 						continue
 					}
-					group.additions = append(group.additions, model.UpdateItem{Kind: "skill", Owner: "github", Package: group.repo, Name: skill.Name, Description: skill.Description, Source: group.repo, SkillPath: skill.Dir, State: "new", Message: "上游新增，可安装"})
+					group.additions = append(group.additions, model.UpdateItem{Kind: "skill", Owner: "github", Package: group.repo, Name: skill.Name, Description: skill.Description, Source: group.repo, SkillPath: path.Join(skill.Dir, "SKILL.md"), Copies: skill.Copies, State: "new", Message: "上游新增，可安装"})
 				}
 			}
 			for _, candidate := range group.candidates {
@@ -193,6 +206,8 @@ type discoveredSkill struct {
 	Name        string
 	Description string
 	Dir         string
+	Copies      int
+	dirs        []string
 }
 
 func discoverSkillsFromTar(data []byte) ([]discoveredSkill, error) {
@@ -204,7 +219,8 @@ func discoverSkillsFromTar(data []byte) ([]discoveredSkill, error) {
 	tr := tar.NewReader(gz)
 	root := ""
 	seen := map[string]bool{}
-	var result []discoveredSkill
+	groups := map[string][]discoveredSkill{}
+	var order []string
 	for {
 		header, err := tr.Next()
 		if err == io.EOF {
@@ -241,9 +257,48 @@ func discoverSkillsFromTar(data []byte) ([]discoveredSkill, error) {
 			skillName = path.Base(dir)
 		}
 		seen[dir] = true
-		result = append(result, discoveredSkill{Name: skillName, Description: skillDescription, Dir: dir})
+		key := strings.ToLower(strings.TrimSpace(skillName))
+		if _, found := groups[key]; !found {
+			order = append(order, key)
+		}
+		groups[key] = append(groups[key], discoveredSkill{Name: skillName, Description: skillDescription, Dir: dir, dirs: []string{dir}})
+	}
+	result := make([]discoveredSkill, 0, len(order))
+	for _, key := range order {
+		copies := groups[key]
+		sort.SliceStable(copies, func(i, j int) bool { return preferredSkillDir(copies[i].Dir, copies[j].Dir) })
+		canonical := copies[0]
+		canonical.Copies = len(copies)
+		canonical.dirs = canonical.dirs[:0]
+		for _, copy := range copies {
+			canonical.dirs = append(canonical.dirs, copy.Dir)
+		}
+		result = append(result, canonical)
 	}
 	return result, nil
+}
+
+func preferredSkillDir(left, right string) bool {
+	leftScore, rightScore := skillDirScore(left), skillDirScore(right)
+	if leftScore != rightScore {
+		return leftScore < rightScore
+	}
+	return left < right
+}
+
+func skillDirScore(dir string) int {
+	parts := strings.Split(dir, "/")
+	score := len(parts)
+	if strings.HasPrefix(dir, "skills/") {
+		score -= 2
+	}
+	for _, part := range parts {
+		if strings.HasPrefix(part, ".") {
+			score += 10
+			break
+		}
+	}
+	return score
 }
 
 func discoverableSkillDir(dir string) bool {

@@ -368,6 +368,37 @@ func cleanup(linker platform.Linker, paths []string) {
 	}
 }
 
+func SnapshotLockfile(snapshotDir, lockfilePath string) error {
+	if snapshotDir == "" || lockfilePath == "" {
+		return errors.New("snapshot and lockfile paths are required")
+	}
+	raw, err := os.ReadFile(filepath.Join(snapshotDir, "manifest.json"))
+	if err != nil {
+		return err
+	}
+	var manifest SnapshotManifest
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		return err
+	}
+	target := SnapshotTarget{RootID: "meta", Target: lockfilePath, Action: "lockfile"}
+	if current, readErr := os.ReadFile(lockfilePath); readErr == nil {
+		backup := filepath.Join(snapshotDir, "lockfile-backup.json")
+		if err := os.WriteFile(backup, current, 0o600); err != nil {
+			return err
+		}
+		target.Exists = true
+		target.BackupPath = backup
+	} else if !errors.Is(readErr, os.ErrNotExist) {
+		return readErr
+	}
+	manifest.Targets = append(manifest.Targets, target)
+	payload, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(snapshotDir, "manifest.json"), payload, 0o600)
+}
+
 // RollbackSnapshot removes links recorded as created by a snapshot. It never
 // removes a path that currently exists as a real file or directory.
 func RollbackSnapshot(snapshotDir string, filesystem platform.FileSystem, linker platform.Linker) error {
@@ -386,6 +417,18 @@ func RollbackSnapshot(snapshotDir string, filesystem platform.FileSystem, linker
 		linker = platform.OSLinker{}
 	}
 	for _, target := range manifest.Targets {
+		if target.Action == "lockfile" || target.Action == "lockfile_restore" {
+			if target.Exists && target.BackupPath != "" {
+				if err := copyFile(target.BackupPath, target.Target); err != nil {
+					return err
+				}
+			} else if !target.Exists {
+				if err := os.Remove(target.Target); err != nil && !errors.Is(err, os.ErrNotExist) {
+					return err
+				}
+			}
+			continue
+		}
 		if target.Action == "install_skill" {
 			_ = os.RemoveAll(target.Target)
 			continue
@@ -476,6 +519,24 @@ func CreateRestoreSnapshot(sourceSnapshotDir, snapshotRoot string) (string, erro
 	}
 	manifest := SnapshotManifest{ID: id, CreatedAt: now}
 	for index, target := range source.Targets {
+		if target.Action == "lockfile" || target.Action == "lockfile_restore" {
+			entry := SnapshotTarget{Target: target.Target, Action: "lockfile_restore"}
+			if current, readErr := os.ReadFile(target.Target); readErr == nil {
+				backup := filepath.Join(dir, "files", fmt.Sprintf("%d", index))
+				if err := os.MkdirAll(filepath.Dir(backup), 0o700); err != nil {
+					return "", err
+				}
+				if err := os.WriteFile(backup, current, 0o600); err != nil {
+					return "", err
+				}
+				entry.Exists = true
+				entry.BackupPath = backup
+			} else if !errors.Is(readErr, os.ErrNotExist) {
+				return "", readErr
+			}
+			manifest.Targets = append(manifest.Targets, entry)
+			continue
+		}
 		info, statErr := os.Lstat(target.Target)
 		if statErr != nil {
 			continue

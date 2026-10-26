@@ -358,6 +358,7 @@ export interface UpdateItem {
     "latestVersion"?: string;
     "source"?: string;
     "skillPath"?: string;
+    "copies"?: number;
     "state": string;
     "message"?: string;
 }
@@ -375,6 +376,11 @@ export interface UpdateReport {
     "skillRemoved": number;
     "skillCurrent": number;
     "skillErrors": number;
+}
+
+export interface UpstreamSkillInstall {
+    "name": string;
+    "skillPath": string;
 }
 
 export interface UsageStat {

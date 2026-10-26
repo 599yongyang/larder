@@ -46,6 +46,7 @@ export const backend = {
   previewVersionDiff: async (operationID: string) => (await AppService.PreviewVersionDiff(operationID)) as any,
   purgeTrash: async (operationID: string) => { await AppService.PurgeTrash(operationID) },
   planInstallSkill: async (repo: string, skillPath: string, name: string) => (await AppService.PlanInstallSkill(repo, skillPath, name)) as any,
+  installUpstreamSkills: async (repo: string, items: Array<{ name: string; skillPath: string }>) => (await AppService.InstallUpstreamSkills(repo, items)) as any,
   planInstallCatalogSkill: async (repo: string, skillID: string, name: string) => (await AppService.PlanInstallCatalogSkill(repo, skillID, name)) as any,
   planUninstallSkill: async (skillID: string) => (await AppService.PlanUninstallSkill(skillID)) as any,
   planMCPRemove: async (serverID: string, agentPaths: string[]) => (await AppService.PlanMCPRemove(serverID, agentPaths)) as any,

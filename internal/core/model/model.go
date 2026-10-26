@@ -162,6 +162,11 @@ const (
 	SeverityError Severity = "error"
 )
 
+type UpstreamSkillInstall struct {
+	Name      string `json:"name"`
+	SkillPath string `json:"skillPath"`
+}
+
 type UpdateItem struct {
 	Kind           string   `json:"kind"`
 	CLIID          string   `json:"cliId,omitempty"`
@@ -174,6 +179,7 @@ type UpdateItem struct {
 	LatestVersion  string   `json:"latestVersion,omitempty"`
 	Source         string   `json:"source,omitempty"`
 	SkillPath      string   `json:"skillPath,omitempty"`
+	Copies         int      `json:"copies,omitempty"`
 	State          string   `json:"state"`
 	Message        string   `json:"message,omitempty"`
 }

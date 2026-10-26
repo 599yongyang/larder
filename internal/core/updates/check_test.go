@@ -218,12 +218,13 @@ func TestCheckDiscoversUpstreamSkillsNotInstalled(t *testing.T) {
 	alpha := model.Skill{Name: "alpha", Path: dir, FolderHash: folderHash(t, dir), Locked: true, SourceType: "github", Source: "owner/repo", SourceURL: "https://github.com/owner/repo.git", SkillPath: "skills/alpha/SKILL.md"}
 	fetcher := fakeFetcher{content: map[string][]byte{
 		"https://codeload.github.com/owner/repo/tar.gz/HEAD": makeTar(t, "repo-HEAD", map[string]string{
-			"skills/alpha/SKILL.md":       "---\nname: alpha\ndescription: a\n---\n",
-			"skills/newmoon/SKILL.md":     "---\nname: newmoon\ndescription: b\n---\n",
-			"examples/demo/SKILL.md":      "---\nname: demo\ndescription: example\n---\n",
-			"node_modules/pkg/SKILL.md":   "---\nname: pkg\ndescription: dependency\n---\n",
-			"templates/template/SKILL.md": "---\nname: template\ndescription: template\n---\n",
-			"skills/block/SKILL.md":       "---\nname: block\ndescription: |\n  first line\n  second line\n---\n",
+			"skills/alpha/SKILL.md":           "---\nname: alpha\ndescription: a\n---\n",
+			"skills/newmoon/SKILL.md":         "---\nname: newmoon\ndescription: b\n---\n",
+			".claude/skills/newmoon/SKILL.md": "---\nname: newmoon\ndescription: b\nagent-specific: true\n---\n",
+			"examples/demo/SKILL.md":          "---\nname: demo\ndescription: example\n---\n",
+			"node_modules/pkg/SKILL.md":       "---\nname: pkg\ndescription: dependency\n---\n",
+			"templates/template/SKILL.md":     "---\nname: template\ndescription: template\n---\n",
+			"skills/block/SKILL.md":           "---\nname: block\ndescription: |\n  first line\n  second line\n---\n",
 		}),
 	}}
 	report := updates.Check(context.Background(), updates.Options{Skills: []model.Skill{alpha}, FS: platform.OSFileSystem{}, Fetcher: fetcher})
@@ -236,10 +237,10 @@ func TestCheckDiscoversUpstreamSkillsNotInstalled(t *testing.T) {
 			items[item.Name] = item
 		}
 	}
-	if items["newmoon"].Description != "b" || items["newmoon"].SkillPath != "skills/newmoon" {
+	if items["newmoon"].Description != "b" || items["newmoon"].SkillPath != "skills/newmoon/SKILL.md" || items["newmoon"].Copies != 2 {
 		t.Fatalf("newmoon item = %#v", items["newmoon"])
 	}
-	if items["block"].Description != "first line\nsecond line" || items["block"].SkillPath != "skills/block" {
+	if items["block"].Description != "first line\nsecond line" || items["block"].SkillPath != "skills/block/SKILL.md" {
 		t.Fatalf("block item = %#v", items["block"])
 	}
 	if _, found := items["demo"]; found {
