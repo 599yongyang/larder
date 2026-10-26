@@ -1,4 +1,4 @@
-export type View = 'skills' | 'cli' | 'mcp' | 'instructions' | 'project' | 'history' | 'settings'
+export type View = 'skills' | 'cli' | 'mcp' | 'instructions' | 'project' | 'history' | 'settings' | 'xray'
 export type LinkMode = 'linked' | 'copied' | 'local' | 'missing' | 'broken' | 'unavailable' | 'shared'
 export type Root = { id: string; label: string; logicalAgent?: string; path: string; kind: string; known: boolean; status: string; error?: string; entryCount: number; sharedSkills?: boolean }
 export type Skill = { id: string; name: string; path: string; rootId: string; rootKind: string; source?: string; sourceUrl?: string; skillPath?: string; locked: boolean; hasSkillMd: boolean; description?: string; descTokens: number; folderHash?: string; contentHash?: string; scanState: string; isAgentLocal: boolean; isProject: boolean; copyDrift: boolean; icon?: string; iconSource?: string; bins?: string[]; origin?: string; originDetail?: string }

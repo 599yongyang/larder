@@ -300,3 +300,7 @@ export function TrashAgent(path: string): $CancellablePromise<model$0.Settings> 
 export function UsageStats(): $CancellablePromise<model$0.UsageStat[] | null> {
     return $Call.ByID(2265240823);
 }
+
+export function Xray(agentID: string, project: string, compareAgentIDs: string[] | null): $CancellablePromise<model$0.XrayReport> {
+    return $Call.ByID(3262388621, agentID, project, compareAgentIDs);
+}

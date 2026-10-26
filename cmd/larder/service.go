@@ -23,6 +23,7 @@ import (
 	"larder/internal/core/model"
 	"larder/internal/core/ops"
 	"larder/internal/core/store"
+	"larder/internal/core/xray"
 	"larder/internal/platform"
 )
 
@@ -174,6 +175,18 @@ func (s *AppService) refresh(parent context.Context) {
 // State returns a snapshot suitable for the Wails binding. The result is
 // explicitly marked cached or live so stale data is never presented as fresh.
 func (s *AppService) State() AppState { s.mu.RLock(); defer s.mu.RUnlock(); return s.state }
+func (s *AppService) Xray(agentID string, project string, compareAgentIDs []string) (model.XrayReport, error) {
+	settings, _ := s.core.Settings(s.context())
+	return xray.Build(xray.Input{
+		Scan:            s.core.Snapshot(),
+		Instructions:    s.Instructions(),
+		MCPServers:      s.MCP(),
+		Settings:        settings,
+		AgentID:         agentID,
+		Project:         project,
+		CompareAgentIDs: compareAgentIDs,
+	})
+}
 
 func (s *AppService) Scan() (AppState, error) {
 	s.mu.Lock()

@@ -29,6 +29,7 @@ export const backend = {
   ignoreAgent: async (path: string, label: string, rootID: string) => normalizeSettings(await AppService.IgnoreAgent(path, label, rootID) as any),
   restoreAgent: async (path: string) => normalizeSettings(await AppService.RestoreAgent(path) as any),
   trashAgent: async (path: string) => normalizeSettings(await AppService.TrashAgent(path) as any),
+  xray: async (agentID: string, project: string, compareAgentIDs: string[] = []) => (await AppService.Xray(agentID, project, compareAgentIDs)) as any,
   revealSkill: async (skillID: string) => { await AppService.RevealSkill(skillID) },
   revealCLI: async (cliID: string) => { await AppService.RevealCLI(cliID) },
   checkUpdates: async () => normalizeUpdates(await AppService.CheckUpdates() as any),

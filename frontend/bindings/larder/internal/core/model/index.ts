@@ -6,7 +6,9 @@ export {
     RootKind,
     RootStatus,
     ScanStatus,
-    Severity
+    Severity,
+    XrayReason,
+    XrayStatus
 } from "./models.js";
 
 export type {
@@ -35,5 +37,12 @@ export type {
     UpdateItem,
     UpdateReport,
     UpstreamSkillInstall,
-    UsageStat
+    UsageStat,
+    XrayAgentColumn,
+    XrayBudget,
+    XrayCompareCell,
+    XrayCompareRow,
+    XrayComparison,
+    XrayEntry,
+    XrayReport
 } from "./models.js";
