@@ -5,6 +5,7 @@ import { AgentIcon } from './AgentIcon'
 import { NavButton } from './NavButton'
 import styles from '../App.module.css'
 import { t } from '../i18n'
+import { isMacPlatform } from '../lib/platform'
 import type { View } from '../types'
 
 type Scope = { kind: 'library'; label: string } | { kind: 'agent'; id: string; label: string } | { kind: 'project'; path: string; label: string } | undefined
@@ -27,11 +28,12 @@ type Props = {
 }
 
 export function AppSidebar({ view, scope, onView, onScope, onManageAgents, onManageProjects, skillsCount, cliCount, mcpCount, instructionCount, agents, projects, centralCount }: Props) {
+  const mac = isMacPlatform()
   const [openGroup, setOpenGroup] = useState<'agents' | 'projects' | null>('agents')
   const toggleGroup = (group: 'agents' | 'projects') => setOpenGroup((current) => current === group ? null : group)
   return <Sidebar collapsible="none">
-    <SidebarHeader style={{ paddingTop: 36, paddingBottom: 0 }}>
-      <div className="flex h-10 items-center px-2"><span className={styles.brandWordmark}>Larder</span></div>
+    <SidebarHeader style={mac ? { paddingTop: 8, paddingBottom: 0, paddingLeft: 82 } : { paddingTop: 10, paddingBottom: 0, paddingLeft: 8 }}>
+      <div className={`flex items-center px-2 ${mac ? 'h-9' : 'h-10'}`}><span className={styles.brandWordmark}>Larder</span></div>
     </SidebarHeader>
     <SidebarContent className="overflow-hidden" style={{ gap: 4 }}>
       <SidebarGroup className="shrink-0" style={{ paddingTop: 4, paddingBottom: 4 }}>
