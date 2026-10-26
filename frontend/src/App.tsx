@@ -223,31 +223,34 @@ function App() {
   const ignoreAgent = async (root: { id: string; label: string; path: string }) => {
     try {
       setSettings(await backend.ignoreAgent(root.path, root.label, root.id))
-      toastSuccess(t('app.agentIgnored'), root.label)
       await backend.scan()
       await refresh()
+      return true
     } catch (error) {
       toastError(error, t('app.failedToIgnoreAgent'))
+      return false
     }
   }
   const restoreAgent = async (path: string) => {
     try {
       setSettings(await backend.restoreAgent(path))
-      toastSuccess(t('app.agentRestored'), t('app.updatingScanResults'))
       await backend.scan()
       await refresh()
+      return true
     } catch (error) {
       toastError(error, t('app.failedToRestoreAgent'))
+      return false
     }
   }
   const cleanupAgent = async (path: string) => {
     try {
       setSettings(await backend.trashAgent(path))
-      toastSuccess(t('app.movedToTrash'), t('app.youCanRestoreItFromFinder'))
       await backend.scan()
       await refresh()
+      return true
     } catch (error) {
       toastError(error, t('app.failedToCleanUpAgent'))
+      return false
     }
   }
   const checkUpdates = async (notify = false) => { setUpdatesLoading(true); try { const next = await backend.checkUpdates(); setUpdates(next); if (notify) toastSuccess(t('app.updateCheckComplete'), t('app.skillsClisCanUpdate', { skills: next.skillChanged, clis: next.available })) } catch (error) { toastError(error, t('app.updateCheckFailed')) } finally { setUpdatesLoading(false) } }
