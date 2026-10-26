@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
-import { Copy, Terminal } from 'lucide-react'
+import { Copy, Terminal, Trash2 } from 'lucide-react'
 import { AgentIcon } from './AgentIcon'
 import { MarkdownPreview, splitFrontmatter } from './MarkdownPreview'
 import { backend } from '../backend'
@@ -17,7 +17,7 @@ export function commandScopeLabel(scope: string) {
   return scope === 'global' ? t('common.global') : t('common.projects')
 }
 
-export function CommandDetailSheet({ command, onClose, onEdit, onConvert }: { command: Command; onClose: () => void; onEdit?: () => void; onConvert?: () => void }) {
+export function CommandDetailSheet({ command, onClose, onEdit, onConvert, onDelete }: { command: Command; onClose: () => void; onEdit?: () => void; onConvert?: () => void; onDelete?: () => void }) {
   const [tab, setTab] = useState<'preview' | 'raw'>(command.format === 'toml' ? 'raw' : 'preview')
   const [content, setContent] = useState('')
   const [loading, setLoading] = useState(true)
@@ -78,7 +78,7 @@ export function CommandDetailSheet({ command, onClose, onEdit, onConvert }: { co
             {command.model && <><dt>{t('commands.model')}</dt><dd><code>{command.model}</code></dd></>}
             {command.allowedTools && command.allowedTools.length > 0 && <><dt>{t('commands.allowedTools')}</dt><dd><code>{command.allowedTools.join(', ')}</code></dd></>}
           </dl>
-          <div className={styles.detailPathActions}><Button size="xs" variant="outline" onClick={() => void copyName()}><Terminal size={12} />{t('commands.copyName')}</Button><Button size="xs" variant="outline" onClick={() => void copyPath()}><Copy size={12} />{t('common.copyPath')}</Button>{onEdit && <Button size="xs" variant="ghost" onClick={onEdit}>{t('commands.edit')}</Button>}{onConvert && <Button size="xs" variant="ghost" onClick={onConvert}>{t('commands.convert')}</Button>}</div>
+          <div className={styles.detailPathActions}><Button size="xs" variant="outline" onClick={() => void copyName()}><Terminal size={12} />{t('commands.copyName')}</Button><Button size="xs" variant="outline" onClick={() => void copyPath()}><Copy size={12} />{t('common.copyPath')}</Button>{onEdit && <Button size="xs" variant="ghost" onClick={onEdit}>{t('commands.edit')}</Button>}{onConvert && <Button size="xs" variant="ghost" onClick={onConvert}>{t('commands.convert')}</Button>}{onDelete && <Button size="xs" variant="ghost" className="text-destructive" onClick={onDelete}><Trash2 size={12} />{t('common.delete')}</Button>}</div>
         </section>
         <section className={styles.detailSection}>
           <div className={instructionStyles.contentHead}>

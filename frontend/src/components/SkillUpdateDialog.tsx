@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Check, GitCompareArrows } from 'lucide-react'
+import { Check, GitCompareArrows, ShieldAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -9,6 +9,9 @@ import { t } from '../i18n'
 import { backendErrorMessage } from '../lib/backendError'
 import { toastError } from '../lib/toast'
 import { FileDiff, type DiffLine } from './ai/file-diff'
+import { SkillAuditInline } from './SkillAuditSection'
+import { Checkbox } from '@/components/ui/checkbox'
+import type { SkillAudit } from '../types'
 import type { SkillUpdateDiff, SkillUpdateFile } from '../types'
 
 
@@ -42,6 +45,8 @@ export function SkillUpdateDialog({ skillID, skillName, source, onClose, onAppli
   const [resolved, setResolved] = useState<Set<string>>(() => new Set())
   const [fileDiffs, setFileDiffs] = useState<Record<string, SkillUpdateFile>>({})
   const [showAutomatic, setShowAutomatic] = useState(false)
+  const [audit, setAudit] = useState<SkillAudit>()
+  const [highRiskConfirmed, setHighRiskConfirmed] = useState(false)
   const [loadingFiles, setLoadingFiles] = useState<Set<string>>(() => new Set())
   const loadFileDiff = async (file: SkillUpdateFile) => { if (fileDiffs[file.path] || loadingFiles.has(file.path)) return; setLoadingFiles((current) => new Set(current).add(file.path)); try { const next = await backend.previewSkillFileDiff(skillID, file.path) as SkillUpdateFile; setFileDiffs((current) => ({ ...current, [file.path]: next })) } catch (cause) { toastError(cause, t('skills.versionDiffFailed')) } finally { setLoadingFiles((current) => { const next = new Set(current); next.delete(file.path); return next }) } }
   useEffect(() => {
@@ -92,6 +97,7 @@ export function SkillUpdateDialog({ skillID, skillName, source, onClose, onAppli
   return <Dialog open onOpenChange={(open) => { if (!open && !applying) onClose() }}>
     <DialogContent className="flex max-h-[84vh] max-w-[680px] flex-col gap-0 overflow-hidden">
       <DialogHeader><DialogTitle className="text-base">{t('common.update', { name: skillName })}</DialogTitle><DialogDescription className="flex items-center gap-1.5 text-xs leading-5"><code className="truncate rounded bg-[var(--panel)] px-1.5 py-0.5 text-[10px] text-[var(--ink-soft)]">{source || 'GitHub'}</code><span className="text-[var(--text-muted)]">·</span>{t('skills.updatePreviewIntro')}</DialogDescription></DialogHeader>
+      <SkillAuditInline skillID={skillID} onAudit={setAudit} />
       <div className={styles.updatePreview}>
         {!diff && !diffError && <p className={styles.updatePreviewState}>{t('skills.updatePreviewLoading')}</p>}
         {diffError && <p className={styles.updatePreviewState}>{diffError}</p>}
@@ -116,8 +122,9 @@ export function SkillUpdateDialog({ skillID, skillName, source, onClose, onAppli
           </>}
         </>}
       </div>
+      {audit?.verdict === 'fail' && <label className={styles.auditGate}><Checkbox checked={highRiskConfirmed} onCheckedChange={(checked) => setHighRiskConfirmed(Boolean(checked))} /><ShieldAlert size={14} aria-hidden="true" /><span>{t('skills.auditHighRiskConfirm')}</span></label>}
       {error && <p className={`${styles.planError} px-6`} role="alert">{error}</p>}
-      <DialogFooter><Button size="sm" variant="outline" onClick={onClose} disabled={applying}>{t('common.cancel')}</Button><Button size="sm" disabled={applying || (!diff && !diffError)} onClick={() => void update()}>{applying ? t('common.updating') : t('common.updateAction')}</Button></DialogFooter>
+      <DialogFooter><Button size="sm" variant="outline" onClick={onClose} disabled={applying}>{t('common.cancel')}</Button><Button size="sm" disabled={applying || (!diff && !diffError) || (audit?.verdict === 'fail' && !highRiskConfirmed)} onClick={() => void update()}>{applying ? t('common.updating') : t('common.updateAction')}</Button></DialogFooter>
     </DialogContent>
   </Dialog>
 }

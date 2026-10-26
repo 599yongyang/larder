@@ -1358,7 +1358,7 @@ func (s *Service) RollbackOperation(ctx context.Context, operationID string) (mo
 	if !ok {
 		return model.Operation{}, errors.New("operation not found")
 	}
-	if (original.Operation != "link_skill" && original.Operation != "replace_copy" && original.Operation != "sync_copy" && original.Operation != "disable_link" && original.Operation != "skill_update" && original.Operation != "install_skill" && original.Operation != "uninstall_skill" && original.Operation != "mcp_remove" && original.Operation != "rollback" && original.Operation != "command_create" && original.Operation != "command_update" && original.Operation != "command_convert") || original.Status != "success" {
+	if (original.Operation != "link_skill" && original.Operation != "replace_copy" && original.Operation != "sync_copy" && original.Operation != "disable_link" && original.Operation != "skill_update" && original.Operation != "install_skill" && original.Operation != "uninstall_skill" && original.Operation != "mcp_remove" && original.Operation != "rollback" && original.Operation != "command_create" && original.Operation != "command_update" && original.Operation != "command_convert" && original.Operation != "skill_edit" && original.Operation != "skill_create" && original.Operation != "skill_rename" && original.Operation != "command_delete") || original.Status != "success" {
 		return model.Operation{}, errors.New("operation is not rollback-able")
 	}
 	safetySnapshot, err := ops.CreateRestoreSnapshot(original.SnapshotPath, s.snapshotRoot)

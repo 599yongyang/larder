@@ -54,3 +54,13 @@ type CommandWritePlan struct {
 	Warnings       []string      `json:"warnings,omitempty"`
 	CreatedAt      time.Time     `json:"createdAt"`
 }
+
+// CommandDeletePlan is a preview of deleting an existing command file.
+type CommandDeletePlan struct {
+	ID             string        `json:"id"`
+	Target         CommandTarget `json:"target"`
+	Name           string        `json:"name"`
+	Path           string        `json:"path"`
+	CurrentContent string        `json:"currentContent,omitempty"`
+	CreatedAt      time.Time     `json:"createdAt"`
+}

@@ -21,6 +21,7 @@ type SnapshotTarget struct {
 	Exists     bool   `json:"exists"`
 	LinkTarget string `json:"linkTarget,omitempty"`
 	BackupPath string `json:"backupPath,omitempty"`
+	NewTarget  string `json:"newTarget,omitempty"`
 }
 
 type SnapshotManifest struct {
@@ -399,6 +400,31 @@ func SnapshotLockfile(snapshotDir, lockfilePath string) error {
 	return os.WriteFile(filepath.Join(snapshotDir, "manifest.json"), payload, 0o600)
 }
 
+// SnapshotDirectoryRename records the current directory before it is renamed.
+func SnapshotDirectoryRename(snapshotDir, from, to string) error {
+	if snapshotDir == "" || from == "" || to == "" {
+		return errors.New("snapshot, source and target paths are required")
+	}
+	raw, err := os.ReadFile(filepath.Join(snapshotDir, "manifest.json"))
+	if err != nil {
+		return err
+	}
+	var manifest SnapshotManifest
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		return err
+	}
+	backup := filepath.Join(snapshotDir, "files", "renamed")
+	if err := copyTree(from, backup); err != nil {
+		return err
+	}
+	manifest.Targets = append(manifest.Targets, SnapshotTarget{Target: from, NewTarget: to, Action: "skill_rename", Exists: true, BackupPath: backup})
+	payload, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(snapshotDir, "manifest.json"), payload, 0o600)
+}
+
 // SnapshotFile records a single file write target in an existing snapshot
 // manifest. It is used for command files, which are not Skill directories.
 func SnapshotFile(snapshotDir, target string) error {
@@ -453,6 +479,18 @@ func RollbackSnapshot(snapshotDir string, filesystem platform.FileSystem, linker
 		linker = platform.OSLinker{}
 	}
 	for _, target := range manifest.Targets {
+		if target.Action == "skill_rename" {
+			if target.NewTarget != "" {
+				_ = os.RemoveAll(target.NewTarget)
+			}
+			if target.BackupPath != "" {
+				_ = os.RemoveAll(target.Target)
+				if err := copyTree(target.BackupPath, target.Target); err != nil {
+					return err
+				}
+			}
+			continue
+		}
 		if target.Action == "command_file" {
 			if target.Exists && target.BackupPath != "" {
 				if err := copyFile(target.BackupPath, target.Target); err != nil {

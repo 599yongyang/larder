@@ -57,6 +57,18 @@ export interface Command {
 }
 
 /**
+ * CommandDeletePlan is a preview of deleting an existing command file.
+ */
+export interface CommandDeletePlan {
+    "id": string;
+    "target": CommandTarget;
+    "name": string;
+    "path": string;
+    "currentContent"?: string;
+    "createdAt": string;
+}
+
+/**
  * CommandTarget describes a writable Agent command location.
  */
 export interface CommandTarget {
@@ -360,6 +372,79 @@ export interface Skill {
     "bins"?: string[] | null;
     "origin"?: string;
     "originDetail"?: string;
+}
+
+/**
+ * SkillAudit summarizes upstream audits for one installed Skill.
+ */
+export interface SkillAudit {
+    "skillId": string;
+    "source"?: string;
+    "skill"?: string;
+    "available": boolean;
+
+    /**
+     * pass, warn, fail, unreviewed
+     */
+    "verdict": string;
+    "riskLevel"?: string;
+    "entries"?: SkillAuditEntry[] | null;
+    "checkedAt"?: string;
+    "reason"?: string;
+    "localHash"?: string;
+    "localChanged"?: boolean;
+    "localBaselineAt"?: string;
+}
+
+/**
+ * SkillAuditEntry is one upstream security review for a Skill.
+ */
+export interface SkillAuditEntry {
+    "provider": string;
+    "slug"?: string;
+    "status": string;
+    "summary"?: string;
+    "riskLevel"?: string;
+    "auditedAt"?: string;
+    "categories"?: string[] | null;
+}
+
+/**
+ * SkillCreatePlan is a preview of creating a new shared Skill.
+ */
+export interface SkillCreatePlan {
+    "id": string;
+    "name": string;
+    "path": string;
+    "content": string;
+    "warnings"?: string[] | null;
+    "createdAt": string;
+}
+
+/**
+ * SkillEditPlan is a preview of editing an existing SKILL.md.
+ */
+export interface SkillEditPlan {
+    "id": string;
+    "skillId": string;
+    "path": string;
+    "content": string;
+    "currentContent"?: string;
+    "exists": boolean;
+    "warnings"?: string[] | null;
+    "createdAt": string;
+}
+
+/**
+ * SkillRenamePlan is a preview of renaming a Skill directory.
+ */
+export interface SkillRenamePlan {
+    "id": string;
+    "skillId": string;
+    "name": string;
+    "from": string;
+    "to": string;
+    "createdAt": string;
 }
 
 export interface SkillUpdateDiff {
