@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { FileText, History, LayoutList, RefreshCw, Search, Server, Settings as SettingsIcon, Sun, Terminal } from 'lucide-react'
+import { Command as CommandIcon, FileText, History, LayoutList, RefreshCw, Search, Server, Settings as SettingsIcon, Sun, Terminal } from 'lucide-react'
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandShortcut } from '@/components/ui/command'
 import { SkillIcon } from './SkillIcon'
 import type { CLIInfo, InstructionFile, MCPServer, Skill, View } from '../types'
@@ -29,6 +29,7 @@ export function CommandPalette({ open, onOpenChange, skills, clis, mcps, instruc
     { view: 'cli' as View, label: 'CLI', icon: Terminal },
     { view: 'mcp' as View, label: 'MCP', icon: Server },
     { view: 'instructions' as View, label: t('common.instructions'), icon: FileText },
+    { view: 'commands' as View, label: t('common.commands'), icon: CommandIcon },
     { view: 'history' as View, label: t('common.history'), icon: History },
     { view: 'settings' as View, label: t('common.settings'), icon: SettingsIcon },
   ]

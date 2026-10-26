@@ -3,8 +3,10 @@ module larder
 go 1.26.0
 
 require (
+	github.com/BurntSushi/toml v1.6.0
 	github.com/wailsapp/wails/v3 v3.0.0-beta.34
 	golang.org/x/sys v0.48.0
+	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.44.3
 )
 

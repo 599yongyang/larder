@@ -103,7 +103,7 @@ func (LocalPaths) DefaultRoots(home string) []RootSpec {
 		{ID: "qwen", Label: "Qwen", LogicalAgent: "Qwen", Path: filepath.Join(home, ".qwen", "skills"), Kind: RootKnownAgent, Known: true},
 		{ID: "roo", Label: "Roo Code", LogicalAgent: "Roo Code", Path: filepath.Join(home, ".roo", "skills"), Kind: RootKnownAgent, Known: true},
 		{ID: "zencoder", Label: "Zencoder", LogicalAgent: "Zencoder", Path: filepath.Join(home, ".zencoder", "skills"), Kind: RootKnownAgent, Known: true},
-		{ID: "omp", Label: "OMP", LogicalAgent: "OMP", Path: filepath.Join(home, ".omp", "agent", "managed-skills"), Kind: RootKnownAgent, Known: true, SharedSkills: true},
+		{ID: "omp", Label: "OMP", LogicalAgent: "OMP", Path: filepath.Join(home, ".omp", "agent", "skills"), Kind: RootKnownAgent, Known: true, SharedSkills: true, ExtraPaths: []string{filepath.Join(home, ".omp", "agent", "managed-skills")}},
 	}
 	return roots
 }
@@ -212,9 +212,12 @@ func (LocalPaths) ProjectRoots(workspace string) []RootSpec {
 }
 
 // PathDirs returns the directories used for the read-only CLI inventory.
-// The desktop process may inherit a minimal PATH (especially when launched
-// from Finder), so common package-manager and user bin directories are added
-// when they exist. This never executes a command or reads shell profiles.
+// The desktop process may inherit a minimal PATH when launched from Finder,
+// while a terminal-launched development build inherits the developer's full
+// shell PATH. Ambient PATH is intentionally ignored so the inventory does not
+// depend on how the app was started. Common package-manager and user bin
+// directories are used instead; this never executes a command or reads shell
+// profiles.
 func (LocalPaths) PathDirs(home string) []string {
 	// Fixture mode intentionally disables host PATH scanning so tests never
 	// depend on the developer machine's installed commands.
@@ -231,7 +234,6 @@ func (LocalPaths) PathDirs(home string) []string {
 		return nil
 	}
 	var raw []string
-	raw = append(raw, filepath.SplitList(os.Getenv("PATH"))...)
 	if runtime.GOOS == "windows" {
 		localAppData := os.Getenv("LOCALAPPDATA")
 		appData := os.Getenv("APPDATA")

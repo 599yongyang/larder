@@ -35,6 +35,65 @@ export interface CLIPath {
     "effective": boolean;
 }
 
+/**
+ * Command is a read-only Agent custom slash command or prompt template.
+ */
+export interface Command {
+    "id": string;
+    "name": string;
+    "description"?: string;
+    "argumentHint"?: string;
+    "allowedTools"?: string[] | null;
+    "model"?: string;
+    "agent": string;
+    "rootPath": string;
+    "path": string;
+    "format": string;
+    "scope": string;
+    "project"?: string;
+    "size": number;
+    "modifiedAt": string;
+    "hash": string;
+}
+
+/**
+ * CommandTarget describes a writable Agent command location.
+ */
+export interface CommandTarget {
+    "agent": string;
+    "scope": string;
+    "project"?: string;
+    "rootPath": string;
+    "format": string;
+}
+
+export interface CommandWritePlan {
+    "id": string;
+    "operation": string;
+    "target": CommandTarget;
+    "name": string;
+    "path": string;
+    "content": string;
+    "currentContent"?: string;
+    "exists": boolean;
+    "warnings"?: string[] | null;
+    "createdAt": string;
+}
+
+/**
+ * CommandWriteRequest describes a create, update or conversion operation.
+ */
+export interface CommandWriteRequest {
+    "path"?: string;
+    "agent"?: string;
+    "scope"?: string;
+    "project"?: string;
+    "rootPath"?: string;
+    "name"?: string;
+    "content"?: string;
+    "sourcePath"?: string;
+}
+
 export interface DiffLine {
     /**
      * context, add, del
@@ -387,3 +446,95 @@ export interface UsageStat {
     "name": string;
     "count": number;
 }
+
+export interface XrayAgentColumn {
+    "root": Root;
+    "skillCount": number;
+}
+
+export interface XrayBudget {
+    "skillTokens": number;
+    "instructionTokens": number;
+    "knownTokens": number;
+    "unmodeled": boolean;
+}
+
+export interface XrayCompareCell {
+    "root": Root;
+    "status": XrayStatus;
+}
+
+export interface XrayCompareRow {
+    "name": string;
+    "source"?: string;
+    "skill"?: Skill | null;
+    "cells": XrayCompareCell[] | null;
+}
+
+export interface XrayComparison {
+    "columns": XrayAgentColumn[] | null;
+    "rows": XrayCompareRow[] | null;
+}
+
+/**
+ * XrayEntry is one resource after static resolution for an Agent.
+ */
+export interface XrayEntry {
+    "skill": Skill;
+    "status": XrayStatus;
+    "reason": XrayReason;
+    "candidates": Skill[] | null;
+    "link"?: AgentLink | null;
+    "issue"?: ScanIssue | null;
+}
+
+export enum XrayReason {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    XrayReasonVisible = "visible",
+    XrayReasonDuplicateCandidates = "duplicate_candidates",
+    XrayReasonMissingSkillMD = "missing_skill_md",
+    XrayReasonMissingDescription = "missing_description",
+    XrayReasonBrokenLink = "broken_link",
+    XrayReasonNotLoaded = "not_loaded",
+    XrayReasonScanFailure = "scan_failure",
+};
+
+export interface XrayReport {
+    "schemaVersion": string;
+    "agentId": string;
+    "agentLabel": string;
+    "project"?: string;
+    "root": Root;
+    "entries": XrayEntry[] | null;
+    "activeCount": number;
+    "missingCount": number;
+    "candidateCount": number;
+    "brokenCount": number;
+    "budget": XrayBudget;
+    "instructions": InstructionFile[] | null;
+    "mcps": MCPServer[] | null;
+    "contributors": XrayEntry[] | null;
+    "compare": XrayComparison;
+    "generatedAt": string;
+}
+
+/**
+ * XrayStatus is the static resolution state of a resource for one Agent.
+ * It deliberately does not claim to know the Agent's runtime load order.
+ */
+export enum XrayStatus {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    XrayStatusActive = "active",
+    XrayStatusCandidate = "candidate",
+    XrayStatusMissing = "missing",
+    XrayStatusBroken = "broken",
+    XrayStatusAbsent = "absent",
+};
