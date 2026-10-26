@@ -96,6 +96,10 @@ export function Doctor(): $CancellablePromise<model$0.Finding[] | null> {
     return $Call.ByID(871889094);
 }
 
+export function DownloadAppUpdate(version: string): $CancellablePromise<string> {
+    return $Call.ByID(918375453, version);
+}
+
 export function EnableMCPAgent(name: string, agentPath: string): $CancellablePromise<void> {
     return $Call.ByID(486487643, name, agentPath);
 }

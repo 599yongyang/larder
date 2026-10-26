@@ -45,10 +45,12 @@ The build must run on a machine with the platform toolchain available:
 The app version lives in `cmd/larder/service.go`:
 
 ```go
-var Version = "0.0.4"
+var Version = "0.0.5"
 ```
 
 The public release tag and the in-app version must match.
+
+Upload `checksums.txt` alongside `Larder.dmg` and the Windows installer. The in-app updater downloads the DMG/EXE, verifies it against this file, then opens the installer.
 
 ## macOS signing
 

@@ -56,9 +56,24 @@ package_windows() {
   ls -lh "bin/larder-${arch}-installer.exe"
 }
 
+
+write_checksums() {
+  local files=()
+  [[ -f bin/Larder.dmg ]] && files+=("Larder.dmg")
+  [[ -f bin/larder-amd64-installer.exe ]] && files+=("larder-amd64-installer.exe")
+  if [[ ${#files[@]} -gt 0 ]]; then
+    (cd bin && shasum -a 256 "${files[@]}" > checksums.txt)
+    echo
+    echo "checksums:"
+    cat bin/checksums.txt
+  fi
+}
+
 case "$target" in
   macos) package_macos ;;
   windows) package_windows ;;
   all) package_macos; echo; package_windows ;;
   *) echo "Unknown target: $target" >&2; echo "Use: macos, windows, or all" >&2; exit 1 ;;
 esac
+
+write_checksums

@@ -630,7 +630,7 @@ const zh: Record<string, string> = {
   'settings.shortcutZoomIn': '放大界面',
   'settings.shortcutZoomOut': '缩小界面',
   'settings.appUpdates': 'Larder 更新',
-  'settings.appUpdatesHint': '从 GitHub Releases 检查是否有新版本。',
+  'settings.appUpdatesHint': '检查新版本，下载并校验 SHA-256 后打开安装包。',
   'settings.checkForAppUpdates': '检查更新',
   'settings.appUpdateAvailable': '发现新版本 {version}。',
   'settings.appUpToDate': '当前已是最新发布版本。',
@@ -935,6 +935,10 @@ const zh: Record<string, string> = {
   'history.commandWritten': '命令已写入',
   'commands.targetsUnavailable': '无法读取命令目标位置。',
   'commands.warningConvertUnavailable': '暂不支持这种格式转换。',
+  'settings.downloadingUpdate': '下载中…',
+  'settings.updateDownloaded': '更新已下载',
+  'settings.updateDownloadedHint': '安装包已校验并打开。把 Larder 拖进「应用程序」即可完成更新。',
+  'settings.updateDownloadFailed': '下载 Larder 更新失败。',
 }
 
 export default zh
