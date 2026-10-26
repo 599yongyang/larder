@@ -630,7 +630,7 @@ const en: Record<string, string> = {
   'settings.shortcutZoomIn': 'Zoom in',
   'settings.shortcutZoomOut': 'Zoom out',
   'settings.appUpdates': 'Larder updates',
-  'settings.appUpdatesHint': 'Check GitHub Releases for a newer version of Larder.',
+  'settings.appUpdatesHint': 'Check for a newer Larder build, download it, and verify its SHA-256 before opening the installer.',
   'settings.checkForAppUpdates': 'Check for update',
   'settings.appUpdateAvailable': 'Version {version} is available.',
   'settings.appUpToDate': 'You are on the latest published version.',
@@ -935,6 +935,10 @@ const en: Record<string, string> = {
   'history.commandWritten': 'Command written',
   'commands.targetsUnavailable': 'Command targets are unavailable.',
   'commands.warningConvertUnavailable': 'This conversion is not supported yet.',
+  'settings.downloadingUpdate': 'Downloading…',
+  'settings.updateDownloaded': 'Update downloaded',
+  'settings.updateDownloadedHint': 'The installer was verified and opened. Drag Larder into Applications to finish.',
+  'settings.updateDownloadFailed': 'Could not download the Larder update.',
 }
 
 export default en

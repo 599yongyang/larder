@@ -848,3 +848,5 @@
 .commandTargetPath{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:9px var(--font-mono);color:var(--text-muted)}
 
 .commandDetailDescription{margin:0;color:var(--ink-soft);font-size:11px;line-height:1.65;white-space:pre-wrap}.commandTargetError{color:var(--red);font-size:9.5px}
+
+.aboutUpdateHint{color:var(--text-muted);font-size:9.5px;line-height:1.4}

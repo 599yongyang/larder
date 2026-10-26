@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"larder/internal/core/appupdate"
 	"larder/internal/core/backup"
 	"larder/internal/core/catalog"
 	"larder/internal/core/commands"
@@ -47,7 +48,7 @@ type AppState struct {
 	UpdatedAt     time.Time          `json:"updatedAt"`
 }
 
-var Version = "0.0.4"
+var Version = "0.0.5"
 
 type MCPTestResult struct {
 	OK      bool   `json:"ok"`
@@ -177,6 +178,10 @@ func (s *AppService) refresh(parent context.Context) {
 // State returns a snapshot suitable for the Wails binding. The result is
 // explicitly marked cached or live so stale data is never presented as fresh.
 func (s *AppService) State() AppState { s.mu.RLock(); defer s.mu.RUnlock(); return s.state }
+func (s *AppService) DownloadAppUpdate(version string) (string, error) {
+	return appupdate.Download(s.context(), version)
+}
+
 func (s *AppService) Commands() []model.Command {
 	settings, _ := s.core.Settings(s.context())
 	home, _ := platform.LocalPaths{}.HomeDir()

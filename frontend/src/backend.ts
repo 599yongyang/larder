@@ -19,6 +19,7 @@ export const backend = {
   instructions: async () => ((await AppService.Instructions()) as any) ?? [],
   commands: async () => ((await AppService.Commands()) as any) ?? [],
   commandContent: async (path: string) => String(await AppService.CommandContent(path)),
+  downloadAppUpdate: async (version: string) => String(await AppService.DownloadAppUpdate(version)),
   commandTargets: async () => ((await AppService.CommandTargets()) as any) ?? [],
   planCommandWrite: async (request: unknown) => (await AppService.PlanCommandWrite(request as any)) as any,
   applyCommandWrite: async (planID: string) => (await AppService.ApplyCommandWrite(planID)) as any,
