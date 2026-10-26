@@ -399,6 +399,42 @@ func SnapshotLockfile(snapshotDir, lockfilePath string) error {
 	return os.WriteFile(filepath.Join(snapshotDir, "manifest.json"), payload, 0o600)
 }
 
+// SnapshotFile records a single file write target in an existing snapshot
+// manifest. It is used for command files, which are not Skill directories.
+func SnapshotFile(snapshotDir, target string) error {
+	if snapshotDir == "" || target == "" {
+		return errors.New("snapshot and target paths are required")
+	}
+	raw, err := os.ReadFile(filepath.Join(snapshotDir, "manifest.json"))
+	if err != nil {
+		return err
+	}
+	var manifest SnapshotManifest
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		return err
+	}
+	entry := SnapshotTarget{Target: target, Action: "command_file"}
+	if current, readErr := os.ReadFile(target); readErr == nil {
+		backup := filepath.Join(snapshotDir, "files", fmt.Sprintf("command-%d", len(manifest.Targets)))
+		if err := os.MkdirAll(filepath.Dir(backup), 0o700); err != nil {
+			return err
+		}
+		if err := os.WriteFile(backup, current, 0o600); err != nil {
+			return err
+		}
+		entry.Exists = true
+		entry.BackupPath = backup
+	} else if !errors.Is(readErr, os.ErrNotExist) {
+		return readErr
+	}
+	manifest.Targets = append(manifest.Targets, entry)
+	payload, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(snapshotDir, "manifest.json"), payload, 0o600)
+}
+
 // RollbackSnapshot removes links recorded as created by a snapshot. It never
 // removes a path that currently exists as a real file or directory.
 func RollbackSnapshot(snapshotDir string, filesystem platform.FileSystem, linker platform.Linker) error {
@@ -417,6 +453,18 @@ func RollbackSnapshot(snapshotDir string, filesystem platform.FileSystem, linker
 		linker = platform.OSLinker{}
 	}
 	for _, target := range manifest.Targets {
+		if target.Action == "command_file" {
+			if target.Exists && target.BackupPath != "" {
+				if err := copyFile(target.BackupPath, target.Target); err != nil {
+					return err
+				}
+			} else if !target.Exists {
+				if err := os.Remove(target.Target); err != nil && !errors.Is(err, os.ErrNotExist) {
+					return err
+				}
+			}
+			continue
+		}
 		if target.Action == "lockfile" || target.Action == "lockfile_restore" {
 			if target.Exists && target.BackupPath != "" {
 				if err := copyFile(target.BackupPath, target.Target); err != nil {
@@ -519,6 +567,24 @@ func CreateRestoreSnapshot(sourceSnapshotDir, snapshotRoot string) (string, erro
 	}
 	manifest := SnapshotManifest{ID: id, CreatedAt: now}
 	for index, target := range source.Targets {
+		if target.Action == "command_file" {
+			entry := SnapshotTarget{Target: target.Target, Action: "command_file"}
+			if current, readErr := os.ReadFile(target.Target); readErr == nil {
+				backup := filepath.Join(dir, "files", fmt.Sprintf("%d", index))
+				if err := os.MkdirAll(filepath.Dir(backup), 0o700); err != nil {
+					return "", err
+				}
+				if err := os.WriteFile(backup, current, 0o600); err != nil {
+					return "", err
+				}
+				entry.Exists = true
+				entry.BackupPath = backup
+			} else if !errors.Is(readErr, os.ErrNotExist) {
+				return "", readErr
+			}
+			manifest.Targets = append(manifest.Targets, entry)
+			continue
+		}
 		if target.Action == "lockfile" || target.Action == "lockfile_restore" {
 			entry := SnapshotTarget{Target: target.Target, Action: "lockfile_restore"}
 			if current, readErr := os.ReadFile(target.Target); readErr == nil {

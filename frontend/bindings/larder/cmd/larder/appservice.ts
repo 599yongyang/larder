@@ -29,6 +29,10 @@ export function AppInfo(): $CancellablePromise<$models.AppInfo> {
     return $Call.ByID(2585217892);
 }
 
+export function ApplyCommandWrite(planID: string): $CancellablePromise<model$0.Operation> {
+    return $Call.ByID(1253026923, planID);
+}
+
 export function ApplyLinkPlan(planID: string): $CancellablePromise<model$0.Operation> {
     return $Call.ByID(3476406636, planID);
 }
@@ -39,6 +43,10 @@ export function ApplyPlan(planID: string): $CancellablePromise<model$0.Operation
 
 export function ApplyPlanWithResolutions(planID: string, resolutions: { [_ in string]?: string } | null): $CancellablePromise<model$0.Operation> {
     return $Call.ByID(1281102867, planID, resolutions);
+}
+
+export function CancelCommandWrite(planID: string): $CancellablePromise<void> {
+    return $Call.ByID(997356579, planID);
 }
 
 export function CancelScan(): $CancellablePromise<boolean> {
@@ -62,6 +70,18 @@ export function CatalogSkills(view: string): $CancellablePromise<catalog$0.Skill
 
 export function CheckUpdates(): $CancellablePromise<model$0.UpdateReport> {
     return $Call.ByID(3271042347);
+}
+
+export function CommandContent(path: string): $CancellablePromise<string> {
+    return $Call.ByID(335172007, path);
+}
+
+export function CommandTargets(): $CancellablePromise<model$0.CommandTarget[] | null> {
+    return $Call.ByID(2074336492);
+}
+
+export function Commands(): $CancellablePromise<model$0.Command[] | null> {
+    return $Call.ByID(88814095);
 }
 
 export function CreateInstruction(projectPath: string, name: string, content: string): $CancellablePromise<string> {
@@ -130,6 +150,10 @@ export function PickFolder(): $CancellablePromise<string> {
 
 export function PlanCLI(cliID: string, uninstall: boolean, latest: string): $CancellablePromise<model$0.Plan> {
     return $Call.ByID(3089801904, cliID, uninstall, latest);
+}
+
+export function PlanCommandWrite(req: model$0.CommandWriteRequest): $CancellablePromise<model$0.CommandWritePlan> {
+    return $Call.ByID(3297150298, req);
 }
 
 export function PlanCopyToLink(skillID: string, rootIDs: string[] | null): $CancellablePromise<model$0.Plan> {

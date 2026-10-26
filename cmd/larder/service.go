@@ -17,6 +17,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"larder/internal/core/backup"
 	"larder/internal/core/catalog"
+	"larder/internal/core/commands"
 	"larder/internal/core/instructions"
 	"larder/internal/core/inventory"
 	coremcp "larder/internal/core/mcp"
@@ -46,7 +47,7 @@ type AppState struct {
 	UpdatedAt     time.Time          `json:"updatedAt"`
 }
 
-var Version = "0.0.3"
+var Version = "0.0.4"
 
 type MCPTestResult struct {
 	OK      bool   `json:"ok"`
@@ -69,6 +70,7 @@ type AppService struct {
 
 	installsPath string
 	installs     map[string]CatalogInstall
+	commandPlans map[string]model.CommandWritePlan
 	disabledPath string
 	disabled     []ops.DetachedMCP
 	dataDir      string
@@ -94,7 +96,7 @@ func NewAppService() (*AppService, error) {
 	core := inventory.NewService(paths, platform.OSFileSystem{}, db)
 	core.SetSnapshotRoot(filepath.Join(dataDir, "snapshots"))
 	homeDir, _ := paths.HomeDir()
-	service := &AppService{core: core, catalog: catalog.NewClient(), installsPath: filepath.Join(dataDir, "catalog-installs.json"), installs: map[string]CatalogInstall{}, disabledPath: filepath.Join(dataDir, "disabled-mcp.json"), dataDir: dataDir, homeDir: homeDir}
+	service := &AppService{core: core, catalog: catalog.NewClient(), installsPath: filepath.Join(dataDir, "catalog-installs.json"), installs: map[string]CatalogInstall{}, commandPlans: map[string]model.CommandWritePlan{}, disabledPath: filepath.Join(dataDir, "disabled-mcp.json"), dataDir: dataDir, homeDir: homeDir}
 	service.loadCatalogInstalls()
 	service.loadDisabledMCPs()
 	service.state = AppState{SchemaVersion: model.SchemaVersion, Snapshot: model.ScanResult{SchemaVersion: model.SchemaVersion}, UpdatedAt: time.Now()}
@@ -175,6 +177,269 @@ func (s *AppService) refresh(parent context.Context) {
 // State returns a snapshot suitable for the Wails binding. The result is
 // explicitly marked cached or live so stale data is never presented as fresh.
 func (s *AppService) State() AppState { s.mu.RLock(); defer s.mu.RUnlock(); return s.state }
+func (s *AppService) Commands() []model.Command {
+	settings, _ := s.core.Settings(s.context())
+	home, _ := platform.LocalPaths{}.HomeDir()
+	return commands.Scan(s.context(), home, settings.ProjectWorkspaces)
+}
+
+func (s *AppService) CommandTargets() []model.CommandTarget {
+	settings, _ := s.core.Settings(s.context())
+	home, _ := platform.LocalPaths{}.HomeDir()
+	return commands.Targets(home, settings.ProjectWorkspaces)
+}
+
+func (s *AppService) PlanCommandWrite(req model.CommandWriteRequest) (model.CommandWritePlan, error) {
+	if len(req.Content) > 2<<20 {
+		return model.CommandWritePlan{}, errors.New("command content is too large")
+	}
+	targets := s.CommandTargets()
+	scanned := s.Commands()
+	var target model.CommandTarget
+	var source *model.Command
+	var name, content, operation, format string
+
+	if req.SourcePath != "" {
+		for index := range scanned {
+			if scanned[index].Path == req.SourcePath {
+				source = &scanned[index]
+				break
+			}
+		}
+		if source == nil {
+			return model.CommandWritePlan{}, errors.New("source command not found")
+		}
+		var err error
+		target, err = findCommandTarget(targets, req)
+		if err != nil {
+			return model.CommandWritePlan{}, err
+		}
+		raw, err := os.ReadFile(source.Path)
+		if err != nil {
+			return model.CommandWritePlan{}, err
+		}
+		name = strings.TrimSpace(req.Name)
+		if name == "" {
+			name = source.Name
+		}
+		format = target.Format
+		sourceFormat := source.Format
+		if sourceFormat == "" {
+			sourceFormat = "markdown"
+		}
+		var warnings []string
+		content, warnings = commands.Convert(string(raw), sourceFormat, format, target.Agent)
+		operation = "command_convert"
+		if strings.TrimSpace(req.Content) != "" {
+			content = req.Content
+		}
+		plan := s.buildCommandPlan(target, name, content, operation)
+		plan.Warnings = append(plan.Warnings, warnings...)
+		return s.storeCommandPlan(plan)
+	}
+
+	if req.Path != "" {
+		for index := range scanned {
+			if scanned[index].Path == req.Path {
+				source = &scanned[index]
+				break
+			}
+		}
+		if source == nil {
+			return model.CommandWritePlan{}, errors.New("command not found")
+		}
+		target = model.CommandTarget{Agent: source.Agent, Scope: source.Scope, Project: source.Project, RootPath: source.RootPath, Format: source.Format}
+		name = source.Name
+		if strings.TrimSpace(req.Name) != "" {
+			name = strings.TrimSpace(req.Name)
+		}
+		content = req.Content
+		if content == "" {
+			raw, err := os.ReadFile(source.Path)
+			if err != nil {
+				return model.CommandWritePlan{}, err
+			}
+			content = string(raw)
+		}
+		operation = "command_update"
+	} else {
+		var err error
+		target, err = findCommandTarget(targets, req)
+		if err != nil {
+			return model.CommandWritePlan{}, err
+		}
+		name = strings.TrimSpace(req.Name)
+		content = req.Content
+		operation = "command_create"
+	}
+	plan := s.buildCommandPlan(target, name, content, operation)
+	return s.storeCommandPlan(plan)
+}
+
+func findCommandTarget(targets []model.CommandTarget, req model.CommandWriteRequest) (model.CommandTarget, error) {
+	for _, target := range targets {
+		if req.Agent != "" && target.Agent != req.Agent {
+			continue
+		}
+		if req.Scope != "" && target.Scope != req.Scope {
+			continue
+		}
+		if req.Project != "" && target.Project != req.Project {
+			continue
+		}
+		if req.RootPath != "" && target.RootPath != req.RootPath {
+			continue
+		}
+		return target, nil
+	}
+	return model.CommandTarget{}, errors.New("command target not found")
+}
+
+func (s *AppService) buildCommandPlan(target model.CommandTarget, name, content, operation string) model.CommandWritePlan {
+	name = cleanCommandName(name)
+	format := target.Format
+	if format == "" {
+		format = "markdown"
+	}
+	ext := ".md"
+	if format == "toml" {
+		ext = ".toml"
+	}
+	path := filepath.Join(target.RootPath, filepath.FromSlash(name)+ext)
+	current := ""
+	exists := false
+	if raw, err := os.ReadFile(path); err == nil {
+		current = string(raw)
+		exists = true
+	}
+	plan := model.CommandWritePlan{ID: fmt.Sprintf("command-plan-%d", time.Now().UnixNano()), Operation: operation, Target: target, Name: name, Path: path, Content: content, CurrentContent: current, Exists: exists, CreatedAt: time.Now()}
+	if exists {
+		plan.Warnings = append(plan.Warnings, "target already exists; applying will overwrite it")
+	}
+	if name == "" {
+		plan.Warnings = append(plan.Warnings, "command name is empty")
+	}
+	return plan
+}
+
+func cleanCommandName(name string) string {
+	name = strings.TrimSpace(strings.ReplaceAll(name, "\\", "/"))
+	name = strings.TrimPrefix(name, "/")
+	for strings.Contains(name, "//") {
+		name = strings.ReplaceAll(name, "//", "/")
+	}
+	parts := strings.Split(name, "/")
+	clean := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part == "" || part == "." || part == ".." {
+			continue
+		}
+		clean = append(clean, part)
+	}
+	return strings.Join(clean, "/")
+}
+
+func (s *AppService) storeCommandPlan(plan model.CommandWritePlan) (model.CommandWritePlan, error) {
+	if plan.Name == "" {
+		return model.CommandWritePlan{}, errors.New("command name is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.commandPlans == nil {
+		s.commandPlans = map[string]model.CommandWritePlan{}
+	}
+	s.commandPlans[plan.ID] = plan
+	return plan, nil
+}
+
+func (s *AppService) ApplyCommandWrite(planID string) (model.Operation, error) {
+	s.mu.Lock()
+	plan, ok := s.commandPlans[planID]
+	s.mu.Unlock()
+	if !ok {
+		return model.Operation{}, errors.New("command plan not found or expired")
+	}
+	if plan.Target.RootPath == "" || !strings.HasPrefix(filepath.Clean(plan.Path), filepath.Clean(plan.Target.RootPath)+string(filepath.Separator)) {
+		return model.Operation{}, errors.New("command path is outside target root")
+	}
+	snapshotDir := filepath.Join(s.dataDir, "snapshots", "command-"+plan.ID)
+	if err := os.MkdirAll(snapshotDir, 0o700); err != nil {
+		return model.Operation{}, err
+	}
+	manifest := ops.SnapshotManifest{ID: filepath.Base(snapshotDir), PlanID: plan.ID, CreatedAt: time.Now()}
+	payload, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return model.Operation{}, err
+	}
+	if err := os.WriteFile(filepath.Join(snapshotDir, "manifest.json"), payload, 0o600); err != nil {
+		return model.Operation{}, err
+	}
+	if err := ops.SnapshotFile(snapshotDir, plan.Path); err != nil {
+		return model.Operation{}, err
+	}
+	if err := writeCommandFile(plan.Path, plan.Content); err != nil {
+		return model.Operation{}, err
+	}
+	now := time.Now()
+	op := model.Operation{ID: fmt.Sprintf("op-command-%d", now.UnixNano()), PlanID: plan.ID, Operation: plan.Operation, Status: "success", Message: "Command written", Changes: []string{"command:" + plan.Path}, SnapshotPath: snapshotDir, CreatedAt: now}
+	if store := s.core.Store(); store != nil {
+		if err := store.SaveOperation(s.context(), op); err != nil {
+			return op, err
+		}
+	}
+	s.mu.Lock()
+	delete(s.commandPlans, planID)
+	s.mu.Unlock()
+	return op, nil
+}
+
+func (s *AppService) CancelCommandWrite(planID string) {
+	s.mu.Lock()
+	delete(s.commandPlans, planID)
+	s.mu.Unlock()
+}
+
+func writeCommandFile(path, content string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".command-*.tmp")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	defer os.Remove(name)
+	if err := tmp.Chmod(0o644); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.WriteString(content); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(name, path)
+}
+
+func (s *AppService) CommandContent(path string) (string, error) {
+	for _, command := range s.Commands() {
+		if command.Path != path {
+			continue
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return "", err
+		}
+		if len(raw) > 2<<20 {
+			return "", errors.New("command file is too large")
+		}
+		return string(raw), nil
+	}
+	return "", errors.New("command not found")
+}
+
 func (s *AppService) Xray(agentID string, project string, compareAgentIDs []string) (model.XrayReport, error) {
 	settings, _ := s.core.Settings(s.context())
 	return xray.Build(xray.Input{

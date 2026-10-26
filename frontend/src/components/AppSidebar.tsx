@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronDown, Database, Folder, FolderPlus, History, FileText, LayoutList, Server, Settings as SettingsIcon, Settings2, Terminal } from 'lucide-react'
+import { ChevronDown, Command as CommandIcon, Database, Folder, FolderPlus, History, FileText, LayoutList, Server, Settings as SettingsIcon, Settings2, Terminal } from 'lucide-react'
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupAction, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar'
 import { AgentIcon } from './AgentIcon'
 import { NavButton } from './NavButton'
@@ -9,7 +9,7 @@ import { isMacPlatform } from '../lib/platform'
 import type { View } from '../types'
 
 type Scope = { kind: 'library'; label: string } | { kind: 'agent'; id: string; label: string } | { kind: 'project'; path: string; label: string } | undefined
-type Item = { id?: string; label: string; icon?: string; count?: number; path?: string }
+type Item = { id?: string; label: string; icon?: string; count?: number; path?: string; status?: string }
 
 type Props = {
   view: View
@@ -22,12 +22,13 @@ type Props = {
   cliCount: number
   mcpCount: number
   instructionCount: number
+  commandCount: number
   agents: Item[]
   projects: Item[]
   centralCount: number
 }
 
-export function AppSidebar({ view, scope, onView, onScope, onManageAgents, onManageProjects, skillsCount, cliCount, mcpCount, instructionCount, agents, projects, centralCount }: Props) {
+export function AppSidebar({ view, scope, onView, onScope, onManageAgents, onManageProjects, skillsCount, cliCount, mcpCount, instructionCount, commandCount, agents, projects, centralCount }: Props) {
   const mac = isMacPlatform()
   const [openGroup, setOpenGroup] = useState<'agents' | 'projects' | null>('agents')
   const toggleGroup = (group: 'agents' | 'projects') => setOpenGroup((current) => current === group ? null : group)
@@ -43,6 +44,7 @@ export function AppSidebar({ view, scope, onView, onScope, onManageAgents, onMan
           <NavButton active={view === 'mcp'} onClick={() => onView('mcp')} icon={<Server size={15} aria-hidden="true" />} label="MCP" count={mcpCount} />
           <NavButton active={view === 'cli'} onClick={() => onView('cli')} icon={<Terminal size={15} aria-hidden="true" />} label="CLI" count={cliCount} />
           <NavButton active={view === 'instructions'} onClick={() => onView('instructions')} icon={<FileText size={15} aria-hidden="true" />} label={t('common.instructions')} count={instructionCount} />
+          <NavButton active={view === 'commands'} onClick={() => onView('commands')} icon={<CommandIcon size={15} aria-hidden="true" />} label={t('common.commands')} count={commandCount} />
         </SidebarMenu>
       </SidebarGroup>
       <SidebarGroup className="shrink-0" style={{ paddingTop: 4, paddingBottom: 4 }}>
@@ -58,7 +60,7 @@ export function AppSidebar({ view, scope, onView, onScope, onManageAgents, onMan
           <div className={styles.sidebarGroupBodyInner}><div className={styles.agentsScroll}>
           <SidebarMenu>
             {agents.map((agent) => <SidebarMenuItem key={agent.id ?? agent.label}>
-              <SidebarMenuButton isActive={scope?.kind === 'agent' && scope.id === agent.id} onClick={() => onScope({ kind: 'agent', id: agent.id ?? '', label: agent.label })} title={`${agent.label}: ${agent.count ?? 0} ${t('nav.discoverableSkills')}`} className="h-[28px] text-[12.5px]">
+              <SidebarMenuButton isActive={scope?.kind === 'agent' && scope.id === agent.id} onClick={() => onScope({ kind: 'agent', id: agent.id ?? '', label: agent.label })} title={`${agent.label}: ${agent.count ?? 0} ${t('nav.discoverableSkills')}${agent.status && agent.status !== 'available' ? ` · ${t('nav.skillsDirectoryMissing')}` : ''}`} className="h-[28px] text-[12.5px]">
                 <AgentIcon name={agent.icon ?? agent.label} className="size-4" /><span>{agent.label}</span>
               </SidebarMenuButton>
               {agent.count !== undefined && <SidebarMenuBadge title={`${agent.count} ${t('nav.discoverableSkills')}`}>{agent.count}</SidebarMenuBadge>}

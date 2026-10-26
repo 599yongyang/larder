@@ -20,10 +20,11 @@ import { SkillsView } from './features/ledger/LedgerView'
 import { SettingsView } from './features/settings/SettingsView'
 import { XrayView } from './features/xray/XrayView'
 import { InstructionsView } from './features/instructions/InstructionsView'
+import { CommandsView } from './features/commands/CommandsView'
 import { ProjectView } from './features/project/ProjectView'
 import { formatRelativeTime, skillSourceLabel } from './lib/format'
 import { emptySnapshot } from './types'
-import type { AppInfo, InstructionFile, Issue, Operation, TimelineEvent, UpdateReport, UsageStat, View } from './types'
+import type { AppInfo, Command, InstructionFile, Issue, Operation, TimelineEvent, UpdateReport, UsageStat, View } from './types'
 import styles from './App.module.css'
 import { backend } from './backend'
 import { useAppStore } from './store'
@@ -53,6 +54,7 @@ function App() {
   const [mcpFocus, setMcpFocus] = useState<string>()
   const [mcps, setMcps] = useState<any[]>([])
   const [instructions, setInstructions] = useState<InstructionFile[]>([])
+  const [commands, setCommands] = useState<Command[]>([])
   const [appInfo, setAppInfo] = useState<AppInfo>()
   const [updates, setUpdates] = useState<UpdateReport>()
   const [updatesLoading, setUpdatesLoading] = useState(false)
@@ -91,9 +93,10 @@ function App() {
         backend.usageStats(),
         backend.mcp(),
         backend.instructions(),
+        backend.commands(),
         backend.appInfo(),
       ])
-      const [next, nextSettings, nextOperations, nextTimeline, nextUsage, nextMcps, nextInstructions, nextAppInfo] = results
+      const [next, nextSettings, nextOperations, nextTimeline, nextUsage, nextMcps, nextInstructions, nextCommands, nextAppInfo] = results
       if (next.status === 'fulfilled') {
         setState(next.value)
         setUpdates(next.value.updates?.checkedAt ? next.value.updates : undefined)
@@ -104,6 +107,7 @@ function App() {
       if (nextUsage.status === 'fulfilled') setUsage(nextUsage.value)
       if (nextMcps.status === 'fulfilled') setMcps(nextMcps.value)
       if (nextInstructions.status === 'fulfilled') setInstructions(nextInstructions.value)
+      if (nextCommands.status === 'fulfilled') setCommands(nextCommands.value)
       if (nextAppInfo.status === 'fulfilled') setAppInfo(nextAppInfo.value)
       const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected')
       if (failure) toastError(failure.reason, t('app.someDataCouldNotBeRead'))
@@ -133,6 +137,10 @@ function App() {
       if (view === 'instructions' || view === 'project') {
         const result = await Promise.allSettled([backend.instructions()])
         if (result[0].status === 'fulfilled') setInstructions(result[0].value)
+      }
+      if (view === 'commands') {
+        const result = await Promise.allSettled([backend.commands()])
+        if (result[0].status === 'fulfilled') setCommands(result[0].value)
       }
       if (view === 'history') {
         const [nextOperations, nextTimeline, nextUsage] = await Promise.allSettled([backend.operations(), backend.timeline(), backend.usageStats()])
@@ -306,7 +314,7 @@ function App() {
     const ids = new Set<string>()
     for (const skill of snapshot.skills) if (skill.rootId === root.id) ids.add(skill.id)
     for (const link of snapshot.agentLinks) if (link.rootId === root.id && link.visible) ids.add(link.skillId)
-    return { id: root.id, label: agentLabel(root), icon: root.logicalAgent || root.label, count: ids.size }
+    return { id: root.id, label: agentLabel(root), icon: root.logicalAgent || root.label, count: ids.size, status: root.status }
   })
   const activeAgentRoot = scope?.kind === 'agent' ? agentRoots.find((root) => root.id === scope.id) : undefined
   const projectItems = settings.projectWorkspaces.map((workspace) => { const projectSkills = snapshot.skills.filter((skill) => skill.isProject && (skill.path === workspace || skill.path.startsWith(workspace + '/'))); return { path: workspace, label: workspace.split('/').filter(Boolean).pop() || workspace, count: new Set(projectSkills.map(uniqueSkillKey)).size } })
@@ -314,7 +322,7 @@ function App() {
   const removeProject = async (path: string) => { const next = await backend.saveSettings({ ...settings, projectWorkspaces: settings.projectWorkspaces.filter((item) => item !== path) }); setSettings(next); await backend.scan(); await refresh() }
   return <SidebarProvider className={styles.appShell} style={{ "--sidebar-width": "232px" } as React.CSSProperties}>
     <AppSidebar view={view} scope={scope} onView={goView} onScope={goScope} onManageAgents={() => setAgentManagerOpen(true)} skillsCount={uniqueVisibleSkills} cliCount={clis.length} mcpCount={mcps.length}
-      instructionCount={instructions.length} onManageProjects={() => setProjectManagerOpen(true)} agents={agentItems} projects={projectItems} centralCount={snapshot.skills.filter((skill) => skill.rootKind === 'global').length} />
+      instructionCount={instructions.length} commandCount={commands.length} onManageProjects={() => setProjectManagerOpen(true)} agents={agentItems} projects={projectItems} centralCount={snapshot.skills.filter((skill) => skill.rootKind === 'global').length} />
     <SidebarInset className={styles.main}><header className={styles.topbar} title={t('app.doubleClickToMaximize')} onDoubleClick={(event) => { const target = event.target as HTMLElement; if (target.closest('button, a, input, [role="button"]')) return; event.preventDefault(); void backend.toggleWindowMaximised() }}><h1>{view === 'xray' && scope?.kind === 'agent' ? `${scope.label} · ${t('xray.inspector')}` : view === 'skills' && scope ? (scope.kind === 'library' ? t('common.sharedLibrary') : `${scope.label} · ${t('common.skills')}`) : view === 'project' && scope?.kind === 'project' ? `${scope.label} · ${t('common.projects')}` : viewTitle(view)}</h1><div className={styles.topActions}><Button variant="outline" size="sm" onClick={() => setCommandOpen(true)} className="w-[260px] justify-start gap-2 font-normal text-muted-foreground"><Search size={14} aria-hidden="true" /><span>{t('app.searchOrJump')}</span><Kbd className="ml-auto">{shortcutLabel('K')}</Kbd></Button><Button variant="outline" size="icon-sm" title={state.scanning ? t('app.cancelScan') : t('common.rescan')} aria-label={state.scanning ? t('app.cancelScan') : t('common.rescan')} aria-keyshortcuts={ariaShortcut('R')} onClick={() => state.scanning ? void backend.cancel() : void scan()}><RefreshCw size={14} aria-hidden="true" className={state.scanning ? 'animate-spin' : undefined} /></Button><Button variant="ghost" size="icon-sm" aria-label={t('app.appearanceClickToSwitch', { mode: themeMode === 'system' ? t('app.system') : themeMode === 'light' ? t('common.light') : t('common.dark') })} title={t('app.appearanceClickToSwitch', { mode: themeMode === 'system' ? t('app.system') : themeMode === 'light' ? t('common.light') : t('common.dark') })} onClick={(event) => changeTheme(nextThemeMode(themeMode), event)}>{themeMode === 'system' ? <Monitor size={15} aria-hidden="true" /> : themeMode === 'dark' ? <Moon size={15} aria-hidden="true" /> : <Sun size={15} aria-hidden="true" />}</Button></div></header>
       <div className={`${styles.scanProgress} ${state.scanning ? styles.scanProgressActive : ''}`} aria-hidden={!state.scanning} role="status" aria-live="polite" aria-label={state.scanning ? t('common.scanning') : undefined}><span /></div>
       {scope?.kind === 'agent' && (view === 'skills' || view === 'xray') && <div className={styles.agentViewTabs} role="tablist" aria-label={t('xray.title')}><button type="button" role="tab" aria-selected={view === 'skills'} className={`${styles.agentViewTab} ${view === 'skills' ? styles.agentViewTabActive : ''}`} onClick={() => pageTransition(() => setView('skills'))}>{t('common.skills')}</button><button type="button" role="tab" aria-selected={view === 'xray'} className={`${styles.agentViewTab} ${view === 'xray' ? styles.agentViewTabActive : ''}`} onClick={() => pageTransition(() => setView('xray'))}>{t('xray.inspector')}</button></div>}
@@ -324,6 +332,7 @@ function App() {
         {view === 'xray' && activeAgentRoot && <XrayView root={activeAgentRoot} projects={settings.projectWorkspaces} compareOptions={agentRoots.map((root) => ({ id: root.id, label: root.label, logicalAgent: root.logicalAgent }))} refreshKey={state.updatedAt} onOpenSkill={(id, project) => pageTransition(() => { if (project) setScope({ kind: 'project', path: project, label: project.split('/').filter(Boolean).pop() || project }); setSource('all'); setView('skills'); setSelectedId(id) })} onReveal={(id) => void backend.revealSkill(id).catch((error) => toastError(error, t('app.unableToRevealSkill')))} />}
         {view === 'mcp' && <MCPView servers={mcps} clis={clis} onRefresh={refresh} focusMCP={mcpFocus} onFocusConsumed={() => setMcpFocus(undefined)} onOpenCLI={(id) => pageTransition(() => { setScope(undefined); setCliFocus(id); setView('cli') })} />}
         {view === 'instructions' && <InstructionsView files={instructions} projects={settings.projectWorkspaces} onRefresh={refresh} />}
+        {view === 'commands' && <CommandsView commands={commands} onRefresh={refresh} />}
         {view === 'project' && scope?.kind === 'project' && <ProjectView path={scope.path} skills={snapshot.skills} servers={mcps} instructions={instructions} projects={settings.projectWorkspaces} issues={snapshot.issues} onRefresh={refresh} />}
         {view === 'cli' && <CLIView clis={visibleClis} skills={snapshot.skills} mcps={mcps} onOpenSkill={(id) => pageTransition(() => { setScope(undefined); setView('skills'); setSelectedId(id) })} onOpenMCP={() => pageTransition(() => { setScope(undefined); setView('mcp') })} onRefresh={refresh} updates={updates} updatesLoading={updatesLoading} onCheckUpdates={() => void checkUpdates(true)} focusCLI={cliFocus} onFocusConsumed={() => setCliFocus(undefined)} />}
         {view === 'history' && <HistoryView events={timeline} usage={usage} operations={operations} onRefresh={refresh} onRollback={async (id) => { const operation = await backend.rollbackOperation(id) as Operation; await refresh(); return operation }} />}
@@ -345,6 +354,6 @@ function App() {
   </SidebarProvider>
 }
 
-function viewTitle(view: View) { return view === 'xray' ? t('xray.inspector') : view === 'skills' ? t('common.skills') : view === 'cli' ? 'CLI' : view === 'mcp' ? 'MCP' : view === 'instructions' ? t('common.instructions') : view === 'project' ? t('common.projects') : view === 'history' ? t('common.history') : t('common.settings') }
+function viewTitle(view: View) { return view === 'xray' ? t('xray.inspector') : view === 'skills' ? t('common.skills') : view === 'cli' ? 'CLI' : view === 'mcp' ? 'MCP' : view === 'instructions' ? t('common.instructions') : view === 'project' ? t('common.projects') : view === 'commands' ? t('common.commands') : view === 'history' ? t('common.history') : t('common.settings') }
 
 export default App

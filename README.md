@@ -4,16 +4,18 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-Larder is a local-first desktop app for developers who work with multiple AI agents. It shows what is actually installed on your machine — Skills, MCP servers, CLI tools, and instruction files — and lets you manage them safely.
+Larder is a local-first desktop app for developers who work with multiple AI agents. It shows what is actually installed on your machine — Skills, MCP servers, CLI tools, instruction files, and custom Agent commands — and lets you manage them safely.
 
 <p align="center"><img src="docs/screenshots/skills-cards-en.png" width="880" alt="Skills overview"></p>
 
 ## What it does
 
 - **Skills** — scan every Agent directory and shared library, inspect sources, token cost and visibility, then install, update, uninstall, repair links or sync copies.
+- **Agent Inspector** — see what an Agent statically sees and why: visible Skills, duplicates, missing links, instruction files and context budget. Read-only.
 - **MCP servers** — inspect global and project configuration, add or edit servers, toggle them per Agent, and test whether a command or URL is reachable.
 - **CLI tools** — see what is installed, which package manager owns it, duplicates and available updates. Update or uninstall through the package manager.
 - **Instruction files** — scan `AGENTS.md`, `CLAUDE.md`, Cursor rules and Copilot instructions. Preview Markdown or raw content, edit existing files, or create new ones.
+- **Commands** — scan custom slash commands for Claude Code, Cursor, OpenCode, Gemini CLI and GitHub Copilot. Create or edit them through a plan and snapshot; Codex prompts are not supported by current Codex releases and use Skills instead.
 - **Projects** — see the Skills, MCP servers and instruction files that belong to a project in one place.
 - **Language** — switch between English and Chinese in Settings; the app follows the system language on first launch.
 
@@ -117,7 +119,7 @@ On Windows, an unsigned build may show a SmartScreen warning.
 
 ## Status
 
-`0.0.3` — early development. The current focus is local truth, safe writes and the daily workflow around Skills and MCP.
+`0.0.4` — early development. The current focus is local truth, safe writes, and a clearer view of what each Agent actually sees.
 
 ## License
 

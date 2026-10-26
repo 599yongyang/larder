@@ -16,7 +16,7 @@ vi.mock('../backend', () => ({
   backend: {
     state: async () => ({ snapshot: { schemaVersion: '1', status: 'complete', roots, skills, agentLinks: links, clis: [], issues: [], fromCache: false }, cached: false, scanning: false, lastError: '', updatedAt: '' }),
     settings: async () => ({ projectWorkspaces: [], ignoredAgents: [], showAgentBuiltins: false, usageStatsEnabled: false, autoCheckUpdates: false, updateCheckIntervalHours: 24 }),
-    operations: async () => [], timeline: async () => [], usageStats: async () => [], mcp: async () => [], instructions: async () => [], appInfo: async () => ({ version: 'dev', schemaVersion: '1', goVersion: 'go', platform: 'darwin/arm64', dataDir: '/tmp', homeDir: '/tmp' }),
+    operations: async () => [], timeline: async () => [], usageStats: async () => [], mcp: async () => [], instructions: async () => [], commands: async () => [], appInfo: async () => ({ version: 'dev', schemaVersion: '1', goVersion: 'go', platform: 'darwin/arm64', dataDir: '/tmp', homeDir: '/tmp' }),
     checkUpdates: async () => ({ checkedAt: '', items: [], errors: [], scanned: 0, available: 0, current: 0, skillScanned: 0 }),
   },
 }))

@@ -4,16 +4,18 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-Larder 是一个本地优先的桌面应用，面向同时使用多个 AI Agent 的开发者。它把本机真实存在的 Skills、MCP Server、CLI 和指令文件集中展示出来，并让你安全地管理它们。
+Larder 是一个本地优先的桌面应用，面向同时使用多个 AI Agent 的开发者。它把本机真实存在的 Skills、MCP Server、CLI、指令文件和 Agent 自定义命令集中展示出来，并让你安全地管理它们。
 
 <p align="center"><img src="docs/screenshots/skills-cards-zh.png" width="880" alt="Skills 页面"></p>
 
 ## 能做什么
 
 - **Skills**：扫描共享库和各个 Agent 目录，查看来源、上下文成本和可见性；支持安装、更新、卸载、修复链接和同步副本。
+- **Agent Inspector**：查看 Agent 静态可见的 Skills、重复项、缺失链接、指令文件和上下文预算，只读解释“它实际看到了什么”。
 - **MCP Server**：查看全局和项目配置，添加或编辑 Server，按 Agent 启停，并测试命令或 URL 是否可用。
 - **CLI 工具**：查看已安装命令、所属包管理器、重复安装和可用更新；通过包管理器更新或卸载。
 - **指令文件**：扫描 `AGENTS.md`、`CLAUDE.md`、Cursor rules 和 Copilot instructions；支持 Markdown 预览、原文查看、编辑和新建。
+- **Commands**：扫描 Claude Code、Cursor、OpenCode、Gemini CLI 和 GitHub Copilot 的自定义命令；通过计划和快照新建或编辑。Codex 新版本已改用 Skills，不再读取 prompts。
 - **项目**：在一个页面里看到项目自己的 Skills、MCP 和指令文件。
 - **语言**：在设置中切换中文和英文；首次启动会跟随系统语言。
 
@@ -117,7 +119,7 @@ xattr -dr com.apple.quarantine /path/to/Larder.app
 
 ## 当前状态
 
-`0.0.3` — 早期开发阶段。当前重点是本机真实状态、安全写入，以及 Skills 和 MCP 的日常工作流。
+`0.0.4` — 早期开发阶段。当前重点是本机真实状态、安全写入，以及更清楚地解释每个 Agent 实际看到了什么。
 
 ## 许可
 

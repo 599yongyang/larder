@@ -103,7 +103,7 @@ func (LocalPaths) DefaultRoots(home string) []RootSpec {
 		{ID: "qwen", Label: "Qwen", LogicalAgent: "Qwen", Path: filepath.Join(home, ".qwen", "skills"), Kind: RootKnownAgent, Known: true},
 		{ID: "roo", Label: "Roo Code", LogicalAgent: "Roo Code", Path: filepath.Join(home, ".roo", "skills"), Kind: RootKnownAgent, Known: true},
 		{ID: "zencoder", Label: "Zencoder", LogicalAgent: "Zencoder", Path: filepath.Join(home, ".zencoder", "skills"), Kind: RootKnownAgent, Known: true},
-		{ID: "omp", Label: "OMP", LogicalAgent: "OMP", Path: filepath.Join(home, ".omp", "agent", "managed-skills"), Kind: RootKnownAgent, Known: true, SharedSkills: true},
+		{ID: "omp", Label: "OMP", LogicalAgent: "OMP", Path: filepath.Join(home, ".omp", "agent", "skills"), Kind: RootKnownAgent, Known: true, SharedSkills: true, ExtraPaths: []string{filepath.Join(home, ".omp", "agent", "managed-skills")}},
 	}
 	return roots
 }
