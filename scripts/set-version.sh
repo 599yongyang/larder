@@ -6,6 +6,17 @@ VERSION="${1:?usage: scripts/set-version.sh VERSION}"
 cd "$(dirname "$0")/.."
 
 export VERSION
+python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+p = Path('version.json')
+data = json.loads(p.read_text())
+data['version'] = os.environ['VERSION']
+data['tag'] = f"v{os.environ['VERSION']}"
+data['url'] = f"https://github.com/599yongyang/larder/releases/tag/v{os.environ['VERSION']}"
+p.write_text(json.dumps(data, indent=2) + '\n')
+PY
 perl -0pi -e 's/var Version = "[0-9]+\.[0-9]+\.[0-9]+"/var Version = "$ENV{VERSION}"/' cmd/larder/service.go
 perl -0pi -e 's{larder/[0-9]+\.[0-9]+\.[0-9]+ update-check}{larder/$ENV{VERSION} update-check}' internal/platform/fetch.go
 perl -0pi -e 's/(version: ")[0-9]+\.[0-9]+\.[0-9]+(")/$1$ENV{VERSION}$2/' build/config.yml
