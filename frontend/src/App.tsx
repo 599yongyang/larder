@@ -217,6 +217,8 @@ function App() {
   const ignoredAgents = settings.ignoredAgents ?? []
   const ignoredAgentPaths = new Set(ignoredAgents.map((agent) => agent.path))
   const hasGlobalSkills = snapshot.skills.some((skill) => skill.rootKind === 'global')
+  const uniqueSkillKey = (skill: { contentHash?: string; folderHash?: string; name: string }) => skill.contentHash || skill.folderHash || skill.name
+  const uniqueVisibleSkills = new Set(snapshot.skills.filter((skill) => !skill.isAgentLocal).map(uniqueSkillKey)).size
   const agentRoots = sortAgentRoots(snapshot.roots.filter((root) => (root.kind === 'known_agent' || root.kind === 'unknown_agent') && !ignoredAgentPaths.has(root.path) && ((root.status === 'available' && root.entryCount > 0) || (root.sharedSkills && hasGlobalSkills))))
   const clis = snapshot.clis ?? []
   const visibleClis = clis
@@ -296,24 +298,27 @@ function App() {
   const visibleSkills = scopedSkills.filter((skill) => source === 'all' || skillSourceLabel(skill) === source)
   const sources: string[] = Array.from(new Set<string>(visibleSkills.map(skillSourceLabel))).sort()
   const selectedSkill = selectedId ? visibleSkills.find((skill) => skill.id === selectedId) : undefined
+  const agentLabelCounts = new Map<string, number>()
+  for (const root of agentRoots) agentLabelCounts.set(root.label, (agentLabelCounts.get(root.label) ?? 0) + 1)
+  const agentLabel = (root: { id: string; label: string }) => (agentLabelCounts.get(root.label) ?? 0) > 1 ? `${root.label} · ${root.id}` : root.label
   const agentItems = agentRoots.map((root) => {
     const ids = new Set<string>()
     for (const skill of snapshot.skills) if (skill.rootId === root.id) ids.add(skill.id)
     for (const link of snapshot.agentLinks) if (link.rootId === root.id && link.visible) ids.add(link.skillId)
-    return { id: root.id, label: root.logicalAgent || root.label, count: ids.size }
+    return { id: root.id, label: agentLabel(root), icon: root.logicalAgent || root.label, count: ids.size }
   })
-  const projectItems = settings.projectWorkspaces.map((workspace) => ({ path: workspace, label: workspace.split('/').filter(Boolean).pop() || workspace, count: snapshot.skills.filter((skill) => skill.isProject && (skill.path === workspace || skill.path.startsWith(workspace + '/'))).length }))
+  const projectItems = settings.projectWorkspaces.map((workspace) => { const projectSkills = snapshot.skills.filter((skill) => skill.isProject && (skill.path === workspace || skill.path.startsWith(workspace + '/'))); return { path: workspace, label: workspace.split('/').filter(Boolean).pop() || workspace, count: new Set(projectSkills.map(uniqueSkillKey)).size } })
   const addProject = async (value: string) => { const path = value.trim(); if (!path) return; const next = await backend.saveSettings({ ...settings, projectWorkspaces: [...new Set([...settings.projectWorkspaces, path])] }); setSettings(next); await backend.scan(); await refresh(); toastSuccess(t('app.projectWorkspaceAdded'), t('app.scanningAgain')) }
   const removeProject = async (path: string) => { const next = await backend.saveSettings({ ...settings, projectWorkspaces: settings.projectWorkspaces.filter((item) => item !== path) }); setSettings(next); await backend.scan(); await refresh() }
   return <SidebarProvider className={styles.appShell} style={{ "--sidebar-width": "232px" } as React.CSSProperties}>
-    <AppSidebar view={view} scope={scope} onView={goView} onScope={goScope} onManageAgents={() => setAgentManagerOpen(true)} skillsCount={snapshot.skills.filter((skill) => !skill.isAgentLocal).length} cliCount={clis.length} mcpCount={mcps.length}
+    <AppSidebar view={view} scope={scope} onView={goView} onScope={goScope} onManageAgents={() => setAgentManagerOpen(true)} skillsCount={uniqueVisibleSkills} cliCount={clis.length} mcpCount={mcps.length}
       instructionCount={instructions.length} onManageProjects={() => setProjectManagerOpen(true)} agents={agentItems} projects={projectItems} centralCount={snapshot.skills.filter((skill) => skill.rootKind === 'global').length} />
     <SidebarInset className={styles.main}><header className={styles.topbar} title={t('app.doubleClickToMaximize')} onDoubleClick={(event) => { const target = event.target as HTMLElement; if (target.closest('button, a, input, [role="button"]')) return; event.preventDefault(); void backend.toggleWindowMaximised() }}><h1>{view === 'skills' && scope ? (scope.kind === 'library' ? t('common.sharedLibrary') : `${scope.label} · ${t('common.skills')}`) : view === 'project' && scope?.kind === 'project' ? `${scope.label} · ${t('common.projects')}` : viewTitle(view)}</h1><div className={styles.topActions}><Button variant="outline" size="sm" onClick={() => setCommandOpen(true)} className="w-[260px] justify-start gap-2 font-normal text-muted-foreground"><Search size={14} aria-hidden="true" /><span>{t('app.searchOrJump')}</span><Kbd className="ml-auto">{shortcutLabel('K')}</Kbd></Button><Button variant="outline" size="icon-sm" title={state.scanning ? t('app.cancelScan') : t('common.rescan')} aria-label={state.scanning ? t('app.cancelScan') : t('common.rescan')} aria-keyshortcuts={ariaShortcut('R')} onClick={() => state.scanning ? void backend.cancel() : void scan()}><RefreshCw size={14} aria-hidden="true" className={state.scanning ? 'animate-spin' : undefined} /></Button><Button variant="ghost" size="icon-sm" aria-label={t('app.appearanceClickToSwitch', { mode: themeMode === 'system' ? t('app.system') : themeMode === 'light' ? t('common.light') : t('common.dark') })} title={t('app.appearanceClickToSwitch', { mode: themeMode === 'system' ? t('app.system') : themeMode === 'light' ? t('common.light') : t('common.dark') })} onClick={(event) => changeTheme(nextThemeMode(themeMode), event)}>{themeMode === 'system' ? <Monitor size={15} aria-hidden="true" /> : themeMode === 'dark' ? <Moon size={15} aria-hidden="true" /> : <Sun size={15} aria-hidden="true" />}</Button></div></header>
       <div className={`${styles.scanProgress} ${state.scanning ? styles.scanProgressActive : ''}`} aria-hidden={!state.scanning} role="status" aria-live="polite" aria-label={state.scanning ? t('common.scanning') : undefined}><span /></div>
     
       <div ref={viewBodyRef} className={styles.viewBody} onScroll={saveScroll}>
         {!ready ? <InitialSkeleton /> : <>
-        {view === 'skills' && <SkillsView skills={visibleSkills} allSkills={scopedSkills} roots={agentRoots} links={snapshot.agentLinks} operations={operations} selected={selectedSkill} onSelect={setSelectedId} onCloseDetail={() => setSelectedId(undefined)} source={source} sources={sources} onSource={setSource} onRefresh={refresh} issues={snapshot.issues} updates={updates} updatesLoading={updatesLoading} onCheckUpdates={() => void checkUpdates(true)} clis={clis} onOpenCLI={(id) => pageTransition(() => { setScope(undefined); setCliFocus(id); setView('cli') })} />}
+        {view === 'skills' && <SkillsView skills={visibleSkills} allSkills={scopedSkills} roots={agentRoots} scopeKind={scope?.kind} links={snapshot.agentLinks} operations={operations} selected={selectedSkill} onSelect={setSelectedId} onCloseDetail={() => setSelectedId(undefined)} source={source} sources={sources} onSource={setSource} onRefresh={refresh} issues={snapshot.issues} updates={updates} updatesLoading={updatesLoading} onCheckUpdates={() => void checkUpdates(true)} clis={clis} onOpenCLI={(id) => pageTransition(() => { setScope(undefined); setCliFocus(id); setView('cli') })} />}
         {view === 'mcp' && <MCPView servers={mcps} clis={clis} onRefresh={refresh} focusMCP={mcpFocus} onFocusConsumed={() => setMcpFocus(undefined)} onOpenCLI={(id) => pageTransition(() => { setScope(undefined); setCliFocus(id); setView('cli') })} />}
         {view === 'instructions' && <InstructionsView files={instructions} projects={settings.projectWorkspaces} onRefresh={refresh} />}
         {view === 'project' && scope?.kind === 'project' && <ProjectView path={scope.path} skills={snapshot.skills} servers={mcps} instructions={instructions} projects={settings.projectWorkspaces} issues={snapshot.issues} onRefresh={refresh} />}

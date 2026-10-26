@@ -88,7 +88,7 @@ function CLIView({ clis, skills, mcps, onRefresh, updates, updatesLoading, onChe
   const commandRow = (cli: CLIInfo, nested = false) => {
     const update = updateFor(cli)
     const canUpdate = update?.state === 'available'
-    return <tr key={cli.id} className={`${selected?.id === cli.id ? styles.selectedRow : ''} ${styles.clickableRow}`} onClick={() => setSelectedId(cli.id)}>
+    return <tr key={cli.id} className={`${selected?.id === cli.id ? styles.selectedRow : ''} ${styles.clickableRow}`} tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedId(cli.id) } }} onClick={() => setSelectedId(cli.id)}>
       <td className={nested ? styles.cliNestedCell : undefined}><div className={styles.cliName}><CLIIcon owner={cli.owner} className="size-4" /><strong>{cli.name}</strong>{canUpdate && <Button variant="outline" size="xs" className={styles.cliUpdateButton} onClick={(event) => { event.stopPropagation(); setUpdateTarget(cli); setUpdateLabel(cli.name) }}>{t('common.updateAvailable')} {update.latestVersion}</Button>}</div></td>
       <td><code>{cli.version || '—'}</code></td>
       <td><code>{shortPath(cli.path)}</code></td>
@@ -126,7 +126,7 @@ function CLIView({ clis, skills, mcps, onRefresh, updates, updatesLoading, onChe
       <thead><tr><th>{t('cli.packages')}</th><th>{t('common.commandLabel')}</th><th>{t('common.version')}</th><th>{t('common.path')}</th><th>{t('common.status')}</th><th>{t('common.actions')}</th></tr></thead>
       <tbody>{groups.length === 0 ? <tr><td colSpan={5} className={styles.empty}>{clis.length === 0 ? <div className={styles.emptyAction}><span>{t('cli.noClisFoundYet')}</span><Button size="sm" onClick={() => void onRefresh()}><RefreshCw size={14} />{t('common.rescan')}</Button></div> : t('cli.noCliMatchesTheCurrentFilters')}</td></tr> : visibleGroups.map((group) => {
         const summary = groupSummary(group, updateFor)
-        return <tr key={group.key} className={`${selectedPackage === group.key ? styles.selectedRow : ''} ${styles.clickableRow}`} onClick={() => setSelectedPackage(group.key)}>
+        return <tr key={group.key} className={`${selectedPackage === group.key ? styles.selectedRow : ''} ${styles.clickableRow}`} tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedPackage(group.key) } }} onClick={() => setSelectedPackage(group.key)}>
           <td><div className={styles.cliName}><CLIIcon owner={group.owner} className="size-4" /><strong>{group.label}</strong><ChevronRight size={13} className="text-muted-foreground" /></div></td>
           <td>{group.items.length}</td>
           <td><code title={summary.versions.join(', ')}>{summary.versions.length === 0 ? '—' : summary.versions.length === 1 ? summary.versions[0] : t('cli.versions', { n: summary.versions.length })}</code></td>
@@ -166,7 +166,7 @@ function CLIView({ clis, skills, mcps, onRefresh, updates, updatesLoading, onChe
           </div>
         </SheetHeader>
         <div className="min-h-0 flex-1 overflow-y-auto p-0">
-          <section className={styles.detailSection}><h3>{t('common.sourceLabel')}</h3><dl className={styles.definition}><dt>{t('common.path')}</dt><dd><code>{selected.path}</code></dd><dt>Owner</dt><dd>{tValue(selected.owner)}</dd><dt>{t('cli.package')}</dt><dd>{selected.ownerDetail || '—'}</dd><dt>{t('common.version')}</dt><dd><code>{selected.version || t('cli.unresolved')}</code></dd><dt>{t('common.status')}</dt><dd><Badge variant={selected.status === 'broken' ? 'error' : selected.duplicateCount > 0 ? 'warning' : 'success'}>{selected.status === 'broken' ? t('common.brokenLink') : selected.duplicateCount > 0 ? t('cli.duplicateInstalls') : t('common.healthy')}</Badge></dd></dl>
+          <section className={styles.detailSection}><h3>{t('common.sourceLabel')}</h3><dl className={styles.definition}><dt>{t('common.path')}</dt><dd><code>{selected.path}</code></dd><dt>{t('common.owner')}</dt><dd>{tValue(selected.owner)}</dd><dt>{t('cli.package')}</dt><dd>{selected.ownerDetail || '—'}</dd><dt>{t('common.version')}</dt><dd><code>{selected.version || t('cli.unresolved')}</code></dd><dt>{t('common.status')}</dt><dd><Badge variant={selected.status === 'broken' ? 'error' : selected.duplicateCount > 0 ? 'warning' : 'success'}>{selected.status === 'broken' ? t('common.brokenLink') : selected.duplicateCount > 0 ? t('cli.duplicateInstalls') : t('common.healthy')}</Badge></dd></dl>
             <div className={styles.detailPathActions}><Button size="xs" variant="outline" onClick={() => void copyText(selected.name, t('common.commandLabel'))}>{t('cli.copyCommand')}</Button><Button size="xs" variant="outline" onClick={() => void copyText(selected.path, t('common.path'))}>{t('common.copyPath')}</Button><Button size="xs" variant="ghost" onClick={() => void revealCLI(selected)}>{t('common.revealInFinder')}</Button></div>
             {updateForSelected?.state === 'available' && <div className={styles.planAction}><Button size="xs" onClick={() => setUpdateTarget(selected)}>{t('cli.updateCli')}</Button><small>{t('cli.current')} {updateForSelected.currentVersion || selected.version || '—'} → {updateForSelected.latestVersion}</small></div>}
             {planError && <p className={styles.planError} role="alert">{planError}</p>}

@@ -744,14 +744,17 @@
 .upstreamAddedBanner>svg{flex:none;color:var(--brand)}
 .newSkillList{display:grid;gap:4px;min-width:0}
 .newSkillRow{display:flex;align-items:center;gap:9px;min-width:0;max-width:100%;height:46px;padding:5px 9px;border:1px solid var(--line);border-radius:7px;background:var(--paper);box-sizing:border-box;transition:height .16s var(--ease-out),background .16s var(--ease-out)}
-.newSkillIcon{display:flex;align-items:center;justify-content:center;width:22px;height:22px;flex:none;border-radius:6px;background:var(--brand-soft);color:var(--brand)}
+.newSkillGlyph{width:22px!important;height:22px!important;flex:none;border-radius:6px}
 .newSkillToggle{display:flex;align-items:center;gap:9px;min-width:0;max-width:100%;flex:1;height:100%;overflow:hidden;padding:0;border:0;background:none;color:inherit;text-align:left;cursor:pointer}
 .newSkillInfo{display:flex;flex-direction:column;justify-content:center;gap:2px;min-width:0;max-width:100%;height:100%;flex:1;overflow:hidden}
 .newSkillInfo strong{overflow:hidden;color:var(--ink-soft);font-size:11px;font-weight:550;line-height:1.35;text-overflow:ellipsis;white-space:nowrap}
 .newSkillInfo small{overflow:hidden;color:var(--ink-soft);font-size:10px;line-height:1.35;text-overflow:ellipsis;white-space:nowrap}.newSkillInfo code{display:block;max-width:100%;overflow:hidden;color:var(--text-muted);font:9px var(--font-mono);overflow-wrap:anywhere;white-space:normal}
 
 .newSkillGroup{display:grid;gap:6px;margin-bottom:14px}
-.newSkillGroup h3{margin:0;color:var(--text-muted);font:500 9px var(--font-mono);letter-spacing:.06em;text-transform:uppercase}
+.newSkillGroupHead{display:flex;align-items:center;gap:7px}
+.newSkillRepoCheck{margin-left:auto;width:14px!important;height:14px!important}
+.newSkillGroupHead h3{margin:0;color:var(--text-muted);font:500 9px var(--font-mono);letter-spacing:.06em;text-transform:uppercase}
+.newSkillRepoIcon{width:16px!important;height:16px!important;border-radius:4px}
 
 .removedShortcut{height:15px!important;min-width:15px!important;padding:0 3px!important;border:1px solid color-mix(in srgb,var(--ink) 18%,var(--line))!important;background:var(--paper)!important;color:var(--ink-soft)!important;font:9px var(--font-mono)!important}
 
@@ -782,3 +785,13 @@
 
 .updateBatchSelect{width:104px!important;height:24px!important;min-height:0!important;padding:0 8px!important;gap:4px!important;font-size:9.5px!important}
 .updateBatchSelect svg{width:12px!important;height:12px!important;opacity:.55!important}
+
+.tableWrap tbody tr.clickableRow:focus-visible,.groupedRow:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
+
+.batchInstallHint{margin-right:auto;color:var(--text-muted);font-size:9.5px;line-height:1.4}
+
+.installProgress{display:flex;align-items:center;gap:8px;padding:8px 24px;border-bottom:1px solid var(--line);background:var(--brand-soft);color:var(--ink-soft);font-size:10px}
+.installProgress>div:first-child{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.installProgressBar{height:4px;flex:1;overflow:hidden;border-radius:999px;background:color-mix(in srgb,var(--brand) 15%,transparent)}
+.installProgressBar span{display:block;height:100%;border-radius:inherit;background:var(--brand);transition:width .2s var(--ease-out)}
+.installProgress small{min-width:28px;color:var(--text-muted);font:9px var(--font-mono);text-align:right}

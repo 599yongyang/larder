@@ -31,14 +31,14 @@ function ProjectView({ path, skills, servers, instructions, projects, issues, on
       <span className={projectStyles.heroIcon}><Folder size={18} aria-hidden="true" /></span>
       <div className={projectStyles.heroText}><span className={projectStyles.kicker}>{t('project.projectPath')}</span><code>{path}</code></div>
       <div className={projectStyles.stats}>
-        <div className={projectStyles.stat}><strong>{projectSkills.length}</strong><span>Skills</span></div>
+        <div className={projectStyles.stat}><strong>{projectSkills.length}</strong><span>{t('common.skills')}</span></div>
         <div className={projectStyles.stat}><strong>{projectMCPs.length}</strong><span>MCP</span></div>
         <div className={projectStyles.stat}><strong>{projectInstructions.length}</strong><span>{t('common.instructions')}</span></div>
       </div>
     </header>
     {!hasLeft && !hasRight && accessIssue ? <div className={`${projectStyles.emptyState} ${projectStyles.accessState}`}><FolderLock size={20} aria-hidden="true" /><p>{accessIssue.kind === 'permission' ? t('project.cannotAccessProjectFolder') : t('project.cannotReadProjectFolder')}</p><span>{t('project.grantFolderAccessThenRescan')}</span><code>{accessIssue.path ?? path}</code><Button size="sm" variant="outline" onClick={() => void onRefresh()}>{t('common.rescan')}</Button></div> : !hasLeft && !hasRight ? <div className={projectStyles.emptyState}><p>{t('project.thisProjectHasNoProjectLevelResourcesYet')}</p><span>{t('project.skillsMcpConfigsAndInstructionFilesAddedToTheProjectWillBeSummarizedHere')}</span></div> : <div className={`${projectStyles.columns} ${(!hasLeft || !hasRight) ? projectStyles.singleColumn : ''}`}>
       {hasLeft && <div className={projectStyles.column}>
-        <Section title="Skills" count={projectSkills.length}>{projectSkills.map((skill) => <button key={skill.id} type="button" className={projectStyles.row} onClick={() => setSelected({ kind: 'skill', item: skill })}><SkillIcon skill={skill} className="size-4" /><span className={projectStyles.rowMain}><span className={projectStyles.name}>{skill.name}</span><span className={projectStyles.meta}>{skill.source || t('common.local')}</span></span><ChevronRight size={12} className={projectStyles.rowEnd} /></button>)}</Section>
+        <Section title={t('common.skills')} count={projectSkills.length}>{projectSkills.map((skill) => <button key={skill.id} type="button" className={projectStyles.row} onClick={() => setSelected({ kind: 'skill', item: skill })}><SkillIcon skill={skill} className="size-4" /><span className={projectStyles.rowMain}><span className={projectStyles.name}>{skill.name}</span><span className={projectStyles.meta}>{skill.source || t('common.local')}</span></span><ChevronRight size={12} className={projectStyles.rowEnd} /></button>)}</Section>
       </div>}
       {hasRight && <div className={projectStyles.column}>
         {projectMCPs.length > 0 && <Section title={t('project.projectMcp')} count={projectMCPs.length}>{projectMCPs.map((server) => <button key={server.id} type="button" className={projectStyles.row} onClick={() => setSelected({ kind: 'mcp', item: server })}><MCPIcon name={server.name} command={server.command} url={server.url} className="size-4" /><span className={projectStyles.rowMain}><span className={projectStyles.name}>{server.name}</span><span className={projectStyles.meta}>{server.transport} · {t('common.agents', { n: server.agents.length })}</span></span><ChevronRight size={12} className={projectStyles.rowEnd} /></button>)}</Section>}
@@ -65,7 +65,7 @@ function ProjectAssetSheet({ selected, onClose }: { selected: { kind: 'skill'; i
 
 function SkillSections({ skill }: { skill: Skill }) {
   return <>
-    <section className={styles.detailSection}><h3>{t('common.sourceLabel')}</h3><dl className={styles.definition}><dt>{t('common.path')}</dt><dd><code className={styles.detailPath}>{skill.path}</code></dd><dt>{t('common.sourceLabel')}</dt><dd>{skill.source || t('common.local')}</dd><dt>{t('common.contextCost')}</dt><dd>{skill.descTokens.toLocaleString()} tokens</dd><dt>{t('common.contentHash')}</dt><dd><code>{skill.folderHash?.slice(0, 16) || '—'}</code></dd></dl></section>
+    <section className={styles.detailSection}><h3>{t('common.sourceLabel')}</h3><dl className={styles.definition}><dt>{t('common.path')}</dt><dd><code className={styles.detailPath}>{skill.path}</code></dd><dt>{t('common.sourceLabel')}</dt><dd>{skill.source || t('common.local')}</dd><dt>{t('skills.descriptionTokens')}</dt><dd>{skill.descTokens.toLocaleString()} tokens</dd><dt>{t('common.contentHash')}</dt><dd><code>{skill.folderHash?.slice(0, 16) || '—'}</code></dd></dl></section>
     {skill.description && <section className={styles.detailSection}><h3>{t('project.description')}</h3><p className={styles.assetDescription}>{skill.description}</p></section>}
     {skill.bins && skill.bins.length > 0 && <section className={styles.detailSection}><h3>{t('common.cliDependencies')}</h3><div className={styles.mcpKeys}>{skill.bins.map((bin) => <Badge key={bin} variant="outline">{bin}</Badge>)}</div></section>}
   </>
