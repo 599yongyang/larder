@@ -384,7 +384,7 @@ func (s *Service) CheckUpdates(ctx context.Context) (model.UpdateReport, error) 
 		return model.UpdateReport{}, err
 	}
 	snapshot := s.Snapshot()
-	checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	checkCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
 	npmCache := ""
 	if cache, err := os.UserCacheDir(); err == nil {
@@ -397,7 +397,7 @@ func (s *Service) CheckUpdates(ctx context.Context) (model.UpdateReport, error) 
 		Runner:      s.runner,
 		FS:          s.fs,
 		Fetcher:     s.fetcher,
-		Timeout:     20 * time.Second,
+		Timeout:     60 * time.Second,
 		NpmCacheDir: npmCache,
 	})
 	if s.store != nil {
@@ -929,6 +929,7 @@ func (s *Service) ApplyPlanWithResolutions(ctx context.Context, planID string, r
 			if files, hashErr := ops.FileHashes(plan.TargetPath); hashErr == nil {
 				s.saveSkillBaseline(ctx, plan.TargetPath, files)
 			}
+			s.markNewSkillInstalled(ctx, plan.SourcePath)
 		}
 		if s.store != nil {
 			_ = s.store.SaveOperation(ctx, op)
@@ -984,6 +985,37 @@ func (s *Service) ApplyPlanWithResolutions(ctx context.Context, planID string, r
 		return op, err
 	}
 	return s.ApplyLinkPlan(ctx, planID)
+}
+
+func (s *Service) markNewSkillInstalled(ctx context.Context, skillPath string) {
+	if skillPath == "" {
+		return
+	}
+	s.mu.Lock()
+	report := s.updates
+	items := make([]model.UpdateItem, 0, len(report.Items))
+	removed := 0
+	for _, item := range report.Items {
+		if item.Kind == "skill" && item.State == "new" && item.SkillPath == skillPath {
+			removed++
+			continue
+		}
+		items = append(items, item)
+	}
+	if removed == 0 {
+		s.mu.Unlock()
+		return
+	}
+	report.Items = items
+	report.SkillAdded -= removed
+	if report.SkillAdded < 0 {
+		report.SkillAdded = 0
+	}
+	s.updates = report
+	s.mu.Unlock()
+	if s.store != nil {
+		_ = s.store.SaveUpdates(ctx, report)
+	}
 }
 
 func (s *Service) markSkillUpdateApplied(ctx context.Context, name string) {

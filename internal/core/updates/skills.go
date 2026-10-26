@@ -48,6 +48,7 @@ func checkSkills(ctx context.Context, opts Options, report *model.UpdateReport) 
 	type repoGroup struct {
 		repo       string
 		candidates []*skillCandidate
+		additions  []model.UpdateItem
 	}
 	groups := map[string]*repoGroup{}
 	var groupOrder []string
@@ -119,6 +120,28 @@ func checkSkills(ctx context.Context, opts Options, report *model.UpdateReport) 
 				}
 				return
 			}
+			if discovered, parseErr := discoverSkillsFromTar(data); parseErr == nil {
+				installed := map[string]bool{}
+				for _, candidate := range group.candidates {
+					installed[candidate.dir] = true
+				}
+				for _, skill := range discovered {
+					if skill.Dir == "" || skill.Name == "" || installed[skill.Dir] {
+						continue
+					}
+					nested := false
+					for dir := range installed {
+						if strings.HasPrefix(skill.Dir, dir+"/") {
+							nested = true
+							break
+						}
+					}
+					if nested {
+						continue
+					}
+					group.additions = append(group.additions, model.UpdateItem{Kind: "skill", Owner: "github", Package: group.repo, Name: skill.Name, Description: skill.Description, Source: group.repo, SkillPath: skill.Dir, State: "new", Message: "上游新增，可安装"})
+				}
+			}
 			for _, candidate := range group.candidates {
 				remote, ok := hashes[candidate.dir]
 				if !ok {
@@ -145,6 +168,10 @@ func checkSkills(ctx context.Context, opts Options, report *model.UpdateReport) 
 		}(group)
 	}
 	wg.Wait()
+	for _, repo := range groupOrder {
+		report.Items = append(report.Items, groups[repo].additions...)
+		report.SkillAdded += len(groups[repo].additions)
+	}
 	for _, candidate := range candidates {
 		item := &report.Items[candidate.index]
 		item.State = candidate.state
@@ -160,6 +187,124 @@ func checkSkills(ctx context.Context, opts Options, report *model.UpdateReport) 
 			report.SkillErrors++
 		}
 	}
+}
+
+type discoveredSkill struct {
+	Name        string
+	Description string
+	Dir         string
+}
+
+func discoverSkillsFromTar(data []byte) ([]discoveredSkill, error) {
+	gz, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	defer gz.Close()
+	tr := tar.NewReader(gz)
+	root := ""
+	seen := map[string]bool{}
+	var result []discoveredSkill
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if header.Typeflag != tar.TypeReg && header.Typeflag != tar.TypeRegA {
+			continue
+		}
+		name := path.Clean(strings.TrimPrefix(header.Name, "./"))
+		if root == "" {
+			parts := strings.SplitN(name, "/", 2)
+			root = parts[0]
+		}
+		if !strings.HasPrefix(name, root+"/") || path.Base(name) != "SKILL.md" {
+			continue
+		}
+		relative := strings.TrimPrefix(name, root+"/")
+		dir := path.Dir(relative)
+		if dir == "." || dir == "" || seen[dir] || !discoverableSkillDir(dir) {
+			continue
+		}
+		content, err := io.ReadAll(io.LimitReader(tr, 1<<20))
+		if err != nil {
+			return nil, err
+		}
+		skillName, skillDescription, ok := parseUpdateFrontmatter(string(content))
+		if !ok || strings.TrimSpace(skillDescription) == "" {
+			continue
+		}
+		if strings.TrimSpace(skillName) == "" {
+			skillName = path.Base(dir)
+		}
+		seen[dir] = true
+		result = append(result, discoveredSkill{Name: skillName, Description: skillDescription, Dir: dir})
+	}
+	return result, nil
+}
+
+func discoverableSkillDir(dir string) bool {
+	for _, part := range strings.Split(strings.ToLower(dir), "/") {
+		switch part {
+		case ".git", ".github", "node_modules", "vendor", "dist", "build", "test", "tests", "__tests__", "fixtures", "examples", "example", "templates", "template":
+			return false
+		}
+	}
+	return true
+}
+
+func parseUpdateFrontmatter(content string) (name, description string, ok bool) {
+	trimmed := strings.TrimPrefix(content, "\ufeff")
+	if !strings.HasPrefix(trimmed, "---\n") && !strings.HasPrefix(trimmed, "---\r\n") {
+		return "", "", false
+	}
+	rest := trimmed[3:]
+	end := strings.Index(rest, "\n---")
+	if end < 0 {
+		return "", "", false
+	}
+	lines := strings.Split(rest[:end], "\n")
+	for index := 0; index < len(lines); index++ {
+		line := strings.TrimSpace(strings.TrimSuffix(lines[index], "\r"))
+		key, value, found := strings.Cut(line, ":")
+		if !found {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		switch key {
+		case "name":
+			name = strings.Trim(value, `"'`)
+		case "description":
+			if value == "|" || value == ">" || value == "|-" || value == ">-" || value == "" {
+				block := make([]string, 0, 4)
+				for index+1 < len(lines) {
+					next := strings.TrimSuffix(lines[index+1], "\r")
+					if strings.TrimSpace(next) == "" {
+						block = append(block, "")
+						index++
+						continue
+					}
+					if next[0] != ' ' && next[0] != '\t' {
+						break
+					}
+					block = append(block, strings.TrimSpace(next))
+					index++
+				}
+				separator := "\n"
+				if strings.HasPrefix(value, ">") {
+					separator = " "
+				}
+				description = strings.Join(block, separator)
+			} else {
+				description = strings.Trim(value, `"'`)
+			}
+		}
+	}
+	return name, description, true
 }
 
 func skillDir(skillPath string) string {

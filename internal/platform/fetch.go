@@ -20,7 +20,7 @@ type HTTPFetcher struct {
 func (f HTTPFetcher) Fetch(ctx context.Context, url string) ([]byte, error) {
 	client := f.Client
 	if client == nil {
-		client = &http.Client{Timeout: 12 * time.Second}
+		client = &http.Client{Timeout: 90 * time.Second}
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {

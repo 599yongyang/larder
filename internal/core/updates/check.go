@@ -45,7 +45,7 @@ func Check(ctx context.Context, opts Options) model.UpdateReport {
 		opts.Runner = platform.OSCommandRunner{}
 	}
 	if opts.Timeout <= 0 {
-		opts.Timeout = 20 * time.Second
+		opts.Timeout = 60 * time.Second
 	}
 	runner := opts.Runner
 	type group struct {

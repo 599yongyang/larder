@@ -205,3 +205,44 @@ func TestCheckMarksSkillRemovedWhenSourceDirectoryDisappears(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckDiscoversUpstreamSkillsNotInstalled(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "alpha")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: alpha\ndescription: a\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	alpha := model.Skill{Name: "alpha", Path: dir, FolderHash: folderHash(t, dir), Locked: true, SourceType: "github", Source: "owner/repo", SourceURL: "https://github.com/owner/repo.git", SkillPath: "skills/alpha/SKILL.md"}
+	fetcher := fakeFetcher{content: map[string][]byte{
+		"https://codeload.github.com/owner/repo/tar.gz/HEAD": makeTar(t, "repo-HEAD", map[string]string{
+			"skills/alpha/SKILL.md":       "---\nname: alpha\ndescription: a\n---\n",
+			"skills/newmoon/SKILL.md":     "---\nname: newmoon\ndescription: b\n---\n",
+			"examples/demo/SKILL.md":      "---\nname: demo\ndescription: example\n---\n",
+			"node_modules/pkg/SKILL.md":   "---\nname: pkg\ndescription: dependency\n---\n",
+			"templates/template/SKILL.md": "---\nname: template\ndescription: template\n---\n",
+			"skills/block/SKILL.md":       "---\nname: block\ndescription: |\n  first line\n  second line\n---\n",
+		}),
+	}}
+	report := updates.Check(context.Background(), updates.Options{Skills: []model.Skill{alpha}, FS: platform.OSFileSystem{}, Fetcher: fetcher})
+	if report.SkillAdded != 2 || len(report.Items) != 3 {
+		t.Fatalf("report = %#v", report)
+	}
+	items := map[string]model.UpdateItem{}
+	for _, item := range report.Items {
+		if item.State == "new" {
+			items[item.Name] = item
+		}
+	}
+	if items["newmoon"].Description != "b" || items["newmoon"].SkillPath != "skills/newmoon" {
+		t.Fatalf("newmoon item = %#v", items["newmoon"])
+	}
+	if items["block"].Description != "first line\nsecond line" || items["block"].SkillPath != "skills/block" {
+		t.Fatalf("block item = %#v", items["block"])
+	}
+	if _, found := items["demo"]; found {
+		t.Fatalf("example skill should be skipped: %#v", items)
+	}
+}

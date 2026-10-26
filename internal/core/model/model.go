@@ -168,10 +168,12 @@ type UpdateItem struct {
 	Owner          string   `json:"owner"`
 	Package        string   `json:"package,omitempty"`
 	Name           string   `json:"name"`
+	Description    string   `json:"description,omitempty"`
 	Commands       []string `json:"commands,omitempty"`
 	CurrentVersion string   `json:"currentVersion,omitempty"`
 	LatestVersion  string   `json:"latestVersion,omitempty"`
 	Source         string   `json:"source,omitempty"`
+	SkillPath      string   `json:"skillPath,omitempty"`
 	State          string   `json:"state"`
 	Message        string   `json:"message,omitempty"`
 }
@@ -184,6 +186,7 @@ type UpdateReport struct {
 	Available    int          `json:"available"`
 	Current      int          `json:"current"`
 	SkillScanned int          `json:"skillScanned"`
+	SkillAdded   int          `json:"skillAdded"`
 	SkillChanged int          `json:"skillChanged"`
 	SkillRemoved int          `json:"skillRemoved"`
 	SkillCurrent int          `json:"skillCurrent"`
