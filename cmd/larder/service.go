@@ -45,7 +45,7 @@ type AppState struct {
 	UpdatedAt     time.Time          `json:"updatedAt"`
 }
 
-var Version = "0.0.2"
+var Version = "0.0.3"
 
 type MCPTestResult struct {
 	OK      bool   `json:"ok"`
