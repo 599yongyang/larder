@@ -6,7 +6,7 @@
 
 Larder is a local-first desktop app for developers who work with multiple AI agents. It shows what is actually installed on your machine — Skills, MCP servers, CLI tools, and instruction files — and lets you manage them safely.
 
-![Skills overview](docs/screenshots/skills-cards-en.png)
+<p align="center"><img src="docs/screenshots/skills-cards-en.png" width="880" alt="Skills overview"></p>
 
 ## What it does
 
@@ -17,7 +17,58 @@ Larder is a local-first desktop app for developers who work with multiple AI age
 - **Projects** — see the Skills, MCP servers and instruction files that belong to a project in one place.
 - **Language** — switch between English and Chinese in Settings; the app follows the system language on first launch.
 
-![MCP overview](docs/screenshots/mcp-en.png)
+## Screenshots
+
+<table>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/screenshots/skill-detail-en.png" alt="Skill detail" /><br />
+<strong>Skill detail</strong><br />
+Source, Agent visibility and the next safe action.
+</td>
+<td width="50%" valign="top">
+<img src="docs/screenshots/upstream-additions-en.png" alt="Review upstream additions" /><br />
+<strong>Review upstream additions</strong><br />
+See new Skills before installing one or a batch.
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/screenshots/mcp-en.png" alt="MCP servers" /><br />
+<strong>MCP servers</strong><br />
+Transport, launch command, status and Agent visibility.
+</td>
+<td width="50%" valign="top">
+<img src="docs/screenshots/cli-en.png" alt="CLI tools" /><br />
+<strong>CLI tools</strong><br />
+Owners, PATH duplicates and available updates.
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/screenshots/instructions-en.png" alt="Instruction files" /><br />
+<strong>Instruction files</strong><br />
+Scan, preview and edit global or project instructions.
+</td>
+<td width="50%" valign="top">
+<img src="docs/screenshots/history-en.png" alt="History and rollback" /><br />
+<strong>History and rollback</strong><br />
+Every write keeps a snapshot that can be restored.
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/screenshots/skills-cards-dark-en.png" alt="Skills in dark mode" /><br />
+<strong>Light and dark</strong><br />
+Light, dark or system appearance.
+</td>
+<td width="50%" valign="top">
+<img src="docs/screenshots/settings-en.png" alt="Settings" /><br />
+<strong>Settings</strong><br />
+Language, motion, zoom and update preferences.
+</td>
+</tr>
+</table>
 
 ## Safe by default
 
