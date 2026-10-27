@@ -11,6 +11,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 	"github.com/wailsapp/wails/v3/pkg/updater"
+	"github.com/wailsapp/wails/v3/pkg/updater/providers/endpoint"
 	"github.com/wailsapp/wails/v3/pkg/updater/providers/github"
 	"larder/cmd/larder"
 )
@@ -59,15 +60,28 @@ func main() {
 	// Use the official Wails updater on macOS. Releases ship a single-top-level
 	// app zip and a checksums.txt sidecar; Windows keeps the manual installer.
 	if runtime.GOOS == "darwin" {
-		provider, providerErr := github.New(github.Config{
+		providers := make([]updater.Provider, 0, 2)
+		if endpointProvider, endpointErr := endpoint.New(endpoint.Config{
+			URL:     "https://raw.githubusercontent.com/599yongyang/larder/main/updates/macos-arm64.json",
+			Channel: "stable",
+		}); endpointErr != nil {
+			log.Printf("updater endpoint: %v", endpointErr)
+		} else {
+			providers = append(providers, endpointProvider)
+		}
+		if githubProvider, githubErr := github.New(github.Config{
 			Repository:    "599yongyang/larder",
 			ChecksumAsset: "checksums.txt",
-		})
-		if providerErr != nil {
-			log.Printf("updater: %v", providerErr)
+		}); githubErr != nil {
+			log.Printf("updater github: %v", githubErr)
+		} else {
+			providers = append(providers, githubProvider)
+		}
+		if len(providers) == 0 {
+			log.Printf("updater: no providers configured")
 		} else if initErr := app.Updater.Init(updater.Config{
 			CurrentVersion: larder.Version,
-			Providers:      []updater.Provider{provider},
+			Providers:      providers,
 			CheckInterval:  6 * time.Hour,
 		}); initErr != nil {
 			log.Printf("updater: %v", initErr)

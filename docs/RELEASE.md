@@ -54,7 +54,7 @@ The public release tag and the in-app version must match.
 
 Upload `checksums.txt` alongside `Larder.dmg`, `Larder-darwin-arm64.zip` and the Windows installer.
 
-The macOS app uses the official Wails updater with the GitHub Releases provider. It downloads the zip, verifies the zip digest from `checksums.txt`, replaces the running app bundle and restarts. DMG remains the first-install/manual installer. Windows still uses the NSIS installer and does not self-update yet.
+The macOS app checks `updates/macos-arm64.json` first. Keep that static manifest in sync with every release: version, artifact URL, size, archive digest (base64 SHA-256) and published time. If the static manifest cannot be fetched, the app falls back to the GitHub Releases API. DMG remains the first-install/manual installer. Windows still uses the NSIS installer and does not self-update yet.
 
 ## macOS signing
 
