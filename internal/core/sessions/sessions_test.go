@@ -373,3 +373,26 @@ func TestScanDSHSessions(t *testing.T) {
 		t.Fatalf("project sessions = %#v", projectSessions)
 	}
 }
+
+func TestReadToolUsage(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	body := `{"type":"assistant","timestamp":"2026-01-02T04:00:00Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"cairn"}},{"type":"tool_use","name":"mcp__context7__query","input":{"query":"docs"}}]}}
+{"type":"response_item","payload":{"type":"custom_tool_call","name":"exec","arguments":"cat .codex/skills/analyze/SKILL.md"}}
+`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	usage, err := ReadToolUsage(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage.Skills["cairn"] != 1 || usage.Skills["analyze"] != 1 {
+		t.Fatalf("skills = %#v", usage.Skills)
+	}
+	if usage.MCP["context7"] != 1 {
+		t.Fatalf("mcp = %#v", usage.MCP)
+	}
+	if usage.LastAt.IsZero() {
+		t.Fatal("expected last activity")
+	}
+}

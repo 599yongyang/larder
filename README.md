@@ -16,7 +16,7 @@ Larder is a local-first desktop app for developers who work with multiple AI age
 - **CLI tools** — see what is installed, which package manager owns it, duplicates and available updates. Update or uninstall through the package manager.
 - **Instruction files** — scan `AGENTS.md`, `CLAUDE.md`, Cursor rules and Copilot instructions. Preview Markdown or raw content, edit existing files, or create new ones.
 - **Commands** — scan custom slash commands for Claude Code, Cursor, OpenCode, Gemini CLI and GitHub Copilot. Create or edit them through a plan and snapshot; Codex prompts are not supported by current Codex releases and use Skills instead.
-- **App updates** — check for a newer Larder build, download the installer and verify its SHA-256 before opening it.
+- **App updates** — check GitHub Releases, download a verified app archive, install it in place and restart Larder.
 - **Projects** — see the Skills, MCP servers and instruction files that belong to a project in one place.
 - **Language** — switch between English and Chinese in Settings; the app follows the system language on first launch.
 
@@ -120,7 +120,7 @@ On Windows, an unsigned build may show a SmartScreen warning.
 
 ## Status
 
-`0.0.6` — early development. The current focus is local truth, safe writes, and a clearer view of what each Agent actually sees.
+`0.0.7` — early development. The current focus is local truth, safe writes, and a clearer view of what each Agent actually sees.
 
 ## License
 

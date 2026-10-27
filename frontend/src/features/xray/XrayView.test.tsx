@@ -8,6 +8,7 @@ const skill: Skill = { id: 's1', name: 'frontend-design', path: '/claude/fronten
 
 vi.mock('../../backend', () => ({
   backend: {
+    agentUsage: vi.fn(async () => []),
     xray: vi.fn(async () => ({
       schemaVersion: '1', agentId: 'claude', agentLabel: 'Claude Code', root,
       entries: [{ skill, status: 'active', reason: 'visible', candidates: [skill] }],

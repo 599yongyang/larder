@@ -26,3 +26,12 @@ type SessionMessage struct {
 	Text string    `json:"text"`
 	At   time.Time `json:"at"`
 }
+
+// ResourceUsage is evidence from local sessions that a Skill or MCP tool was
+// actually invoked. Names are normalized from the Agent's tool calls.
+type ResourceUsage struct {
+	Kind   string    `json:"kind"`
+	Name   string    `json:"name"`
+	Count  int       `json:"count"`
+	LastAt time.Time `json:"lastAt"`
+}

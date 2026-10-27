@@ -14,7 +14,7 @@
 .filters{border-bottom:0!important;padding-top:2px;padding-bottom:10px}
 .tableWrap{overflow:auto}
 .table{width:100%;border-collapse:collapse;font-size:11px}
-.sessionTable{table-layout:fixed}.sessionTable th:nth-child(1){width:46%}.sessionTable th:nth-child(2){width:18%}.sessionTable th:nth-child(3){width:13%}.sessionTable th:nth-child(4){width:12%}.sessionTable th:nth-child(5){width:11%}
+.sessionTable{table-layout:fixed}.sessionTable th:nth-child(1){width:42%}.sessionTable th:nth-child(2){width:16%}.sessionTable th:nth-child(3){width:12%}.sessionTable th:nth-child(4){width:11%}.sessionTable th:nth-child(5){width:11%}.sessionTable th:nth-child(6){width:8%}
 .resourceTable{table-layout:fixed}.resourceTable th:nth-child(1){width:86px}.resourceTable th:nth-child(2){width:auto}.resourceTable th:nth-child(3){width:270px}.resourceTable th:nth-child(4){width:34px}
 .activityTable{table-layout:fixed}.activityTable th:nth-child(1){width:28%}.activityTable th:nth-child(2){width:auto}.activityTable th:nth-child(3){width:140px}
 .table th{padding:10px 16px;border-bottom:1px solid var(--line);color:var(--text-muted);font:500 9px var(--font-mono);text-align:left;letter-spacing:.07em;text-transform:uppercase;white-space:nowrap}
@@ -52,3 +52,5 @@
 @keyframes skeletonPulse{0%{background-position:100% 0}100%{background-position:-100% 0}}
 
 .table tbody tr:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
+
+.usageTable{table-layout:fixed}.usageTable th:nth-child(1){width:46%}.usageTable th:nth-child(2){width:16%}.usageTable th:nth-child(3){width:18%}.usageTable th:nth-child(4){width:20%}

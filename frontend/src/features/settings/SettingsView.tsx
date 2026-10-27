@@ -1,5 +1,6 @@
+import { copyText as writeClipboard } from '../../lib/clipboard'
 import { useEffect, useState } from 'react'
-import { Archive, Copy, Download, Loader2, Monitor, Moon, RotateCcw, Sparkles, Sun, Waves, X } from 'lucide-react'
+import { Archive, Copy, Monitor, Moon, RotateCcw, Sparkles, Sun, Waves, X } from 'lucide-react'
 import { GitHubIcon } from '../../components/GitHubIcon'
 import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
@@ -13,7 +14,7 @@ import styles from '../../App.module.css'
 import type { AppInfo, BackupInfo, Settings } from '../../types'
 import type { ThemeMode } from '../../lib/theme'
 import { getLanguage, getLanguageSetting, languages, setLanguage, t } from '../../i18n'
-import { checkAppUpdate, openExternal, type AppUpdate } from '../../lib/appUpdate'
+import { openExternal } from '../../lib/appUpdate'
 import { getMotionMode, setMotionMode, type MotionMode } from '../../lib/motion'
 import { applyZoom, getZoom, setZoom, zoomLevels, type ZoomLevel } from '../../lib/zoom'
 import { modifierLabel } from '../../lib/platform'
@@ -34,31 +35,23 @@ function SettingsView({ settings, onToggle, onUsageToggle, onAutoCheckToggle, on
   const [restore, setRestore] = useState<{ path: string; info: BackupInfo }>()
   const [motion, setMotion] = useState<MotionMode>(getMotionMode)
   const [zoom, setZoomState] = useState<ZoomLevel>(getZoom)
-  const [appUpdate, setAppUpdate] = useState<AppUpdate>()
   const [checkingAppUpdate, setCheckingAppUpdate] = useState(false)
-  const [downloadingAppUpdate, setDownloadingAppUpdate] = useState(false)
-  const [downloadedAppUpdate, setDownloadedAppUpdate] = useState('')
+  const [autostart, setAutostart] = useState(false)
+  const [autostartLoading, setAutostartLoading] = useState(true)
   const handleCheckAppUpdate = async () => {
     setCheckingAppUpdate(true)
     try {
-      const result = await checkAppUpdate(info?.version ?? '0.0.0')
-      setAppUpdate(result)
-      if (!result.available) toastSuccess(t('settings.appUpToDate'))
+      await backend.checkAppUpdate()
     } catch (error) {
       toastError(error, t('settings.appUpdateCheckFailed'))
     } finally { setCheckingAppUpdate(false) }
   }
-  const handleDownloadAppUpdate = async () => {
-    if (!appUpdate?.latest) return
-    setDownloadingAppUpdate(true)
-    setDownloadedAppUpdate('')
-    try {
-      const path = await backend.downloadAppUpdate(appUpdate.latest)
-      setDownloadedAppUpdate(path)
-      toastSuccess(t('settings.updateDownloaded'), path)
-    } catch (error) {
-      toastError(error, t('settings.updateDownloadFailed'))
-    } finally { setDownloadingAppUpdate(false) }
+  useEffect(() => {
+    backend.autostartEnabled().then(setAutostart).catch(() => {}).finally(() => setAutostartLoading(false))
+  }, [])
+  const toggleAutostart = async (checked: boolean) => {
+    setAutostartLoading(true)
+    try { await backend.setAutostart(checked); setAutostart(checked) } catch (error) { toastError(error, t('settings.autostartFailed')) } finally { setAutostartLoading(false) }
   }
   const changeZoom = (value: ZoomLevel) => { setZoom(value); setZoomState(value); void applyZoom(value) }
   useEffect(() => {
@@ -69,7 +62,7 @@ function SettingsView({ settings, onToggle, onUsageToggle, onAutoCheckToggle, on
   const mod = modifierLabel()
   const copyDiagnostics = async () => {
     const payload = { generatedAt: new Date().toISOString(), app: info, settings, language: getLanguage(), motion, zoom, runtime: { userAgent: navigator.userAgent, language: navigator.language, languages: navigator.languages, hardwareConcurrency: navigator.hardwareConcurrency } }
-    try { await navigator.clipboard.writeText(JSON.stringify(payload, null, 2)); toastSuccess(t('settings.diagnosticsCopied')) } catch (error) { toastError(error, t('settings.diagnosticsCopyFailed')) }
+    try { await writeClipboard(JSON.stringify(payload, null, 2)); toastSuccess(t('settings.diagnosticsCopied')) } catch (error) { toastError(error, t('settings.diagnosticsCopyFailed')) }
   }
   const [restoring, setRestoring] = useState(false)
   const chooseBackup = async () => { setRestoring(true); try { const path = await backend.pickBackupFile(); if (!path) return; const info = await backend.inspectBackup(path); setRestore({ path, info }) } catch (error) { toastError(error, t('settings.failedToReadBackup')) } finally { setRestoring(false) } }
@@ -77,17 +70,18 @@ function SettingsView({ settings, onToggle, onUsageToggle, onAutoCheckToggle, on
   return <section className={styles.settingsPanel}>
     <div className={styles.settingsGrid}>
       <section className={styles.settingsGroup}><h2>{t('settings.appearance')}</h2><div className={styles.themeOptions} role="group" aria-label={t('settings.appearance')}>{themeOptions.map(({ value, labelKey, icon: Icon }) => <button type="button" key={value} className={`${styles.themeOption} ${themeMode === value ? styles.themeOptionActive : ''}`} aria-pressed={themeMode === value} onClick={(event) => onThemeMode(value, event)}><Icon size={14} aria-hidden="true" /><span>{t(labelKey)}</span></button>)}</div></section>
-      <section className={styles.settingsGroup}><h2>{t('settings.language')}</h2><div className={styles.themeOptions} role="group" aria-label={t('settings.language')}>{languages.map(({ value, label }) => <button type="button" key={value} className={`${styles.themeOption} ${getLanguageSetting() === value ? styles.themeOptionActive : ''}`} aria-pressed={getLanguageSetting() === value} onClick={() => setLanguage(value)}><span>{value === 'system' ? t(label) : label}</span></button>)}</div></section>
+      <section className={styles.settingsGroup}><h2>{t('settings.language')}</h2><div className={styles.themeOptions} role="group" aria-label={t('settings.language')}>{languages.map(({ value, label }) => <button type="button" key={value} className={`${styles.themeOption} ${getLanguageSetting() === value ? styles.themeOptionActive : ''}`} aria-pressed={getLanguageSetting() === value} onClick={() => { setLanguage(value); void backend.setNativeLocale(value === 'system' ? getLanguage() : value).catch(() => {}) }}><span>{value === 'system' ? t(label) : label}</span></button>)}</div></section>
       <section className={styles.settingsGroup}><h2>{t('settings.display')}</h2><label className={styles.settingsRow}><span><strong>{t('settings.showAgentLocalSkills')}</strong><small>{t('settings.onlySharedSkillsAreShownByDefaultLocalSkillsStillAppearInsideAnAgent')}</small></span><Checkbox checked={settings.showAgentBuiltins} onCheckedChange={(checked) => onToggle(Boolean(checked))} /></label></section>
       <section className={styles.settingsGroup}><h2>{t('settings.interfaceMotion')}</h2><div className={styles.themeOptions} role="group" aria-label={t('settings.interfaceMotion')}>{motionOptions.map(({ value, labelKey, icon: Icon }) => <button type="button" key={value} className={`${styles.themeOption} ${motion === value ? styles.themeOptionActive : ''}`} aria-pressed={motion === value} onClick={() => { setMotionMode(value); setMotion(value) }}><Icon size={14} aria-hidden="true" /><span>{t(labelKey)}</span></button>)}</div></section>
       <section className={styles.settingsGroup}><h2>{t('settings.uiScale')}</h2><div className={`${styles.themeOptions} ${styles.scaleOptions}`} role="group" aria-label={t('settings.uiScale')}>{zoomLevels.map((value) => <button type="button" key={value} className={`${styles.themeOption} ${zoom === value ? styles.themeOptionActive : ''}`} aria-pressed={zoom === value} onClick={() => changeZoom(value)}><span>{value}%</span></button>)}</div></section>
       <section className={styles.settingsGroup}><h2>{t('settings.keyboardShortcuts')}</h2><div className={styles.shortcutList}><div className={styles.shortcutRow}><span>{t('command.searchAndJump')}</span><Kbd className={styles.shortcutKbd}>{mod} K</Kbd></div><div className={styles.shortcutRow}><span>{t('settings.shortcutFocusSearch')}</span><Kbd className={styles.shortcutKbd}>{mod} F</Kbd></div><div className={styles.shortcutRow}><span>{t('common.rescan')}</span><Kbd className={styles.shortcutKbd}>{mod} R</Kbd></div><div className={styles.shortcutRow}><span>{t('settings.shortcutSwitchSections')}</span><Kbd className={styles.shortcutKbd}>{mod} 1–6</Kbd></div><div className={styles.shortcutRow}><span>{t('settings.shortcutZoomIn')}</span><Kbd className={styles.shortcutKbd}>{mod} +</Kbd></div><div className={styles.shortcutRow}><span>{t('settings.shortcutZoomOut')}</span><Kbd className={styles.shortcutKbd}>{mod} −</Kbd></div><div className={styles.shortcutRow}><span>{t('settings.shortcutResetZoom')}</span><Kbd className={styles.shortcutKbd}>{mod} 0</Kbd></div></div></section>
       <section className={styles.settingsGroup}><h2>{t('settings.autoCheck')}</h2><label className={styles.settingsRow}><span><strong>{t('settings.enableAutoCheck')}</strong><small>{t('settings.manualChecksAreStillAvailableWhenOff')}</small></span><Checkbox checked={settings.autoCheckUpdates} onCheckedChange={(checked) => onAutoCheckToggle(Boolean(checked))} /></label><div className={styles.settingsRow}><span><strong>{t('settings.checkInterval')}</strong><small>{t('settings.hours')}</small></span><div className={styles.intervalField}><Input type="number" min={1} value={String(settings.updateCheckIntervalHours)} onChange={(event) => onInterval(Math.max(1, Number(event.target.value) || 24))} aria-label={t('settings.checkInterval')} /><span>h</span></div></div></section>
+      <section className={styles.settingsGroup}><h2>{t('settings.startup')}</h2><label className={styles.settingsRow}><span><strong>{t('settings.openAtLogin')}</strong><small>{t('settings.openAtLoginHint')}</small></span><Checkbox checked={autostart} disabled={autostartLoading} onCheckedChange={(checked) => void toggleAutostart(Boolean(checked))} /></label></section>
       <section className={styles.settingsGroup}><h2>{t('settings.localUsageStats')}</h2><label className={styles.settingsRow}><span><strong>{t('settings.enableLocalUsageStats')}</strong><small>{t('settings.readsLocalZshHistoryOnlyNothingIsUploadedOrWrittenBack')}</small></span><Checkbox checked={settings.usageStatsEnabled} onCheckedChange={(checked) => onUsageToggle(Boolean(checked))} /></label></section>
       <section className={styles.settingsGroup}><h2>{t('settings.data')}</h2><div className={styles.settingsRow}><span><strong>{t('settings.snapshotRetention')}</strong></span><div className={styles.intervalField}><Input type="number" min={5} max={500} value={String(settings.snapshotRetention || 50)} onChange={(event) => onRetention(Math.max(5, Number(event.target.value) || 50))} aria-label={t('settings.snapshotRetention')} /><span>{t('settings.itemUnit')}</span></div></div><div className={styles.settingsRow}><span><strong>{t('settings.trashRetention')}</strong></span><Select value={String(settings.trashRetentionDays ?? 30)} onValueChange={(value) => onTrashRetention(Number(value))}><SelectTrigger size="sm" className="!h-6 w-[78px] px-2 text-[10px]" aria-label={t('settings.trashRetention')}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="7">{t('settings.days', { n: 7 })}</SelectItem><SelectItem value="30">{t('settings.days', { n: 30 })}</SelectItem><SelectItem value="90">{t('settings.days', { n: 90 })}</SelectItem><SelectItem value="-1">{t('common.forever')}</SelectItem></SelectContent></Select></div></section>
       <section className={styles.settingsGroup}><h2>{t('settings.backup')}</h2><div className={styles.settingsRow}><span><strong>{t('settings.exportConfigurationBackup')}</strong><small>{t('settings.packageMcpConfigsInstructionFilesAndAppMetadataLocally')}</small></span><Button variant="outline" size="sm" onClick={onBackup}><Archive size={14} />{t('settings.exportBackup')}</Button></div><div className={styles.settingsRow}><span><strong>{t('settings.restoreConfigurationBackup')}</strong><small>{t('settings.currentFilesAreSnapshottedToRestoreSnapshotsBeforeRestoring')}</small></span><Button variant="outline" size="sm" disabled={restoring} onClick={() => void chooseBackup()}><RotateCcw size={14} />{t('settings.restoreBackup')}</Button></div><p className={styles.settingsHint}>{t('settings.mcpEnvironmentVariablesAndHeadersAreStoredInPlainTextRestoringOverwritesTheMatchingConfigFiles')}</p></section>
       <section className={`${styles.settingsGroup} ${styles.settingsWide}`}><h2>{t('settings.diagnostics')}</h2><div className={styles.settingsRow}><span><strong>{t('settings.copyDiagnostics')}</strong></span><Button variant="outline" size="sm" onClick={() => void copyDiagnostics()}><Copy size={14} />{t('settings.copyDiagnostics')}</Button></div></section>
-      <section className={`${styles.settingsGroup} ${styles.settingsWide}`}><div className={styles.settingsGroupHead}><h2>{t('settings.about')}</h2><Button variant="ghost" size="icon-sm" title={t('settings.openGithub')} aria-label={t('settings.openGithub')} onClick={() => void openExternal('https://github.com/599yongyang/larder')}><GitHubIcon size={14} /></Button></div><div className={styles.aboutIdentity}><div><strong>Larder</strong><small>{t('common.version')} {info?.version || 'dev'}</small></div></div><dl className={`${styles.settingsDefinition} ${styles.aboutDefinition}`}><dt>{t('settings.dataDirectory')}</dt><dd><code>{info?.dataDir || '—'}</code></dd><dt>Schema</dt><dd><code>{info?.schemaVersion || '—'}</code></dd><dt>{t('settings.runtime')}</dt><dd>{info ? `${info.platform} · ${info.goVersion}` : '—'}</dd></dl><div className={`${styles.settingsRow} ${styles.aboutUpdate}`}><span><strong>{t('settings.appUpdates')}</strong><small>{appUpdate ? (appUpdate.available ? t('settings.appUpdateAvailable', { version: appUpdate.latest }) : t('settings.appUpToDate')) : t('settings.appUpdatesHint')}</small></span>{appUpdate?.available ? <><Button variant="default" size="sm" disabled={downloadingAppUpdate} onClick={() => void handleDownloadAppUpdate()}>{downloadingAppUpdate ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}{downloadingAppUpdate ? t('settings.downloadingUpdate') : t('settings.downloadUpdate')}</Button>{downloadedAppUpdate && <small className={styles.aboutUpdateHint}>{t('settings.updateDownloadedHint')}</small>}</> : <Button variant="outline" size="sm" disabled={checkingAppUpdate} onClick={() => void handleCheckAppUpdate()}>{checkingAppUpdate ? t('settings.checkingForAppUpdates') : t('settings.checkForAppUpdates')}</Button>}</div></section>
+      <section className={`${styles.settingsGroup} ${styles.settingsWide}`}><div className={styles.settingsGroupHead}><h2>{t('settings.about')}</h2><Button variant="ghost" size="icon-sm" title={t('settings.openGithub')} aria-label={t('settings.openGithub')} onClick={() => void openExternal('https://github.com/599yongyang/larder')}><GitHubIcon size={14} /></Button></div><div className={styles.aboutIdentity}><div><strong>Larder</strong><small>{t('common.version')} {info?.version || 'dev'}</small></div></div><dl className={`${styles.settingsDefinition} ${styles.aboutDefinition}`}><dt>{t('settings.dataDirectory')}</dt><dd><code>{info?.dataDir || '—'}</code></dd><dt>Schema</dt><dd><code>{info?.schemaVersion || '—'}</code></dd><dt>{t('settings.runtime')}</dt><dd>{info ? `${info.platform} · ${info.goVersion}` : '—'}</dd></dl><div className={`${styles.settingsRow} ${styles.aboutUpdate}`}><span><strong>{t('settings.appUpdates')}</strong><small>{t('settings.appUpdatesHint')}</small></span><Button variant="outline" size="sm" disabled={checkingAppUpdate} onClick={() => void handleCheckAppUpdate()}>{checkingAppUpdate ? t('settings.checkingForAppUpdates') : t('settings.checkForAppUpdates')}</Button></div></section>
     </div>
     {restore && <Dialog open onOpenChange={(open) => { if (!open && !restoring) setRestore(undefined) }}>
       <DialogContent className="max-w-md"><DialogHeader><DialogTitle>{t('settings.restoreThisBackup')}</DialogTitle><DialogDescription>{t('settings.mcpConfigsAndInstructionFilesInTheBackupWillOverwriteCurrentFilesCurrentFilesAreSnapshottedFirst')}</DialogDescription></DialogHeader><div className="px-6 py-2"><dl className={styles.settingsDefinition}><dt>{t('settings.created')}</dt><dd>{new Date(restore.info.createdAt).toLocaleString(getLanguage() === 'en' ? 'en-US' : 'zh-CN')}</dd><dt>{t('settings.mcpConfigs')}</dt><dd>{t('settings.message', { n: restore.info.configs })}</dd><dt>{t('common.instructionFiles')}</dt><dd>{t('settings.message', { n: restore.info.instructions })}</dd><dt>{t('settings.appFiles')}</dt><dd>{t('settings.message', { n: restore.info.apps })}</dd></dl></div><DialogFooter><Button size="sm" variant="outline" disabled={restoring} onClick={() => setRestore(undefined)}>{t('common.cancel')}</Button><Button size="sm" disabled={restoring} onClick={() => void applyRestore()}>{restoring ? t('common.restoring') : t('settings.restore')}</Button></DialogFooter></DialogContent>

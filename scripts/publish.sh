@@ -23,8 +23,8 @@ if git diff --quiet "$parent" "$tree"; then
 fi
 
 commit=$(printf '%s\n' "$message" | git commit-tree "$tree" -p "$parent")
-git branch -f open-source-0.0.6 "$commit"
-git push origin open-source-0.0.6:main
+git branch -f open-source-0.0.7 "$commit"
+git push origin open-source-0.0.7:main
 
 echo "Published $message"
 echo "Remote main: $(git rev-parse --short "$commit")"

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -128,58 +127,6 @@ func (s *Service) IgnoreAgent(ctx context.Context, path, label, rootID string) (
 	}
 	settings.IgnoredAgents = append(settings.IgnoredAgents, model.IgnoredAgent{RootID: rootID, Label: label, Path: path})
 	return s.SaveSettings(ctx, settings)
-}
-
-func (s *Service) RevealSkill(ctx context.Context, skillID string) error {
-	var path string
-	for _, skill := range s.Snapshot().Skills {
-		if skill.ID == skillID {
-			path = skill.Path
-			break
-		}
-	}
-	if path == "" {
-		return errors.New("skill not found")
-	}
-	if _, err := os.Stat(path); err != nil {
-		return err
-	}
-	var command *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		command = exec.Command("open", "-R", path)
-	case "windows":
-		command = exec.Command("explorer", "/select,", path)
-	default:
-		command = exec.Command("xdg-open", filepath.Dir(path))
-	}
-	return command.Start()
-}
-
-func (s *Service) RevealCLI(ctx context.Context, cliID string) error {
-	var path string
-	for _, cli := range s.Snapshot().CLIs {
-		if cli.ID == cliID {
-			path = cli.Path
-			break
-		}
-	}
-	if path == "" {
-		return errors.New("cli not found")
-	}
-	if _, err := os.Stat(path); err != nil {
-		return err
-	}
-	var command *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		command = exec.Command("open", "-R", path)
-	case "windows":
-		command = exec.Command("explorer", "/select,", path)
-	default:
-		command = exec.Command("xdg-open", filepath.Dir(path))
-	}
-	return command.Start()
 }
 
 func (s *Service) TrashAgent(ctx context.Context, path string) (model.Settings, error) {

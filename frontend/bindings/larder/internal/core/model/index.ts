@@ -32,6 +32,7 @@ export type {
     Operation,
     Plan,
     PlanChange,
+    ResourceUsage,
     Root,
     ScanIssue,
     ScanResult,

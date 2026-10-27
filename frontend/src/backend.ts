@@ -1,4 +1,5 @@
 import { AppService } from '../bindings/larder/cmd/larder'
+import type { Session } from './types'
 
 // Errors are intentionally propagated. The UI must show a real failure state
 // instead of silently rendering an empty ledger.
@@ -18,6 +19,10 @@ export const backend = {
   instructionContent: async (path: string) => String(await AppService.InstructionContent(path)),
   instructions: async () => ((await AppService.Instructions()) as any) ?? [],
   agentSessions: async (agent: string) => ((await AppService.AgentSessions(agent)) as any) ?? [],
+  setNativeLocale: async (locale: string) => { await AppService.SetNativeLocale(locale) },
+  projectUsage: async (projectPath: string) => ((await AppService.ProjectUsage(projectPath)) as any) ?? [],
+  agentUsage: async (agent: string) => ((await AppService.AgentUsage(agent)) as any) ?? [],
+  recentSessions: async (limit: number) => ((await AppService.RecentSessions(limit)) as any) ?? [],
   refreshSessions: async () => { await AppService.RefreshSessions() },
   sessions: async (projectPath: string) => ((await AppService.Sessions(projectPath)) as any) ?? [],
   commands: async () => ((await AppService.Commands()) as any) ?? [],
@@ -37,7 +42,12 @@ export const backend = {
   skillAuditForSource: async (source: string, skill: string) => (await AppService.SourceAudit(source, skill)) as any,
   skillAudit: async (skillID: string) => (await AppService.SkillAudit(skillID)) as any,
   commandContent: async (path: string) => String(await AppService.CommandContent(path)),
-  downloadAppUpdate: async (version: string) => String(await AppService.DownloadAppUpdate(version)),
+  autostartEnabled: async () => Boolean(await AppService.AutostartEnabled()),
+  setAutostart: async (enabled: boolean) => { await AppService.SetAutostart(enabled) },
+  openSessionInTerminal: async (session: Session) => { await AppService.OpenSessionInTerminal(session) },
+  sessionResumeCommand: async (session: Session) => String(await AppService.SessionResumeCommand(session)),
+  exportSession: async (session: Session) => String(await AppService.ExportSession(session)),
+  checkAppUpdate: async () => { await AppService.CheckAppUpdate() },
   commandTargets: async () => ((await AppService.CommandTargets()) as any) ?? [],
   planCommandWrite: async (request: unknown) => (await AppService.PlanCommandWrite(request as any)) as any,
   planCommandDelete: async (path: string) => (await AppService.PlanCommandDelete(path)) as any,

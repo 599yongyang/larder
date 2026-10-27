@@ -1,8 +1,8 @@
 import { useEffect } from 'react'
-import { Command as CommandIcon, FileText, History, LayoutList, RefreshCw, Search, Server, Settings as SettingsIcon, Sun, Terminal } from 'lucide-react'
+import { Command as CommandIcon, FileText, History, LayoutList, Loader2, RefreshCw, Search, Server, Settings as SettingsIcon, Sun, Terminal } from 'lucide-react'
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandShortcut } from '@/components/ui/command'
 import { SkillIcon } from './SkillIcon'
-import type { CLIInfo, InstructionFile, MCPServer, Skill, View } from '../types'
+import type { CLIInfo, InstructionFile, MCPServer, Session, Skill, View } from '../types'
 import { t } from '../i18n'
 import { shortcutLabel } from '../lib/platform'
 
@@ -13,17 +13,20 @@ type Props = {
   clis: CLIInfo[]
   mcps: MCPServer[]
   instructions: InstructionFile[]
+  sessions: Session[]
+  sessionsLoading?: boolean
   onView: (view: View) => void
   onSkill: (skill: Skill) => void
   onCLI: (cli: CLIInfo) => void
   onMCP: (mcp: MCPServer) => void
   onInstruction: () => void
+  onSession: (session: Session) => void
   onScan: () => void
   onCheckUpdates: () => void
   onToggleAppearance: () => void
 }
 
-export function CommandPalette({ open, onOpenChange, skills, clis, mcps, instructions, onView, onSkill, onCLI, onMCP, onInstruction, onScan, onCheckUpdates, onToggleAppearance }: Props) {
+export function CommandPalette({ open, onOpenChange, skills, clis, mcps, instructions, sessions, sessionsLoading = false, onView, onSkill, onCLI, onMCP, onInstruction, onSession, onScan, onCheckUpdates, onToggleAppearance }: Props) {
   const views = [
     { view: 'skills' as View, label: t('common.skills'), icon: LayoutList },
     { view: 'cli' as View, label: 'CLI', icon: Terminal },
@@ -58,6 +61,10 @@ export function CommandPalette({ open, onOpenChange, skills, clis, mcps, instruc
           <item.icon /><span>{item.label}</span>
         </CommandItem>)}
       </CommandGroup>
+      {sessionsLoading && <CommandGroup heading={t('command.recentSessions')}><CommandItem disabled><Loader2 className="animate-spin" /><span>{t('command.loadingSessions')}</span></CommandItem></CommandGroup>}
+      {sessions.length > 0 && <CommandGroup heading={t('command.recentSessions')}>
+        {sessions.slice(0, 8).map((session) => <CommandItem key={`${session.agent}:${session.id}`} value={`${session.title} ${session.id} ${session.agent} ${session.cwd} ${session.model}`} onSelect={() => { onSession(session); onOpenChange(false) }}><CommandIcon /><span>{session.title || session.id}</span><CommandShortcut>{session.agent}</CommandShortcut></CommandItem>)}
+      </CommandGroup>}
       {clis.length > 0 && <CommandGroup heading="CLI">
         {clis.map((cli) => <CommandItem key={cli.id} value={`${cli.name} ${cli.owner} ${cli.path}`} onSelect={() => { onCLI(cli); onOpenChange(false) }}>
           <Terminal className="text-muted-foreground" /><span>{cli.name}</span><CommandShortcut>{cli.owner}</CommandShortcut>

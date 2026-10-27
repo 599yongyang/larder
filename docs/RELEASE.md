@@ -16,11 +16,13 @@ go vet ./...
 
 ## Build
 
-Build the macOS app bundle and DMG:
+Build the macOS app bundle, updater archive and DMG:
 
 ```sh
 ./scripts/package.sh macos
 ```
+
+The updater archive is `bin/Larder-darwin-arm64.zip`. It must contain exactly one top-level `Larder.app` bundle; the packaging script creates it with `ditto`.
 
 Build a Windows installer from macOS (requires NSIS):
 
@@ -45,12 +47,14 @@ The build must run on a machine with the platform toolchain available:
 The app version lives in `cmd/larder/service.go`:
 
 ```go
-var Version = "0.0.6"
+var Version = "0.0.7"
 ```
 
 The public release tag and the in-app version must match.
 
-Upload `checksums.txt` alongside `Larder.dmg` and the Windows installer. The in-app updater downloads the DMG/EXE, verifies it against this file, then opens the installer.
+Upload `checksums.txt` alongside `Larder.dmg`, `Larder-darwin-arm64.zip` and the Windows installer.
+
+The macOS app uses the official Wails updater with the GitHub Releases provider. It downloads the zip, verifies the zip digest from `checksums.txt`, replaces the running app bundle and restarts. DMG remains the first-install/manual installer. Windows still uses the NSIS installer and does not self-update yet.
 
 ## macOS signing
 

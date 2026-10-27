@@ -51,3 +51,5 @@ export type NativeCLIUpdateInfo = { cliId: string; current?: string; latest?: st
 export type Session = { id: string; agent: string; cwd: string; title?: string; model?: string; path: string; startedAt: string; lastAt: string; messages: number; tokensIn: number; tokensOut: number }
 
 export type SessionMessage = { role: string; text: string; at: string }
+
+export type ResourceUsage = { kind: string; name: string; count: number; lastAt: string }

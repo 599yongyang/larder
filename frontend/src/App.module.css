@@ -934,9 +934,18 @@
 }
 
 .sessionMessagesLoading{display:flex;align-items:center;gap:7px;padding:14px 0;color:var(--text-muted);font-size:10px}
-.sessionMessages{display:flex;flex-direction:column;gap:10px;margin-top:8px}
-.sessionMessage{padding:9px 10px;border:1px solid var(--line);border-radius:7px;background:var(--paper)}
-.sessionMessage>div{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:5px}
+.sessionMessages{display:flex;flex-direction:column;gap:12px;margin-top:8px}
+.sessionMessage{display:flex;width:100%}
+.sessionMessageAssistant{justify-content:flex-start}
+.sessionMessageUser{justify-content:flex-end}
+.sessionMessageBubble{min-width:0;max-width:84%;padding:9px 11px;border:1px solid var(--line);border-radius:10px;background:var(--paper)}
+.sessionMessageAssistant .sessionMessageBubble{border-top-left-radius:3px}
+.sessionMessageUser .sessionMessageBubble{border-color:color-mix(in srgb, var(--brand) 22%, var(--line));border-top-right-radius:3px;background:var(--brand-soft)}
+.sessionMessageHead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:5px}
 .sessionMessage strong{color:var(--ink-soft);font-size:9.5px;font-weight:600}
-.sessionMessage time{color:var(--text-muted);font:8.5px var(--font-mono)}
+.sessionMessage time{color:var(--text-muted);font:8.5px var(--font-mono);white-space:nowrap}
 .sessionMessage p{margin:0;color:var(--ink-soft);font-size:10.5px;line-height:1.6;white-space:pre-wrap;word-break:break-word}
+
+.xrayUsage{padding:9px 15px 12px}.xrayUsageRow{display:grid;grid-template-columns:14px minmax(0,1fr) auto auto;align-items:center;gap:7px;padding:5px 0;border-top:1px solid var(--line);font-size:10px}.xrayUsageRow:first-child{border-top:0}.xrayUsageRow svg{color:var(--text-muted)}.xrayUsageRow span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-soft)}.xrayUsageRow b{color:var(--ink);font:9px var(--font-mono);font-weight:500}.xrayUsageRow time{color:var(--text-muted);font:8px var(--font-mono);white-space:nowrap}.xrayUsageEmpty{display:block;padding:9px 0;color:var(--text-muted);font-size:9.5px;line-height:1.5}
+
+.resumeCommand{display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--surface-muted)}.resumeCommand code{min-width:0;flex:1;overflow:auto;color:var(--ink-soft);font:9px var(--font-mono);white-space:nowrap}.resumeCommand button{flex:none}

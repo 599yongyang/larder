@@ -31,6 +31,11 @@ fi
 package_macos() {
   echo "==> packaging macOS app"
   wails3 task package
+  if [[ -d bin/Larder.app ]]; then
+    echo "==> packaging macOS updater zip"
+    rm -f bin/Larder-darwin-arm64.zip
+    (cd bin && zip -qry Larder-darwin-arm64.zip Larder.app)
+  fi
   if [[ "${SKIP_DMG:-0}" == "1" ]]; then
     echo "Skipped DMG (SKIP_DMG=1)"
   else
@@ -39,7 +44,7 @@ package_macos() {
   fi
   echo
   echo "macOS artifacts:"
-  find bin -maxdepth 1 \( -name '*.app' -o -name '*.dmg' \) -print | sort
+  find bin -maxdepth 1 \( -name '*.app' -o -name '*.dmg' -o -name 'Larder-*.zip' \) -print | sort
 }
 
 package_windows() {
@@ -60,6 +65,7 @@ package_windows() {
 write_checksums() {
   local files=()
   [[ -f bin/Larder.dmg ]] && files+=("Larder.dmg")
+  [[ -f bin/Larder-darwin-arm64.zip ]] && files+=("Larder-darwin-arm64.zip")
   [[ -f bin/larder-amd64-installer.exe ]] && files+=("larder-amd64-installer.exe")
   if [[ ${#files[@]} -gt 0 ]]; then
     (cd bin && shasum -a 256 "${files[@]}" > checksums.txt)

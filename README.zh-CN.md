@@ -16,7 +16,7 @@ Larder 是一个本地优先的桌面应用，面向同时使用多个 AI Agent 
 - **CLI 工具**：查看已安装命令、所属包管理器、重复安装和可用更新；通过包管理器更新或卸载。
 - **指令文件**：扫描 `AGENTS.md`、`CLAUDE.md`、Cursor rules 和 Copilot instructions；支持 Markdown 预览、原文查看、编辑和新建。
 - **Commands**：扫描 Claude Code、Cursor、OpenCode、Gemini CLI 和 GitHub Copilot 的自定义命令；通过计划和快照新建或编辑。Codex 新版本已改用 Skills，不再读取 prompts。
-- **应用更新**：检查新版本，下载安装包并校验 SHA-256 后再打开。
+- **应用更新**：检查 GitHub Releases，下载并校验应用包，安装后自动重启。
 - **项目**：在一个页面里看到项目自己的 Skills、MCP 和指令文件。
 - **语言**：在设置中切换中文和英文；首次启动会跟随系统语言。
 
@@ -120,7 +120,7 @@ xattr -dr com.apple.quarantine /path/to/Larder.app
 
 ## 当前状态
 
-`0.0.6` — 早期开发阶段。当前重点是本机真实状态、安全写入，以及更清楚地解释每个 Agent 实际看到了什么。
+`0.0.7` — 早期开发阶段。当前重点是本机真实状态、安全写入，以及更清楚地解释每个 Agent 实际看到了什么。
 
 ## 许可
 

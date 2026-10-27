@@ -1,3 +1,4 @@
+import { copyText as writeClipboard } from '../../lib/clipboard'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { Copy, Plus, Trash2 } from 'lucide-react'
 import { AgentIcon } from '../../components/AgentIcon'
@@ -69,7 +70,7 @@ function MCPView({ servers, clis, onRefresh, focusMCP, onFocusConsumed, onOpenCL
     const text = `${server.name} ${server.command ?? ''} ${(server.args ?? []).join(' ')} ${server.url ?? ''} ${(server.envKeys ?? []).join(' ')} ${server.agents.map((agent) => `${agent.label} ${agent.path}`).join(' ')}`
     return inFilter && (!query.trim() || text.toLowerCase().includes(query.trim().toLowerCase()))
   })
-  const copyText = async (value: string, label: string) => { try { await navigator.clipboard.writeText(value); toastSuccess(t('common.copied', { label })) } catch (error) { toastError(error, t('common.failedToCopy', { label })) } }
+  const copyText = async (value: string, label: string) => { try { await writeClipboard(value); toastSuccess(t('common.copied', { label })) } catch (error) { toastError(error, t('common.failedToCopy', { label })) } }
   const selected = servers.find((server) => server.id === selectedId)
   return <section className={styles.fullPanel}>
     <div className={styles.metrics}>

@@ -137,6 +137,107 @@ func scanQoder(ctx context.Context, home, projectPath string) []model.Session {
 	return out
 }
 
+// ToolUsage is aggregate evidence of Skills and MCP servers used by an Agent.
+// It is derived from tool-call records only; transcript text is never returned.
+type ToolUsage struct {
+	Skills map[string]int
+	MCP    map[string]int
+	LastAt time.Time
+}
+
+var skillPathPattern = regexp.MustCompile(`(?:^|[/\\])skills[/\\]([^/\\\s"']+)[/\\]SKILL\.md`)
+
+func ReadToolUsage(path string) (ToolUsage, error) {
+	file, err := openSessionFile(path)
+	if err != nil {
+		return ToolUsage{}, err
+	}
+	defer file.Close()
+	usage := ToolUsage{Skills: map[string]int{}, MCP: map[string]int{}}
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
+	for lines := 0; scanner.Scan() && lines < maxLines*25; lines++ {
+		var line struct {
+			Type      string `json:"type"`
+			Time      int64  `json:"time"`
+			Timestamp string `json:"timestamp"`
+			Message   struct {
+				Content []struct {
+					Type  string          `json:"type"`
+					Name  string          `json:"name"`
+					Input json.RawMessage `json:"input"`
+				} `json:"content"`
+			} `json:"message"`
+			Payload struct {
+				Type      string          `json:"type"`
+				Name      string          `json:"name"`
+				Arguments string          `json:"arguments"`
+				Input     json.RawMessage `json:"input"`
+			} `json:"payload"`
+			Data struct {
+				Name      string `json:"name"`
+				Arguments string `json:"arguments"`
+			} `json:"data"`
+		}
+		if json.Unmarshal(scanner.Bytes(), &line) != nil {
+			continue
+		}
+		at := time.Time{}
+		if line.Time > 0 {
+			at = time.UnixMilli(line.Time)
+		} else if parsed, parseErr := time.Parse(time.RFC3339, line.Timestamp); parseErr == nil {
+			at = parsed
+		}
+		if at.After(usage.LastAt) {
+			usage.LastAt = at
+		}
+		tool := func(name, raw string) {
+			if name == "Skill" || name == "skill" {
+				var input struct {
+					Skill string `json:"skill"`
+				}
+				if json.Unmarshal([]byte(raw), &input) == nil && input.Skill != "" {
+					usage.Skills[input.Skill]++
+				}
+				return
+			}
+			if strings.HasPrefix(name, "mcp__") {
+				parts := strings.Split(name, "__")
+				if len(parts) >= 2 && parts[1] != "" {
+					usage.MCP[parts[1]]++
+				}
+			}
+			for _, match := range skillPathPattern.FindAllStringSubmatch(raw, -1) {
+				if len(match) > 1 {
+					usage.Skills[match[1]]++
+				}
+			}
+		}
+		switch line.Type {
+		case "assistant":
+			for _, part := range line.Message.Content {
+				if part.Type != "tool_use" || part.Name == "" {
+					continue
+				}
+				tool(part.Name, string(part.Input))
+			}
+		case "response_item":
+			if line.Payload.Name != "" {
+				tool(line.Payload.Name, line.Payload.Arguments)
+			}
+			if len(line.Payload.Input) > 0 {
+				tool(line.Payload.Name, string(line.Payload.Input))
+			}
+		case "tool/call":
+			tool(line.Data.Name, line.Data.Arguments)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return usage, err
+	}
+	return usage, nil
+}
+
 // ReadMessages returns a short, on-demand preview of transcript text. It never
 // writes to the source file and never exposes tool arguments or results.
 func ReadMessages(path string, limit int) ([]model.SessionMessage, error) {

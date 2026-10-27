@@ -29,6 +29,10 @@ export function AgentSessions(agent: string): $CancellablePromise<model$0.Sessio
     return $Call.ByID(1224160527, agent);
 }
 
+export function AgentUsage(agent: string): $CancellablePromise<model$0.ResourceUsage[] | null> {
+    return $Call.ByID(2969017213, agent);
+}
+
 export function AppInfo(): $CancellablePromise<$models.AppInfo> {
     return $Call.ByID(2585217892);
 }
@@ -63,6 +67,10 @@ export function ApplySkillEdit(planID: string): $CancellablePromise<model$0.Oper
 
 export function ApplySkillRename(planID: string): $CancellablePromise<model$0.Operation> {
     return $Call.ByID(185137750, planID);
+}
+
+export function AutostartEnabled(): $CancellablePromise<boolean> {
+    return $Call.ByID(2576665495);
 }
 
 export function CLIVersion(cliID: string): $CancellablePromise<string> {
@@ -108,6 +116,10 @@ export function CatalogSkills(view: string): $CancellablePromise<catalog$0.Skill
     return $Call.ByID(2245386990, view);
 }
 
+export function CheckAppUpdate(): $CancellablePromise<void> {
+    return $Call.ByID(1192310087);
+}
+
 export function CheckUpdates(): $CancellablePromise<model$0.UpdateReport> {
     return $Call.ByID(3271042347);
 }
@@ -136,10 +148,6 @@ export function Doctor(): $CancellablePromise<model$0.Finding[] | null> {
     return $Call.ByID(871889094);
 }
 
-export function DownloadAppUpdate(version: string): $CancellablePromise<string> {
-    return $Call.ByID(918375453, version);
-}
-
 export function EnableMCPAgent(name: string, agentPath: string): $CancellablePromise<void> {
     return $Call.ByID(486487643, name, agentPath);
 }
@@ -152,12 +160,25 @@ export function ExportReport(): $CancellablePromise<string> {
     return $Call.ByID(3926081761);
 }
 
+export function ExportSession(session: model$0.Session): $CancellablePromise<string> {
+    return $Call.ByID(4221037065, session);
+}
+
 export function IgnoreAgent(path: string, label: string, rootID: string): $CancellablePromise<model$0.Settings> {
     return $Call.ByID(2209234508, path, label, rootID);
 }
 
 export function InspectBackup(path: string): $CancellablePromise<backup$0.Info> {
     return $Call.ByID(1617118777, path);
+}
+
+/**
+ * InstallNativeContextMenu registers the resource context menu. The menu is
+ * rebuilt when the frontend reports a language change so native labels follow
+ * the in-app locale.
+ */
+export function InstallNativeContextMenu(): $CancellablePromise<void> {
+    return $Call.ByID(2499098497);
 }
 
 export function InstallUpstreamSkills(repo: string, items: model$0.UpstreamSkillInstall[] | null): $CancellablePromise<model$0.Operation[] | null> {
@@ -186,6 +207,10 @@ export function NativeCLIUpdate(cliID: string): $CancellablePromise<string> {
 
 export function NativeCLIUpdateCheck(cliID: string): $CancellablePromise<model$0.NativeCLIUpdateInfo> {
     return $Call.ByID(346548043, cliID);
+}
+
+export function OpenSessionInTerminal(session: model$0.Session): $CancellablePromise<void> {
+    return $Call.ByID(1585583500, session);
 }
 
 export function Operations(): $CancellablePromise<model$0.Operation[] | null> {
@@ -284,8 +309,16 @@ export function PreviewVersionDiff(operationID: string): $CancellablePromise<mod
     return $Call.ByID(2655019298, operationID);
 }
 
+export function ProjectUsage(projectPath: string): $CancellablePromise<model$0.ResourceUsage[] | null> {
+    return $Call.ByID(2839392477, projectPath);
+}
+
 export function PurgeTrash(operationID: string): $CancellablePromise<void> {
     return $Call.ByID(2778568018, operationID);
+}
+
+export function RecentSessions(limit: number): $CancellablePromise<model$0.Session[] | null> {
+    return $Call.ByID(3993457471, limit);
 }
 
 export function RecordCatalogInstall(path: string, source: string, skillID: string): $CancellablePromise<void> {
@@ -348,6 +381,10 @@ export function SessionMessages(path: string, limit: number): $CancellablePromis
     return $Call.ByID(3512378259, path, limit);
 }
 
+export function SessionResumeCommand(session: model$0.Session): $CancellablePromise<string> {
+    return $Call.ByID(4019540985, session);
+}
+
 export function Sessions(projectPath: string): $CancellablePromise<model$0.Session[] | null> {
     return $Call.ByID(2779076680, projectPath);
 }
@@ -359,6 +396,14 @@ export function Sessions(projectPath: string): $CancellablePromise<model$0.Sessi
  */
 export function SetApp(app: application$0.App | null): $CancellablePromise<void> {
     return $Call.ByID(555403882, app);
+}
+
+export function SetAutostart(enabled: boolean): $CancellablePromise<void> {
+    return $Call.ByID(329805632, enabled);
+}
+
+export function SetNativeLocale(locale: string): $CancellablePromise<void> {
+    return $Call.ByID(2632526102, locale);
 }
 
 export function Settings(): $CancellablePromise<model$0.Settings> {

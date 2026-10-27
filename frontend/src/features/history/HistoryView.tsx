@@ -1,3 +1,4 @@
+import { copyText as writeClipboard } from '../../lib/clipboard'
 import { useState } from 'react'
 import { Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -15,7 +16,7 @@ function HistoryView({ events, usage, operations, onRollback, onRefresh }: { eve
   const [query, setQuery] = useState('')
   const trashCount = operations.filter((operation) => (operation.operation === 'uninstall_skill' || operation.operation === 'mcp_remove') && operation.status === 'success').length
   const copyReport = async () => {
-    try { await navigator.clipboard.writeText(await backend.exportReport()); toastSuccess(t('history.reportCopied')) } catch (error) { toastError(error, t('history.failedToCopyReport')) }
+    try { await writeClipboard(await backend.exportReport()); toastSuccess(t('history.reportCopied')) } catch (error) { toastError(error, t('history.failedToCopyReport')) }
   }
   return <div className={styles.historyPage}>
     <div className={styles.historyToolbar}>

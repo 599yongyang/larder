@@ -1,3 +1,4 @@
+import { copyText as writeClipboard } from '../lib/clipboard'
 import { useEffect, useState } from 'react'
 import { Copy, FileText } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -28,7 +29,7 @@ export function InstructionDetailSheet({ file, onClose, onEdit }: { file: Instru
     return () => { active = false }
   }, [file.path])
   const { meta, body } = splitFrontmatter(content)
-  const copyPath = async () => { await navigator.clipboard.writeText(file.path); toastSuccess(t('instructions.pathCopied')) }
+  const copyPath = async () => { await writeClipboard(file.path); toastSuccess(t('instructions.pathCopied')) }
   return <Sheet open onOpenChange={(open) => { if (!open) onClose() }}>
     <SheetContent side="right" className="w-[540px] sm:max-w-[540px]">
       <SheetHeader className="gap-0 border-b px-5 py-4"><div className="flex items-start gap-3 pr-9"><div className={styles.mcpHero}><FileText size={17} /></div><div className="min-w-0 flex-1"><SheetTitle className="truncate text-[15px]">{file.name}</SheetTitle><SheetDescription className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[11px]"><span>{tValue(file.agent)}</span><span>·</span><span>{instructionScopeLabel(file.scope)}</span><span>·</span><span>{file.project || t('instructions.userDirectory')}</span></SheetDescription></div><Badge variant={file.scope === 'global' ? 'outline' : 'info'}>{instructionScopeLabel(file.scope)}</Badge></div></SheetHeader>

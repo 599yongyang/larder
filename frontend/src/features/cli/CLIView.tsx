@@ -1,3 +1,4 @@
+import { copyText as writeClipboard } from '../../lib/clipboard'
 import { useEffect, useState } from 'react'
 import { ChevronRight, RefreshCw, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -76,7 +77,7 @@ function CLIView({ clis, skills, mcps, onRefresh, updates, updatesLoading, onChe
   const selected = clis.find((item) => item.id === selectedId)
   const selectedGroupUpdate = selectedGroup ? selectedGroup.items.map((item) => ({ cli: item, update: updateFor(item) })).find((entry) => entry.update?.state === 'available') : undefined
 
-  const copyText = async (value: string, label: string) => { try { await navigator.clipboard.writeText(value); toastSuccess(t('common.copied', { label })) } catch (error) { toastError(error, t('common.failedToCopy', { label })) } }
+  const copyText = async (value: string, label: string) => { try { await writeClipboard(value); toastSuccess(t('common.copied', { label })) } catch (error) { toastError(error, t('common.failedToCopy', { label })) } }
   const revealCLI = async (cli: CLIInfo) => { try { await backend.revealCLI(cli.id) } catch (error) { toastError(error, t('common.failedToOpenLocation')) } }
   const canUninstall = (cli: CLIInfo) => ['Homebrew', 'npm', 'winget', 'Bun', 'Cargo', 'Conda', 'pipx', 'uv'].includes(cli.owner) && Boolean(cli.ownerDetail)
   const openUninstall = async (cli: CLIInfo) => {

@@ -1,25 +1,28 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { KeyboardEvent } from 'react'
-import { ChevronRight, Command as CommandIcon, Folder, FolderLock, History as HistoryIcon, RefreshCw } from 'lucide-react'
+import { ChevronRight, Command as CommandIcon, Folder, FolderLock, History as HistoryIcon, Loader2, RefreshCw, Server, Sparkles } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { AgentIcon } from '../../components/AgentIcon'
 import { InstructionDetailSheet } from '../../components/InstructionDetailSheet'
 import { SessionDetailSheet } from '../../components/SessionDetailSheet'
+import { SessionQuickActions } from '../../components/SessionQuickActions'
 import { InstructionEditorDialog } from '../../components/InstructionEditorDialog'
 import { MCPIcon } from '../../components/MCPIcon'
 import { AssetSearch } from '../../components/AssetSearch'
 import { SkillIcon } from '../../components/SkillIcon'
 import styles from '../../App.module.css'
+import { backend } from '../../backend'
 import { t, tValue } from '../../i18n'
 import { formatCompactNumber, formatRelativeTime } from '../../lib/format'
 import { operationKeys } from '../history/HistoryFeed'
+import { nativeContextMenu } from '../../lib/nativeContextMenu'
 import projectStyles from './ProjectView.module.css'
-import type { Command, InstructionFile, Issue, MCPServer, Operation, Session, Skill } from '../../types'
+import type { Command, InstructionFile, Issue, MCPServer, Operation, ResourceUsage, Session, Skill } from '../../types'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
-type ProjectTab = 'sessions' | 'resources' | 'activity'
+type ProjectTab = 'sessions' | 'resources' | 'usage' | 'activity'
 type ResourceFilter = 'all' | 'skills' | 'mcp' | 'instructions' | 'commands'
 
 function activateRow(event: KeyboardEvent<HTMLTableRowElement>, action: () => void) {
@@ -39,6 +42,8 @@ function ProjectView({ path, skills, servers, instructions, commands, operations
   const [editingInstruction, setEditingInstruction] = useState<InstructionFile>()
   const [selectedSession, setSelectedSession] = useState<Session>()
   const [tab, setTab] = useState<ProjectTab>('sessions')
+  const [usage, setUsage] = useState<ResourceUsage[]>([])
+  const [usageLoading, setUsageLoading] = useState(true)
   const [sessionQuery, setSessionQuery] = useState('')
   const [sessionRange, setSessionRange] = useState<'all' | 'today' | '7d' | '30d'>('all')
   const [sessionLimit, setSessionLimit] = useState(20)
@@ -57,6 +62,13 @@ function ProjectView({ path, skills, servers, instructions, commands, operations
   const visibleSessions = filteredSessions.slice(0, sessionLimit)
   const sessionCountLabel = sessionsLoading ? '…' : sessions.length >= 50 ? '50+' : String(sessions.length)
   useEffect(() => setSessionLimit(20), [sessionQuery, sessionRange])
+  useEffect(() => {
+    if (tab !== 'usage' || typeof backend.projectUsage !== 'function') return
+    let active = true
+    setUsageLoading(true)
+    backend.projectUsage(path).then((items) => { if (active) setUsage(items) }).catch(() => { if (active) setUsage([]) }).finally(() => { if (active) setUsageLoading(false) })
+    return () => { active = false }
+  }, [path, tab])
   const resourceNeedle = resourceQuery.trim().toLowerCase()
   const matchesResource = (values: (string | undefined)[]) => !resourceNeedle || values.some((value) => (value ?? '').toLowerCase().includes(resourceNeedle))
   const filteredSkills = (resourceFilter === 'all' || resourceFilter === 'skills') ? projectSkills.filter((skill) => matchesResource([skill.name, skill.source])) : []
@@ -68,7 +80,7 @@ function ProjectView({ path, skills, servers, instructions, commands, operations
   const hasResources = projectSkills.length + projectMCPs.length + projectInstructions.length + projectCommands.length > 0
   const hasAny = hasResources || sessions.length > 0 || sessionsLoading || projectOperations.length > 0
   const accessIssue = (issues ?? []).find((issue) => Boolean(issue.path) && (issue.path === path || issue.path!.startsWith(path + '/')) && ['permission', 'scan_unavailable', 'scan_failure'].includes(issue.kind))
-  const tabOrder: ProjectTab[] = ['sessions', 'resources', 'activity']
+  const tabOrder: ProjectTab[] = ['sessions', 'resources', 'usage', 'activity']
   const activateTab = (next: ProjectTab) => {
     setTab(next)
     requestAnimationFrame(() => document.getElementById(`project-tab-${next}`)?.focus())
@@ -104,6 +116,7 @@ function ProjectView({ path, skills, servers, instructions, commands, operations
       <div className={projectStyles.tabs} role="tablist" aria-label={t('project.projectTabs')}>
         <button type="button" role="tab" id="project-tab-sessions" aria-controls="project-panel-sessions" aria-selected={tab === 'sessions'} tabIndex={tab === 'sessions' ? 0 : -1} className={tab === 'sessions' ? projectStyles.tabActive : projectStyles.tab} onClick={() => setTab('sessions')} onKeyDown={(event) => tabKeyDown(event, 'sessions')}>{t('common.sessions')}<b>{sessionCountLabel}</b></button>
         <button type="button" role="tab" id="project-tab-resources" aria-controls="project-panel-resources" aria-selected={tab === 'resources'} tabIndex={tab === 'resources' ? 0 : -1} className={tab === 'resources' ? projectStyles.tabActive : projectStyles.tab} onClick={() => setTab('resources')} onKeyDown={(event) => tabKeyDown(event, 'resources')}>{t('project.resources')}<b>{resourceCount('all')}</b></button>
+        <button type="button" role="tab" id="project-tab-usage" aria-controls="project-panel-usage" aria-selected={tab === 'usage'} tabIndex={tab === 'usage' ? 0 : -1} className={tab === 'usage' ? projectStyles.tabActive : projectStyles.tab} onClick={() => setTab('usage')} onKeyDown={(event) => tabKeyDown(event, 'usage')}>{t('project.usage')}<b>{usage.length}</b></button>
         <button type="button" role="tab" id="project-tab-activity" aria-controls="project-panel-activity" aria-selected={tab === 'activity'} tabIndex={tab === 'activity' ? 0 : -1} className={tab === 'activity' ? projectStyles.tabActive : projectStyles.tab} onClick={() => setTab('activity')} onKeyDown={(event) => tabKeyDown(event, 'activity')}>{t('project.recentActivity')}<b>{projectOperations.length}</b></button>
       </div>
       {tab === 'sessions' && <div role="tabpanel" id="project-panel-sessions" aria-labelledby="project-tab-sessions">
@@ -115,8 +128,8 @@ function ProjectView({ path, skills, servers, instructions, commands, operations
           <div className={styles.filterRight}><span className={styles.resultCount}>{sessionsLoading ? '…' : t('sessions.resultCount', { shown: visibleSessions.length, total: filteredSessions.length })}</span></div>
         </div>
         {sessionsError ? <div className={projectStyles.tableEmpty} role="alert"><span><strong>{t('sessions.loadFailed')}</strong><small>{t('sessions.loadFailedHint')}</small></span>{onRetrySessions && <Button size="sm" variant="outline" onClick={onRetrySessions}>{t('common.retry')}</Button>}</div> : sessionsLoading ? <div className={styles.tableWrap}><table className={`${projectStyles.table} ${projectStyles.sessionTable}`}><thead><tr><th>{t('sessions.title')}</th><th>{t('common.agent')}</th><th>{t('sessions.messages')}</th><th>{t('sessions.tokens')}</th><th>{t('sessions.lastActive')}</th></tr></thead><tbody>{Array.from({ length: 7 }).map((_, index) => <tr key={index} className={projectStyles.skeletonRow}><td><span className={projectStyles.skeletonLine} style={{ width: `${52 + (index % 3) * 9}%` }} /><span className={projectStyles.skeletonLineSmall} style={{ width: `${22 + (index % 2) * 8}%` }} /></td><td><span className={projectStyles.skeletonLineSmall} style={{ width: '72%' }} /></td><td><span className={projectStyles.skeletonLineSmall} style={{ width: '54%' }} /></td><td><span className={projectStyles.skeletonLineSmall} style={{ width: '46%' }} /></td><td><span className={projectStyles.skeletonLineSmall} style={{ width: '64%' }} /></td></tr>)}</tbody></table></div> : filteredSessions.length === 0 ? <div className={projectStyles.tableEmpty}><span>{sessions.length === 0 ? <><strong>{t('agent.noSessionsTitle')}</strong><small>{t('agent.noSessionsHint')}</small></> : t('sessions.noMatchingSessions')}</span></div> : <>
-          <div className={styles.tableWrap}><table className={`${projectStyles.table} ${projectStyles.sessionTable}`}><thead><tr><th>{t('sessions.title')}</th><th>{t('common.agent')}</th><th>{t('sessions.messages')}</th><th>{t('sessions.tokens')}</th><th>{t('sessions.lastActive')}</th></tr></thead><tbody>
-            {visibleSessions.map((session) => <tr key={`${session.agent}:${session.id}`} tabIndex={0} onClick={() => setSelectedSession(session)} onKeyDown={(event) => activateRow(event, () => setSelectedSession(session))}><td><span className={projectStyles.sessionTitle}>{session.title || session.id}</span><small>{session.model || session.path}</small></td><td><span className={projectStyles.agentCell}><AgentIcon name={session.agent} className="size-4" />{session.agent}</span></td><td>{t('project.sessionMessages', { n: formatCompactNumber(session.messages) })}</td><td>{session.tokensIn + session.tokensOut > 0 ? formatCompactNumber(session.tokensIn + session.tokensOut) : '—'}</td><td>{formatRelativeTime(session.lastAt)}</td></tr>)}
+          <div className={styles.tableWrap}><table className={`${projectStyles.table} ${projectStyles.sessionTable}`}><thead><tr><th>{t('sessions.title')}</th><th>{t('common.agent')}</th><th>{t('sessions.messages')}</th><th>{t('sessions.tokens')}</th><th>{t('sessions.lastActive')}</th><th /></tr></thead><tbody>
+            {visibleSessions.map((session) => <tr key={`${session.agent}:${session.id}`} style={nativeContextMenu({ kind: 'session', name: session.title || session.id, path: session.path, project: session.cwd, id: session.id })} tabIndex={0} onClick={() => setSelectedSession(session)} onKeyDown={(event) => activateRow(event, () => setSelectedSession(session))}><td><span className={projectStyles.sessionTitle}>{session.title || session.id}</span><small>{session.model || session.path}</small></td><td><span className={projectStyles.agentCell}><AgentIcon name={session.agent} className="size-4" />{session.agent}</span></td><td>{t('project.sessionMessages', { n: formatCompactNumber(session.messages) })}</td><td>{session.tokensIn + session.tokensOut > 0 ? formatCompactNumber(session.tokensIn + session.tokensOut) : '—'}</td><td>{formatRelativeTime(session.lastAt)}</td><td><SessionQuickActions session={session} /></td></tr>)}
           </tbody></table></div>
           {filteredSessions.length > visibleSessions.length && <div className={projectStyles.tableMore}><Button variant="outline" size="sm" onClick={() => setSessionLimit((value) => value + 20)}>{t('sessions.loadMore', { n: Math.min(20, filteredSessions.length - visibleSessions.length) })}</Button></div>}
         </>}
@@ -130,12 +143,22 @@ function ProjectView({ path, skills, servers, instructions, commands, operations
           <div className={styles.filterRight}><span className={styles.resultCount}>{visibleResourceCount}</span></div>
         </div>
         {visibleResourceCount === 0 ? <div className={projectStyles.tableEmpty}>{hasResources ? t('sessions.noMatchingSessions') : t('project.noResourcesInThisCategory')}</div> : <div className={styles.tableWrap}><table className={`${projectStyles.table} ${projectStyles.resourceTable}`}><thead><tr><th>{t('project.resourceType')}</th><th>{t('common.name')}</th><th>{t('common.sourceLabel')}</th><th /></tr></thead><tbody>
-          {filteredSkills.map((skill) => <tr key={skill.id} tabIndex={0} onClick={() => setSelected({ kind: 'skill', item: skill })} onKeyDown={(event) => activateRow(event, () => setSelected({ kind: 'skill', item: skill }))}><td><span className={projectStyles.typeChip}>{t('common.skills')}</span></td><td><span className={projectStyles.resourceName}><SkillIcon skill={skill} className="size-4" />{skill.name}</span></td><td>{skill.source || t('common.local')}</td><td><ChevronRight size={12} className={projectStyles.rowEnd} /></td></tr>)}
-          {filteredMCPs.map((server) => <tr key={server.id} tabIndex={0} onClick={() => setSelected({ kind: 'mcp', item: server })} onKeyDown={(event) => activateRow(event, () => setSelected({ kind: 'mcp', item: server }))}><td><span className={projectStyles.typeChip}>MCP</span></td><td><span className={projectStyles.resourceName}><MCPIcon name={server.name} command={server.command} url={server.url} className="size-4" />{server.name}</span></td><td>{server.transport} · {t('common.agents', { n: server.agents.length })}</td><td><ChevronRight size={12} className={projectStyles.rowEnd} /></td></tr>)}
-          {filteredInstructions.map((file) => <tr key={file.id} tabIndex={0} onClick={() => setSelected({ kind: 'instruction', item: file })} onKeyDown={(event) => activateRow(event, () => setSelected({ kind: 'instruction', item: file }))}><td><span className={projectStyles.typeChip}>{t('common.instructions')}</span></td><td><span className={projectStyles.resourceName}><AgentIcon name={file.agent} className="size-4" />{file.name}</span></td><td>{tValue(file.agent)} · {file.path.startsWith(path + '/') ? file.path.slice(path.length + 1) : file.path}</td><td><ChevronRight size={12} className={projectStyles.rowEnd} /></td></tr>)}
-          {filteredCommands.map((command) => <tr key={command.id} tabIndex={0} onClick={onOpenCommands} onKeyDown={(event) => activateRow(event, onOpenCommands)}><td><span className={projectStyles.typeChip}>{t('common.commands')}</span></td><td><span className={projectStyles.resourceName}><CommandIcon size={14} className={projectStyles.rowIcon} />{command.name}</span></td><td>{tValue(command.agent)} · {command.path.slice(path.length + 1)}</td><td><ChevronRight size={12} className={projectStyles.rowEnd} /></td></tr>)}
+          {filteredSkills.map((skill) => <tr key={skill.id} style={nativeContextMenu({ kind: 'skill', name: skill.name, path: skill.path, id: skill.id })} tabIndex={0} onClick={() => setSelected({ kind: 'skill', item: skill })} onKeyDown={(event) => activateRow(event, () => setSelected({ kind: 'skill', item: skill }))}><td><span className={projectStyles.typeChip}>{t('common.skills')}</span></td><td><span className={projectStyles.resourceName}><SkillIcon skill={skill} className="size-4" />{skill.name}</span></td><td>{skill.source || t('common.local')}</td><td><ChevronRight size={12} className={projectStyles.rowEnd} /></td></tr>)}
+          {filteredMCPs.map((server) => <tr key={server.id} style={nativeContextMenu({ kind: 'mcp', name: server.name, id: server.id })} tabIndex={0} onClick={() => setSelected({ kind: 'mcp', item: server })} onKeyDown={(event) => activateRow(event, () => setSelected({ kind: 'mcp', item: server }))}><td><span className={projectStyles.typeChip}>MCP</span></td><td><span className={projectStyles.resourceName}><MCPIcon name={server.name} command={server.command} url={server.url} className="size-4" />{server.name}</span></td><td>{server.transport} · {t('common.agents', { n: server.agents.length })}</td><td><ChevronRight size={12} className={projectStyles.rowEnd} /></td></tr>)}
+          {filteredInstructions.map((file) => <tr key={file.id} style={nativeContextMenu({ kind: 'instruction', name: file.name, path: file.path, id: file.id })} tabIndex={0} onClick={() => setSelected({ kind: 'instruction', item: file })} onKeyDown={(event) => activateRow(event, () => setSelected({ kind: 'instruction', item: file }))}><td><span className={projectStyles.typeChip}>{t('common.instructions')}</span></td><td><span className={projectStyles.resourceName}><AgentIcon name={file.agent} className="size-4" />{file.name}</span></td><td>{tValue(file.agent)} · {file.path.startsWith(path + '/') ? file.path.slice(path.length + 1) : file.path}</td><td><ChevronRight size={12} className={projectStyles.rowEnd} /></td></tr>)}
+          {filteredCommands.map((command) => <tr key={command.id} style={nativeContextMenu({ kind: 'command', name: command.name, path: command.path, id: command.id })} tabIndex={0} onClick={onOpenCommands} onKeyDown={(event) => activateRow(event, onOpenCommands)}><td><span className={projectStyles.typeChip}>{t('common.commands')}</span></td><td><span className={projectStyles.resourceName}><CommandIcon size={14} className={projectStyles.rowIcon} />{command.name}</span></td><td>{tValue(command.agent)} · {command.path.slice(path.length + 1)}</td><td><ChevronRight size={12} className={projectStyles.rowEnd} /></td></tr>)}
         </tbody></table></div>}
       </div>}
+      {tab === 'usage' && <div role="tabpanel" id="project-panel-usage" aria-labelledby="project-tab-usage">
+        {usageLoading ? <div className={projectStyles.tableLoading}><Loader2 size={16} className="animate-spin" />{t('project.loadingUsage')}</div> : usage.length === 0 ? <div className={projectStyles.tableEmpty}>{t('project.usageEmpty')}</div> : <div className={styles.tableWrap}><table className={`${projectStyles.table} ${projectStyles.usageTable}`}><thead><tr><th>{t('project.resource')}</th><th>{t('project.type')}</th><th>{t('project.invocations')}</th><th>{t('sessions.lastActive')}</th></tr></thead><tbody>
+          {usage.map((item) => {
+            const skill = item.kind === 'skill' ? skills.find((entry) => entry.name === item.name) : undefined
+            const server = item.kind === 'mcp' ? servers.find((entry) => entry.name === item.name) : undefined
+            return <tr key={`${item.kind}:${item.name}`}><td><span className={projectStyles.resourceName}>{skill ? <SkillIcon skill={skill} className="size-4" /> : server ? <MCPIcon name={server.name} command={server.command} url={server.url} className="size-4" /> : item.kind === 'skill' ? <Sparkles size={13} /> : <Server size={13} />}{item.name}</span></td><td><span className={projectStyles.typeChip}>{item.kind === 'skill' ? t('common.skills') : 'MCP'}</span></td><td>{item.count}</td><td>{item.lastAt ? formatRelativeTime(item.lastAt) : '—'}</td></tr>
+          })}
+        </tbody></table></div>}
+      </div>}
+
       {tab === 'activity' && <div role="tabpanel" id="project-panel-activity" aria-labelledby="project-tab-activity">
         {projectOperations.length === 0 ? <div className={projectStyles.tableEmpty}>{t('project.noProjectActivity')}</div> : <div className={styles.tableWrap}><table className={`${projectStyles.table} ${projectStyles.activityTable}`}><thead><tr><th>{t('project.operation')}</th><th>{t('common.path')}</th><th>{t('sessions.lastActive')}</th></tr></thead><tbody>
           {projectOperations.map((operation) => <tr key={operation.id}><td><span className={projectStyles.activityName}><HistoryIcon size={13} />{t(operationKeys[operation.operation] ?? operation.operation)}</span></td><td><code className={projectStyles.activityPath}>{(operation.changes ?? []).map((change) => change.slice(change.indexOf(':') + 1)).find(isProjectPath)}</code></td><td>{formatRelativeTime(operation.createdAt)}</td></tr>)}

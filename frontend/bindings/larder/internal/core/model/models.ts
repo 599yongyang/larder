@@ -265,6 +265,17 @@ export interface PlanChange {
     "reason"?: string;
 }
 
+/**
+ * ResourceUsage is evidence from local sessions that a Skill or MCP tool was
+ * actually invoked. Names are normalized from the Agent's tool calls.
+ */
+export interface ResourceUsage {
+    "kind": string;
+    "name": string;
+    "count": number;
+    "lastAt": string;
+}
+
 export interface Root {
     "id": string;
     "label": string;

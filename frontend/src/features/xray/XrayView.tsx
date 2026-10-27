@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { CircleAlert, CircleCheck, CircleHelp, CircleX, Folder, GitCompareArrows, Layers3, Minus, Server, Sparkles } from 'lucide-react'
 import { t } from '../../i18n'
-import type { Root, Skill } from '../../types'
+import type { ResourceUsage, Root, Skill } from '../../types'
 import { XrayStatus, type XrayEntry as XrayEntryModel, type XrayReport } from '../../../bindings/larder/internal/core/model/models'
 import styles from '../../App.module.css'
 import { backend } from '../../backend'
 import { AgentIcon } from '../../components/AgentIcon'
+import { formatRelativeTime } from '../../lib/format'
 import { SkillGlyph, SkillIcon } from '../../components/SkillIcon'
+import { MCPIcon } from '../../components/MCPIcon'
 
 type Props = {
   root: Root
@@ -79,6 +81,8 @@ export function XrayView({ root, projects = [], compareOptions = [], refreshKey,
   const [status, setStatus] = useState<'all' | XrayStatus>('all')
   const [compareIDs, setCompareIDs] = useState<string[]>([])
   const [compareOpen, setCompareOpen] = useState(false)
+  const [usage, setUsage] = useState<ResourceUsage[]>([])
+  const [usageLoading, setUsageLoading] = useState(true)
   const comparePickerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -125,6 +129,13 @@ export function XrayView({ root, projects = [], compareOptions = [], refreshKey,
     setCompareIDs(next.includes(root.id) ? next : [root.id, ...next])
   }
   const uniqueCompareOptions = compareOptions.filter((option, index, all) => all.findIndex((candidate) => (candidate.logicalAgent || candidate.label) === (option.logicalAgent || option.label)) === index)
+  const usageAgent = root.logicalAgent || root.label
+  useEffect(() => {
+    let active = true
+    setUsageLoading(true)
+    backend.agentUsage(usageAgent).then((items) => { if (active) setUsage(items) }).catch(() => { if (active) setUsage([]) }).finally(() => { if (active) setUsageLoading(false) })
+    return () => { active = false }
+  }, [usageAgent, refreshKey])
   const totalKnown = report?.budget.knownTokens ?? 0
   const skillTokens = report?.budget.skillTokens ?? 0
   const instructionTokens = report?.budget.instructionTokens ?? 0
@@ -175,6 +186,20 @@ export function XrayView({ root, projects = [], compareOptions = [], refreshKey,
               <div className={styles.xrayStackBar} aria-hidden="true"><i className={styles.xrayStackSkills} style={{ width: totalKnown ? `${Math.max(4, skillTokens / totalKnown * 100)}%` : '0%' }} /><i className={styles.xrayStackInstructions} style={{ width: totalKnown ? `${Math.max(4, instructionTokens / totalKnown * 100)}%` : '0%' }} /></div>
               <div className={styles.xrayLegend}><span><i className={styles.xrayDotSkills} />{t('xray.budget.skills')}<b>{formatTokens(skillTokens)}</b></span><span><i className={styles.xrayDotInstructions} />{t('xray.budget.instructions')}<b>{formatTokens(instructionTokens)}</b></span></div>
               <p className={styles.xrayBudgetNote}>{t('xray.budget.unmodeled')}</p>
+            </div>
+          </section>
+
+          <section className={styles.xrayPanel}>
+            <div className={styles.xrayPanelHead}><div><h2>{t('xray.usage.title')}</h2><p>{t('xray.usage.subtitle')}</p></div></div>
+            <div className={styles.xrayUsage}>
+              {usageLoading ? <span className={styles.xrayUsageEmpty}>{t('xray.usage.loading')}</span> : usage.length === 0 ? <span className={styles.xrayUsageEmpty}>{t('xray.usage.empty')}</span> : usage.slice(0, 6).map((item) => {
+                const skill = item.kind === 'skill' ? report?.entries?.find((entry) => entry.skill.name === item.name)?.skill : undefined
+                const server = item.kind === 'mcp' ? mcps.find((entry) => entry.name === item.name) : undefined
+                return <div key={`${item.kind}:${item.name}`} className={styles.xrayUsageRow}>
+                  {skill ? <SkillIcon skill={skillForIcon(skill)} className="size-4" /> : server ? <MCPIcon name={server.name} command={server.command} url={server.url} className="size-4" /> : item.kind === 'skill' ? <Sparkles size={12} /> : <Server size={12} />}
+                  <span>{item.name}</span><b>{item.count}×</b><time>{item.lastAt ? formatRelativeTime(item.lastAt) : ''}</time>
+                </div>
+              })}
             </div>
           </section>
 

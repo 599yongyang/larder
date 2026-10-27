@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { CommandPalette } from './components/CommandPalette'
 import { AgentCLIBar } from './components/AgentCLIBar'
 import { AgentSessionsView } from './features/agent/AgentSessionsView'
+import { SessionDetailSheet } from './components/SessionDetailSheet'
 import { Kbd } from '@/components/ui/kbd'
 import { GooeyToaster, gooeyToast } from 'goey-toast'
 import { toastError, toastSuccess } from './lib/toast'
@@ -34,7 +35,7 @@ import { applyTheme, getThemeMode, nextThemeMode, resolveTheme, systemTheme } fr
 import type { ThemeMode } from './lib/theme'
 import { switchTheme } from './lib/themeTransition'
 import { pageTransition } from './lib/pageTransition'
-import { t } from './i18n'
+import { getLanguage, t } from './i18n'
 import { sortAgentRoots } from './lib/agentOrder'
 import { backendErrorMessage } from './lib/backendError'
 import { cycleZoom, resetZoom } from './lib/zoom'
@@ -63,6 +64,10 @@ function App() {
   const [agentSessions, setAgentSessions] = useState<Session[]>([])
   const [agentSessionsLoading, setAgentSessionsLoading] = useState(false)
   const [agentSessionsError, setAgentSessionsError] = useState(false)
+  const [recentSessions, setRecentSessions] = useState<Session[]>([])
+  const [recentSessionsLoading, setRecentSessionsLoading] = useState(false)
+  const recentSessionsLoaded = useRef(false)
+  const [previewSession, setPreviewSession] = useState<Session>()
   const [sessionRefreshKey, setSessionRefreshKey] = useState(0)
   const [appInfo, setAppInfo] = useState<AppInfo>()
   const [updates, setUpdates] = useState<UpdateReport>()
@@ -130,6 +135,16 @@ function App() {
   useEffect(() => { try { localStorage.setItem('larder.view', view) } catch {} }, [view])
   useEffect(() => { try { localStorage.setItem('larder.skills.source', source) } catch {} }, [source])
   useEffect(() => { void refresh().finally(() => setReady(true)) }, [refresh])
+  useEffect(() => { if (typeof backend.setNativeLocale === 'function') void backend.setNativeLocale(getLanguage()).catch(() => {}) }, [])
+  useEffect(() => { recentSessionsLoaded.current = false }, [sessionRefreshKey])
+  useEffect(() => {
+    if (!commandOpen || recentSessionsLoaded.current || typeof backend.recentSessions !== 'function') return
+    setRecentSessionsLoading(true)
+    backend.recentSessions(100).then((items) => {
+      setRecentSessions(items)
+      recentSessionsLoaded.current = true
+    }).catch(() => {}).finally(() => setRecentSessionsLoading(false))
+  }, [commandOpen])
   useEffect(() => { if (view === 'agent-sessions' && scope?.kind !== 'agent') setView('skills') }, [view, scope])
   const projectPath = scope?.kind === 'project' ? scope.path : undefined
   useEffect(() => {
@@ -203,7 +218,10 @@ function App() {
   // on that signal; idle ledgers never poll a full snapshot.
   useEffect(() => {
     const off = Events.On(LarderState, () => { void refresh() })
-    return () => { off?.() }
+    const openSettings = Events.On('larder:open-settings', () => pageTransition(() => { setScope(undefined); setView('settings') }))
+    const filesDropped = Events.On('larder:files-dropped', (event: { data?: string[] }) => { for (const path of event.data ?? []) void addProject(path) })
+    const openCommand = Events.On('larder:open-command', () => setCommandOpen(true))
+    return () => { off?.(); openSettings?.(); openCommand?.(); filesDropped?.() }
   }, [refresh])
   useEffect(() => {
     if (!ready) return
@@ -396,8 +414,9 @@ function App() {
         onRestore={restoreAgent}
         onCleanup={cleanupAgent}
       />}
-      <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} skills={snapshot.skills.filter((skill) => settings.showAgentBuiltins || !skill.isAgentLocal)} clis={clis} mcps={mcps} instructions={instructions} onMCP={(mcp) => pageTransition(() => { setScope(undefined); setView('mcp'); setMcpFocus(mcp.id) })} onInstruction={() => pageTransition(() => { setScope(undefined); setView('instructions') })} onView={(next) => pageTransition(() => { setScope(undefined); setSource('all'); setView(next) })} onSkill={(skill) => pageTransition(() => { setScope(undefined); setSource('all'); setView('skills'); setSelectedId(skill.id) })} onCLI={(cli) => pageTransition(() => { setCliFocus(cli.id); setView('cli') })} onScan={() => void scan()} onCheckUpdates={() => void checkUpdates(true)} onToggleAppearance={() => changeTheme(nextThemeMode(themeMode))} />
+      <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} skills={snapshot.skills.filter((skill) => settings.showAgentBuiltins || !skill.isAgentLocal)} clis={clis} mcps={mcps} instructions={instructions} sessions={recentSessions} sessionsLoading={recentSessionsLoading} onMCP={(mcp) => pageTransition(() => { setScope(undefined); setView('mcp'); setMcpFocus(mcp.id) })} onInstruction={() => pageTransition(() => { setScope(undefined); setView('instructions') })} onSession={setPreviewSession} onView={(next) => pageTransition(() => { setScope(undefined); setSource('all'); setView(next) })} onSkill={(skill) => pageTransition(() => { setScope(undefined); setSource('all'); setView('skills'); setSelectedId(skill.id) })} onCLI={(cli) => pageTransition(() => { setCliFocus(cli.id); setView('cli') })} onScan={() => void scan()} onCheckUpdates={() => void checkUpdates(true)} onToggleAppearance={() => changeTheme(nextThemeMode(themeMode))} />
     </SidebarInset>
+    {previewSession && <SessionDetailSheet session={previewSession} onClose={() => setPreviewSession(undefined)} onOpenProject={previewSession.cwd ? () => { const target = previewSession; setPreviewSession(undefined); goScope({ kind: 'project', path: target.cwd, label: target.cwd.split('/').filter(Boolean).pop() || target.cwd }) } : undefined} />}
     <GooeyToaster position="bottom-right" theme={resolvedTheme} closeButton />
   </SidebarProvider>
 }

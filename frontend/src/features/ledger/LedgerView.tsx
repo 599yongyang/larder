@@ -1,3 +1,5 @@
+import { copyText as writeClipboard } from '../../lib/clipboard'
+import { nativeContextMenu } from '../../lib/nativeContextMenu'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { MotionConfig, motion } from 'framer-motion'
 import { AlertTriangle, CheckCircle2, Coins, Crosshair, FilePenLine, GitCompareArrows, History as HistoryIcon, Layers2, LayoutGrid, List, Plus, RefreshCw, RotateCcw, Sparkles, Trash2, Wrench, X } from 'lucide-react'
@@ -328,7 +330,7 @@ function SkillsView({ skills, allSkills, roots, links, operations, selected, onS
     }
   }
   const updateSelected = () => { if (selected) setUpdateTarget(selected) }
-  const copyPath = async () => { if (!selected) return; try { await navigator.clipboard.writeText(selected.path); toastSuccess(t('skills.pathCopied')) } catch (error) { toastError(error, t('skills.failedToCopyPath')) } }
+  const copyPath = async () => { if (!selected) return; try { await writeClipboard(selected.path); toastSuccess(t('skills.pathCopied')) } catch (error) { toastError(error, t('skills.failedToCopyPath')) } }
   const revealPath = async () => { if (!selected) return; try { await backend.revealSkill(selected.id) } catch (error) { toastError(error, t('common.failedToOpenLocation')) } }
   return <MotionConfig reducedMotion="user" transition={{ duration: getMotionMode() === 'off' ? 0 : 0.24, ease: [0.23, 1, 0.32, 1] }}><section className={styles.ledgerPanel}>
     <div className={styles.metrics}>
@@ -479,7 +481,7 @@ function StatusBadge({ issue, reasons = [] }: { skill?: Skill; issue: boolean; r
 
 function SkillRow({ skill, roots, links, issues, update, selected, onSelect, onUpdate, onUninstall, showIcon = true }: { skill: Skill; roots: Root[]; links: Link[]; issues: Issue[]; update?: UpdateItem; selected: boolean; onSelect: () => void; onUpdate?: () => void; onUninstall?: () => void; showIcon?: boolean }) {
   const { discoverableRoots, issue, reasons } = summarize(skill, roots, links, issues)
-  return <motion.tr layout="position" transition={{ layout: layoutTransition }} data-skill-id={skill.id} tabIndex={0} aria-selected={selected} className={`${selected ? styles.selectedRow : ''} ${styles.clickableRow}`} onClick={onSelect} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect() } }}>
+  return <motion.tr layout="position" transition={{ layout: layoutTransition }} style={nativeContextMenu({ kind: 'skill', name: skill.name, path: skill.path, id: skill.id })} data-skill-id={skill.id} tabIndex={0} aria-selected={selected} className={`${selected ? styles.selectedRow : ''} ${styles.clickableRow}`} onClick={onSelect} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect() } }}>
     <td><div className={styles.skillNameRow}><div className={styles.skillName}>{showIcon && <SkillIcon skill={skill} className="size-7" />}<span>{skill.name}</span>{skill.isProject && <Badge variant="info">{t('common.projects')}</Badge>}<OriginBadge origin={skill.origin} /><SkillHealthText issue={issue} reasons={reasons} /></div><SkillUpdateText update={update} onClick={onUpdate} /></div><p className={styles.skillDescription}>{skill.description || t('skills.noDescriptionAvailable')}</p></td>
     <td><span className={styles.sourceChip}>{skillSourceLabel(skill)}</span></td>
     <td><AgentAvatarGroup roots={discoverableRoots} /></td>
@@ -490,7 +492,7 @@ function SkillRow({ skill, roots, links, issues, update, selected, onSelect, onU
 
 function SkillListRow({ skill, roots, links, issues, update, selected, onSelect, onUpdate, onUninstall }: { skill: Skill; roots: Root[]; links: Link[]; issues: Issue[]; update?: UpdateItem; selected: boolean; onSelect: () => void; onUpdate?: () => void; onUninstall?: () => void }) {
   const { discoverableRoots, issue, reasons } = summarize(skill, roots, links, issues)
-  return <motion.div layout="position" transition={{ layout: layoutTransition }} data-skill-id={skill.id} role="button" tabIndex={0} aria-pressed={selected} className={`${styles.groupedRow} ${selected ? styles.groupedRowSelected : ''} ${styles.clickableRow}`} onClick={onSelect} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect() } }}>
+  return <motion.div layout="position" transition={{ layout: layoutTransition }} style={nativeContextMenu({ kind: 'skill', name: skill.name, path: skill.path, id: skill.id })} data-skill-id={skill.id} role="button" tabIndex={0} aria-pressed={selected} className={`${styles.groupedRow} ${selected ? styles.groupedRowSelected : ''} ${styles.clickableRow}`} onClick={onSelect} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect() } }}>
     <div className={styles.groupedName}><div className={styles.skillNameRow}><div className={styles.skillName}><span>{skill.name}</span>{skill.isProject && <Badge variant="info">{t('common.projects')}</Badge>}<OriginBadge origin={skill.origin} /><SkillHealthText issue={issue} reasons={reasons} /></div><SkillUpdateText update={update} onClick={onUpdate} /></div><p className={styles.skillDescription}>{skill.description || t('skills.noDescriptionAvailable')}</p></div>
     <div><span className={styles.sourceChip}>{skillSourceLabel(skill)}</span></div>
     <div><AgentAvatarGroup roots={discoverableRoots} /></div>
@@ -501,7 +503,7 @@ function SkillListRow({ skill, roots, links, issues, update, selected, onSelect,
 
 function SkillCard({ skill, roots, links, issues, update, selected, onSelect, onUpdate, onUninstall, showIcon = true, showSource = true }: { skill: Skill; roots: Root[]; links: Link[]; issues: Issue[]; update?: UpdateItem; selected: boolean; onSelect: () => void; onUpdate?: () => void; onUninstall?: () => void; showIcon?: boolean; showSource?: boolean }) {
   const { discoverableRoots, issue, reasons } = summarize(skill, roots, links, issues)
-  return <motion.div layout="position" transition={{ layout: layoutTransition }} role="button" tabIndex={0} data-skill-id={skill.id} onClick={onSelect} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect() } }} className={`${styles.skillCard} ${selected ? styles.skillCardSelected : ''}`}>
+  return <motion.div layout="position" transition={{ layout: layoutTransition }} style={nativeContextMenu({ kind: 'skill', name: skill.name, path: skill.path, id: skill.id })} role="button" tabIndex={0} data-skill-id={skill.id} onClick={onSelect} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect() } }} className={`${styles.skillCard} ${selected ? styles.skillCardSelected : ''}`}>
     <div className={styles.skillCardHead}><div className={styles.skillCardTitle}>{showIcon && <SkillIcon skill={skill} className="size-6" />}<strong>{skill.name}</strong>{skill.isProject && <Badge variant="info">{t('common.projects')}</Badge>}<OriginBadge origin={skill.origin} /><SkillHealthText issue={issue} reasons={reasons} /><SkillUpdateText update={update} onClick={onUpdate} /></div><span className={styles.skillCardToken} title={`${t('skills.descriptionTokensValue', { n: skill.descTokens.toLocaleString() })} · ${t('skills.tokenCostHint')}`}><Coins size={11} aria-hidden="true" />{skill.descTokens.toLocaleString()}</span></div>
     <p className={styles.skillCardDescription}>{skill.description || t('skills.noDescriptionAvailable')}</p>
     {showSource && <div className={styles.skillCardSource}><span className={styles.sourceChip}>{skillSourceLabel(skill)}</span></div>}

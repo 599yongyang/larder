@@ -13,13 +13,13 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"larder/internal/core/appupdate"
 	"larder/internal/core/backup"
 	"larder/internal/core/catalog"
 	"larder/internal/core/clis"
@@ -55,7 +55,7 @@ type AppState struct {
 	UpdatedAt     time.Time          `json:"updatedAt"`
 }
 
-var Version = "0.0.6"
+var Version = "0.0.7"
 
 type MCPTestResult struct {
 	OK      bool   `json:"ok"`
@@ -64,6 +64,11 @@ type MCPTestResult struct {
 
 type sessionCacheEntry struct {
 	items []model.Session
+	at    time.Time
+}
+
+type usageCacheEntry struct {
+	items []model.ResourceUsage
 	at    time.Time
 }
 
@@ -91,10 +96,12 @@ type AppService struct {
 	trust              *trust.Client
 	sessionMu          sync.Mutex
 	sessionCache       map[string]sessionCacheEntry
+	usageCache         map[string]usageCacheEntry
 	disabledPath       string
 	disabled           []ops.DetachedMCP
 	dataDir            string
 	homeDir            string
+	locale             string
 
 	mu         sync.RWMutex
 	ctx        context.Context
@@ -116,7 +123,7 @@ func NewAppService() (*AppService, error) {
 	core := inventory.NewService(paths, platform.OSFileSystem{}, db)
 	core.SetSnapshotRoot(filepath.Join(dataDir, "snapshots"))
 	homeDir, _ := paths.HomeDir()
-	service := &AppService{core: core, catalog: catalog.NewClient(), installsPath: filepath.Join(dataDir, "catalog-installs.json"), installs: map[string]CatalogInstall{}, commandPlans: map[string]model.CommandWritePlan{}, commandDeletePlans: map[string]model.CommandDeletePlan{}, skillEditPlans: map[string]model.SkillEditPlan{}, skillCreatePlans: map[string]model.SkillCreatePlan{}, skillRenamePlans: map[string]model.SkillRenamePlan{}, trust: trust.New(), sessionCache: map[string]sessionCacheEntry{}, disabledPath: filepath.Join(dataDir, "disabled-mcp.json"), dataDir: dataDir, homeDir: homeDir}
+	service := &AppService{core: core, catalog: catalog.NewClient(), installsPath: filepath.Join(dataDir, "catalog-installs.json"), installs: map[string]CatalogInstall{}, commandPlans: map[string]model.CommandWritePlan{}, commandDeletePlans: map[string]model.CommandDeletePlan{}, skillEditPlans: map[string]model.SkillEditPlan{}, skillCreatePlans: map[string]model.SkillCreatePlan{}, skillRenamePlans: map[string]model.SkillRenamePlan{}, trust: trust.New(), sessionCache: map[string]sessionCacheEntry{}, usageCache: map[string]usageCacheEntry{}, disabledPath: filepath.Join(dataDir, "disabled-mcp.json"), dataDir: dataDir, homeDir: homeDir}
 	service.loadCatalogInstalls()
 	service.loadDisabledMCPs()
 	service.state = AppState{SchemaVersion: model.SchemaVersion, Snapshot: model.ScanResult{SchemaVersion: model.SchemaVersion}, UpdatedAt: time.Now()}
@@ -828,8 +835,280 @@ func (s *AppService) SourceAudit(source, skill string) (model.SkillAudit, error)
 	return audit, nil
 }
 
-func (s *AppService) DownloadAppUpdate(version string) (string, error) {
-	return appupdate.Download(s.context(), version)
+func (s *AppService) AutostartEnabled() (bool, error) {
+	if s.app == nil {
+		return false, errors.New("app is not ready")
+	}
+	return s.app.Autostart.IsEnabled()
+}
+
+func (s *AppService) SetAutostart(enabled bool) error {
+	if s.app == nil {
+		return errors.New("app is not ready")
+	}
+	if enabled {
+		return s.app.Autostart.Enable()
+	}
+	return s.app.Autostart.Disable()
+}
+
+func (s *AppService) SessionResumeCommand(session model.Session) (string, error) {
+	id := strings.TrimSpace(session.ID)
+	if id == "" {
+		return "", errors.New("session id is missing")
+	}
+	var command string
+	switch session.Agent {
+	case "Claude Code":
+		command = "claude --resume " + shellQuote(id)
+	case "Codex":
+		command = "codex resume " + shellQuote(id)
+	default:
+		return "", errors.New("resume is not supported for this agent yet")
+	}
+	if cwd := strings.TrimSpace(session.CWD); cwd != "" {
+		command = "cd " + shellQuote(cwd) + " && " + command
+	}
+	return command, nil
+}
+
+func (s *AppService) OpenSessionInTerminal(session model.Session) error {
+	command, err := s.SessionResumeCommand(session)
+	if err != nil {
+		return err
+	}
+	if runtime.GOOS != "darwin" {
+		return errors.New("opening a terminal is only supported on macOS")
+	}
+	script := "tell application \"Terminal\"\nactivate\ndo script " + appleScriptString(command) + "\nend tell"
+	return exec.Command("osascript", "-e", script).Run()
+}
+
+func appleScriptString(value string) string {
+	value = strings.ReplaceAll(value, "\\", "\\\\")
+	value = strings.ReplaceAll(value, "\"", "\\\"")
+	return "\"" + value + "\""
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+}
+
+func (s *AppService) ExportSession(session model.Session) (string, error) {
+	clean := filepath.Clean(strings.TrimSpace(session.Path))
+	if clean == "" || clean == "." || !isSessionSourcePath(s.homeDir, clean) {
+		return "", errors.New("session path is outside the supported session roots")
+	}
+	messages, err := sessions.ReadMessages(clean, 200)
+	if err != nil {
+		return "", err
+	}
+	if s.app == nil {
+		return "", errors.New("app is not ready")
+	}
+	dialog := s.app.Dialog.SaveFile()
+	dialog.SetFilename(safeSessionFilename(session.Title, session.ID) + ".md")
+	dialog.AddFilter("Markdown", "*.md")
+	if window := s.app.Window.Current(); window != nil {
+		dialog.AttachToWindow(window)
+	}
+	path, err := dialog.PromptForSingleSelection()
+	if err != nil || path == "" {
+		return path, err
+	}
+	var body strings.Builder
+	body.WriteString("# " + strings.TrimSpace(session.Title) + "\n\n")
+	body.WriteString("## Metadata\n\n")
+	body.WriteString("- Agent: " + session.Agent + "\n")
+	body.WriteString("- Project: " + session.CWD + "\n")
+	body.WriteString("- Model: " + session.Model + "\n")
+	body.WriteString("- Messages: " + strconv.Itoa(session.Messages) + "\n")
+	body.WriteString("- Started: " + session.StartedAt.Format(time.RFC3339) + "\n")
+	body.WriteString("- Last active: " + session.LastAt.Format(time.RFC3339) + "\n\n")
+	body.WriteString("## Recent messages\n\n")
+	for _, message := range messages {
+		role := "User"
+		if message.Role == "assistant" {
+			role = "Assistant"
+		}
+		if !message.At.IsZero() {
+			body.WriteString("### " + role + " · " + message.At.Format(time.RFC3339) + "\n\n")
+		} else {
+			body.WriteString("### " + role + "\n\n")
+		}
+		body.WriteString(message.Text + "\n\n")
+	}
+	if err := os.WriteFile(path, []byte(body.String()), 0o600); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+func safeSessionFilename(title, id string) string {
+	name := strings.TrimSpace(title)
+	if name == "" {
+		name = id
+	}
+	name = strings.Map(func(r rune) rune {
+		if r < 32 || strings.ContainsRune(`/\:*?"<>|`, r) {
+			return '-'
+		}
+		return r
+	}, name)
+	runes := []rune(name)
+	if len(runes) > 80 {
+		name = string(runes[:80])
+	}
+	return strings.TrimSpace(name) + "-" + id
+}
+
+func (s *AppService) CheckAppUpdate() error {
+	if s.app == nil || s.app.Updater == nil {
+		return errors.New("app updater is unavailable")
+	}
+	return s.app.Updater.CheckAndInstall(s.context())
+}
+
+func (s *AppService) AgentUsage(agent string) []model.ResourceUsage {
+	agent = strings.TrimSpace(agent)
+	if agent == "" {
+		return nil
+	}
+	key := "usage:agent:" + agent
+	s.sessionMu.Lock()
+	if cached, ok := s.usageCache[key]; ok && time.Since(cached.at) < 20*time.Second {
+		items := append([]model.ResourceUsage(nil), cached.items...)
+		s.sessionMu.Unlock()
+		return items
+	}
+	s.sessionMu.Unlock()
+	items := s.usageFromSessions(s.AgentSessions(agent))
+	s.sessionMu.Lock()
+	s.usageCache[key] = usageCacheEntry{items: append([]model.ResourceUsage(nil), items...), at: time.Now()}
+	s.sessionMu.Unlock()
+	return items
+}
+
+func (s *AppService) ProjectUsage(projectPath string) []model.ResourceUsage {
+	if strings.TrimSpace(projectPath) == "" {
+		return nil
+	}
+	key := "usage:project:" + filepath.Clean(projectPath)
+	s.sessionMu.Lock()
+	if cached, ok := s.usageCache[key]; ok && time.Since(cached.at) < 20*time.Second {
+		items := append([]model.ResourceUsage(nil), cached.items...)
+		s.sessionMu.Unlock()
+		return items
+	}
+	s.sessionMu.Unlock()
+	usage := s.usageFromSessions(s.Sessions(projectPath))
+	s.sessionMu.Lock()
+	s.usageCache[key] = usageCacheEntry{items: append([]model.ResourceUsage(nil), usage...), at: time.Now()}
+	s.sessionMu.Unlock()
+	return usage
+}
+
+func (s *AppService) usageFromSessions(items []model.Session) []model.ResourceUsage {
+	if len(items) > 100 {
+		items = items[:100]
+	}
+	type aggregate struct {
+		kind   string
+		name   string
+		count  int
+		lastAt time.Time
+	}
+	usage := map[string]*aggregate{}
+	for _, session := range items {
+		parsed, err := sessions.ReadToolUsage(session.Path)
+		if err != nil {
+			continue
+		}
+		for name, count := range parsed.Skills {
+			key := "skill\x00" + name
+			if usage[key] == nil {
+				usage[key] = &aggregate{kind: "skill", name: name}
+			}
+			usage[key].count += count
+			if parsed.LastAt.After(usage[key].lastAt) {
+				usage[key].lastAt = parsed.LastAt
+			}
+		}
+		for name, count := range parsed.MCP {
+			key := "mcp\x00" + name
+			if usage[key] == nil {
+				usage[key] = &aggregate{kind: "mcp", name: name}
+			}
+			usage[key].count += count
+			if parsed.LastAt.After(usage[key].lastAt) {
+				usage[key].lastAt = parsed.LastAt
+			}
+		}
+	}
+	out := make([]model.ResourceUsage, 0, len(usage))
+	for _, item := range usage {
+		out = append(out, model.ResourceUsage{Kind: item.kind, Name: item.name, Count: item.count, LastAt: item.lastAt})
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].LastAt.After(out[j].LastAt)
+	})
+	if len(out) > 20 {
+		out = out[:20]
+	}
+	return out
+}
+
+func (s *AppService) RecentSessions(limit int) []model.Session {
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+	key := "recent"
+	s.sessionMu.Lock()
+	if cached, ok := s.sessionCache[key]; ok && time.Since(cached.at) < 20*time.Second {
+		items := append([]model.Session(nil), cached.items...)
+		s.sessionMu.Unlock()
+		if len(items) > limit {
+			items = items[:limit]
+		}
+		return items
+	}
+	s.sessionMu.Unlock()
+	agents := []string{"Claude Code", "Codex", "DSH", "OpenCode", "Cursor", "Cline", "Goose", "OMP", "WorkBuddy", "Qoder", "CodeBuddy", "Gemini CLI"}
+	var found []model.Session
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for _, agent := range agents {
+		wg.Add(1)
+		go func(agent string) {
+			defer wg.Done()
+			items := sessions.ScanAgent(s.context(), s.homeDir, agent)
+			mu.Lock()
+			found = append(found, items...)
+			mu.Unlock()
+		}(agent)
+	}
+	wg.Wait()
+	sort.SliceStable(found, func(i, j int) bool { return found[i].LastAt.After(found[j].LastAt) })
+	seen := map[string]bool{}
+	unique := found[:0]
+	for _, item := range found {
+		key := item.Agent + "\x00" + item.ID
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		unique = append(unique, item)
+	}
+	s.sessionMu.Lock()
+	s.sessionCache[key] = sessionCacheEntry{items: append([]model.Session(nil), unique...), at: time.Now()}
+	s.sessionMu.Unlock()
+	if len(unique) > limit {
+		unique = unique[:limit]
+	}
+	return unique
 }
 
 func (s *AppService) RefreshSessions() {
@@ -1481,24 +1760,22 @@ func (s *AppService) SessionMessages(path string, limit int) ([]model.SessionMes
 	return sessions.ReadMessages(clean, limit)
 }
 
+func (s *AppService) revealPath(path string) error {
+	if s.app == nil {
+		return errors.New("app is not ready")
+	}
+	if _, err := os.Stat(path); err != nil {
+		return err
+	}
+	return s.app.Env.OpenFileManager(path, true)
+}
+
 func (s *AppService) RevealSession(path string) error {
 	clean := filepath.Clean(strings.TrimSpace(path))
 	if clean == "" || clean == "." || !isSessionSourcePath(s.homeDir, clean) {
 		return errors.New("session path is outside the supported session roots")
 	}
-	if _, err := os.Stat(clean); err != nil {
-		return err
-	}
-	var command *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		command = exec.Command("open", "-R", clean)
-	case "windows":
-		command = exec.Command("explorer", "/select,", clean)
-	default:
-		command = exec.Command("xdg-open", filepath.Dir(clean))
-	}
-	return command.Start()
+	return s.revealPath(clean)
 }
 
 func isSessionSourcePath(home, path string) bool {
@@ -1532,11 +1809,21 @@ func isSessionSourcePath(home, path string) bool {
 }
 
 func (s *AppService) RevealSkill(skillID string) error {
-	return s.core.RevealSkill(s.context(), skillID)
+	for _, skill := range s.core.Snapshot().Skills {
+		if skill.ID == skillID {
+			return s.revealPath(skill.Path)
+		}
+	}
+	return errors.New("skill not found")
 }
 
 func (s *AppService) RevealCLI(cliID string) error {
-	return s.core.RevealCLI(s.context(), cliID)
+	for _, cli := range s.core.Snapshot().CLIs {
+		if cli.ID == cliID {
+			return s.revealPath(cli.Path)
+		}
+	}
+	return errors.New("CLI not found")
 }
 
 func (s *AppService) MCP() []model.MCPServer {

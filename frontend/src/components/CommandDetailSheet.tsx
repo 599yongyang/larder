@@ -1,3 +1,4 @@
+import { copyText as writeClipboard } from '../lib/clipboard'
 import { useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -39,11 +40,11 @@ export function CommandDetailSheet({ command, onClose, onEdit, onConvert, onDele
 
   const { meta, body } = splitFrontmatter(content)
   const copyPath = async () => {
-    await navigator.clipboard.writeText(command.path)
+    await writeClipboard(command.path)
     toastSuccess(t('commands.pathCopied'))
   }
   const copyName = async () => {
-    await navigator.clipboard.writeText(`/${command.name}`)
+    await writeClipboard(`/${command.name}`)
     toastSuccess(t('commands.nameCopied'))
   }
 
