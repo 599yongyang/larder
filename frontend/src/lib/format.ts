@@ -36,3 +36,23 @@ export function skillSourceLabel(skill: Pick<Skill, 'source' | 'origin' | 'origi
   if (skill.origin === 'system') return `${t('common.system')} · ${skill.originDetail || t('common.builtIn')}`
   return t('common.noSource')
 }
+
+export function formatCompactNumber(value: number, language: 'zh' | 'en' = getLanguage()) {
+  if (!Number.isFinite(value)) return '—'
+  const sign = value < 0 ? '-' : ''
+  const size = Math.abs(value)
+  const compact = (divisor: number) => {
+    const scaled = size / divisor
+    const digits = scaled >= 100 ? 0 : 1
+    return `${sign}${scaled.toFixed(digits).replace(/\.0+$/, '')}`
+  }
+  if (language === 'zh') {
+    if (size >= 100_000_000) return `${compact(100_000_000)}亿`
+    if (size >= 10_000) return `${compact(10_000)}万`
+    return `${sign}${Math.round(size).toLocaleString('zh-CN')}`
+  }
+  if (size >= 1_000_000_000) return `${compact(1_000_000_000)}B`
+  if (size >= 1_000_000) return `${compact(1_000_000)}M`
+  if (size >= 1_000) return `${compact(1_000)}k`
+  return `${sign}${Math.round(size).toLocaleString('en-US')}`
+}

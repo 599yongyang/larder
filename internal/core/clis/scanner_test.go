@@ -116,3 +116,28 @@ func TestScannerReadsWingetPackageAndVersion(t *testing.T) {
 		t.Fatalf("result = %#v", result)
 	}
 }
+
+func TestScannerPrefersWorkingDuplicateOverBrokenLink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink fixture is Unix-only")
+	}
+	home := t.TempDir()
+	first := filepath.Join(home, "first", "bin")
+	second := filepath.Join(home, "second", "bin")
+	for _, dir := range []string{first, second} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(filepath.Join(home, "missing"), filepath.Join(first, "agent")); err != nil {
+		t.Fatal(err)
+	}
+	writeExecutable(t, filepath.Join(second, "agent"))
+	result, _ := clis.NewScanner(platform.OSFileSystem{}).Scan(context.Background(), clis.Options{Dirs: []string{first, second}, Home: home})
+	if len(result) != 1 {
+		t.Fatalf("result = %#v", result)
+	}
+	if result[0].Path != filepath.Join(second, "agent") || result[0].Status != "duplicate" || !result[0].Paths[1].Effective {
+		t.Fatalf("result = %#v", result[0])
+	}
+}

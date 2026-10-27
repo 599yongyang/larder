@@ -1,4 +1,4 @@
-export type View = 'skills' | 'cli' | 'mcp' | 'instructions' | 'commands' | 'project' | 'history' | 'settings' | 'xray'
+export type View = 'skills' | 'cli' | 'mcp' | 'instructions' | 'commands' | 'project' | 'history' | 'settings' | 'xray' | 'agent-sessions'
 export type LinkMode = 'linked' | 'copied' | 'local' | 'missing' | 'broken' | 'unavailable' | 'shared'
 export type Root = { id: string; label: string; logicalAgent?: string; path: string; kind: string; known: boolean; status: string; error?: string; entryCount: number; sharedSkills?: boolean }
 export type Skill = { id: string; name: string; path: string; rootId: string; rootKind: string; source?: string; sourceUrl?: string; skillPath?: string; locked: boolean; hasSkillMd: boolean; description?: string; descTokens: number; folderHash?: string; contentHash?: string; scanState: string; isAgentLocal: boolean; isProject: boolean; copyDrift: boolean; icon?: string; iconSource?: string; bins?: string[]; origin?: string; originDetail?: string }
@@ -21,7 +21,7 @@ export type DiffLine = { kind: 'context' | 'add' | 'del'; oldLine?: number; newL
 export type SkillUpdateFile = { path: string; status: 'added' | 'modified' | 'local' | 'conflict' | 'local_modified' | 'removed'; size?: number; localSize?: number; incomingSize?: number; binary?: boolean; additions?: number; deletions?: number; localChanged?: boolean; upstreamChanged?: boolean; lines?: DiffLine[]; truncated?: boolean }
 export type SkillUpdateDiff = { skillId: string; skillName: string; repo: string; files: SkillUpdateFile[]; added: number; modified: number; localOnly: number; conflicted: number; hasBaseline: boolean; scannedAt: string }
 export type Message = { code: string; params?: Record<string, string>; fallback?: string }
-export type Plan = { id: string; operation: string; title: string; titleMessage?: Message; summaryMessage?: Message; warningMessages?: Message[]; summary: string; skillId?: string; skillName?: string; mcpName?: string; targetPath?: string; changes: PlanChange[]; impact: string[]; command?: string; args?: string[]; warnings?: string[]; requiresSnapshot: boolean; executable: boolean; createdAt: string }
+export type Plan = { id: string; operation: string; title: string; titleMessage?: Message; summaryMessage?: Message; warningMessages?: Message[]; summary: string; skillId?: string; skillName?: string; skillSlug?: string; mcpName?: string; targetPath?: string; changes: PlanChange[]; impact: string[]; command?: string; args?: string[]; warnings?: string[]; requiresSnapshot: boolean; executable: boolean; createdAt: string }
 export type UpdateItem = { kind: 'cli' | 'skill'; cliId?: string; owner: string; package?: string; name: string; description?: string; commands?: string[]; currentVersion?: string; latestVersion?: string; source?: string; state: 'available' | 'current' | 'changed' | 'removed' | 'new' | 'unknown' | 'error'; skillPath?: string; copies?: number; message?: string }
 export type UpdateReport = { checkedAt: string; items: UpdateItem[]; errors?: string[]; scanned: number; available: number; current: number; skillScanned: number; skillAdded?: number; skillChanged: number; skillRemoved?: number; skillCurrent: number; skillErrors: number }
 export type IgnoredAgent = { rootId?: string; label: string; path: string }
@@ -35,3 +35,19 @@ export type Command = { id: string; name: string; description?: string; argument
 export type CommandTarget = { agent: string; scope: 'global' | 'project' | string; project?: string; rootPath: string; format: string }
 export type CommandWriteRequest = { path?: string; agent?: string; scope?: string; project?: string; rootPath?: string; name?: string; content?: string; sourcePath?: string }
 export type CommandWritePlan = { id: string; operation: string; target: CommandTarget; name: string; path: string; content: string; currentContent?: string; exists: boolean; warnings?: string[]; createdAt: string; targetDeprecated?: boolean }
+
+export type SkillAuditEntry = { provider: string; slug?: string; status: string; summary?: string; riskLevel?: string; auditedAt?: string; categories?: string[] }
+export type SkillAudit = { skillId: string; source?: string; skill?: string; available: boolean; verdict: 'pass' | 'warn' | 'fail' | 'unreviewed' | string; riskLevel?: string; entries?: SkillAuditEntry[]; checkedAt?: string; reason?: string; localHash?: string; localChanged?: boolean; localBaselineAt?: string }
+
+export type SkillEditPlan = { id: string; skillId: string; path: string; content: string; currentContent?: string; exists: boolean; warnings?: string[]; createdAt: string }
+
+export type SkillCreatePlan = { id: string; name: string; path: string; content: string; warnings?: string[]; createdAt: string }
+export type SkillRenamePlan = { id: string; skillId: string; name: string; from: string; to: string; createdAt: string }
+
+export type CommandDeletePlan = { id: string; target: CommandTarget; name: string; path: string; currentContent?: string; createdAt: string }
+
+export type NativeCLIUpdateInfo = { cliId: string; current?: string; latest?: string; available: boolean; canUpdate: boolean; updateCommand?: string; error?: string; checkedAt: string }
+
+export type Session = { id: string; agent: string; cwd: string; title?: string; model?: string; path: string; startedAt: string; lastAt: string; messages: number; tokensIn: number; tokensOut: number }
+
+export type SessionMessage = { role: string; text: string; at: string }

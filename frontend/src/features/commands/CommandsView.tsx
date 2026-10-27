@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Command as CommandIcon, Plus, Terminal } from 'lucide-react'
+import { Command as CommandIcon, Plus, Terminal, Trash2 } from 'lucide-react'
 import { AgentIcon } from '../../components/AgentIcon'
 import { AssetSearch } from '../../components/AssetSearch'
 import { CommandDetailSheet, commandScopeLabel } from '../../components/CommandDetailSheet'
 import { CommandEditorDialog } from '../../components/CommandEditorDialog'
+import { CommandDeleteDialog } from '../../components/CommandDeleteDialog'
 import { backend } from '../../backend'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -21,6 +22,7 @@ function CommandsView({ commands, onRefresh }: { commands: Command[]; onRefresh:
   const [targetError, setTargetError] = useState('')
   const [editing, setEditing] = useState<Command | true>()
   const [converting, setConverting] = useState<Command>()
+  const [deleting, setDeleting] = useState<Command>()
   const agents = useMemo(() => Array.from(new Set(commands.map((command) => command.agent))).sort(), [commands])
   useEffect(() => { let active = true; backend.commandTargets().then((next) => { if (active) setTargets(next) }).catch(() => { if (active) setTargetError(t('commands.targetsUnavailable')) }); return () => { active = false } }, [])
   const queryText = query.trim().toLowerCase()
@@ -43,17 +45,19 @@ function CommandsView({ commands, onRefresh }: { commands: Command[]; onRefresh:
       <div className={styles.filterRight}>{targetError && <span className={styles.commandTargetError} role="status">{targetError}</span>}<span className={styles.resultCount}>{t('commands.count', { n: filtered.length })}</span><Button variant="outline" size="sm" disabled={targets.length === 0} title={targetError || undefined} onClick={() => setEditing(true)}><Plus size={14} />{t('commands.newCommand')}</Button></div>
     </div>
     <div className={`${styles.tableWrap} ${styles.commandsTable}`}><table>
-      <thead><tr><th>{t('common.command')}</th><th>{t('common.agent')}</th><th>{t('common.scope')}</th><th>{t('commands.description')}</th><th>{t('common.path')}</th></tr></thead>
-      <tbody>{filtered.length === 0 ? <tr><td colSpan={5} className={styles.empty}>{commands.length === 0 ? <div className={styles.emptyAction}><Terminal size={18} aria-hidden="true" /><span>{t('commands.noCommands')}</span><small>{t('commands.emptyHint')}</small><Button variant="outline" size="sm" disabled={targets.length === 0} title={targetError || undefined} onClick={() => setEditing(true)}><Plus size={14} />{t('commands.newCommand')}</Button></div> : t('commands.noMatches')}</td></tr> : filtered.map((command) => <tr key={command.id} className={`${selected?.id === command.id ? styles.selectedRow : ''} ${styles.clickableRow}`} tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedId(command.id) } }} onClick={() => setSelectedId(command.id)}>
+      <thead><tr><th>{t('common.command')}</th><th>{t('common.agent')}</th><th>{t('common.scope')}</th><th>{t('commands.description')}</th><th>{t('common.path')}</th><th>{t('common.actions')}</th></tr></thead>
+      <tbody>{filtered.length === 0 ? <tr><td colSpan={6} className={styles.empty}>{commands.length === 0 ? <div className={styles.emptyAction}><Terminal size={18} aria-hidden="true" /><span>{t('commands.noCommands')}</span><small>{t('commands.emptyHint')}</small><Button variant="outline" size="sm" disabled={targets.length === 0} title={targetError || undefined} onClick={() => setEditing(true)}><Plus size={14} />{t('commands.newCommand')}</Button></div> : t('commands.noMatches')}</td></tr> : filtered.map((command) => <tr key={command.id} className={`${selected?.id === command.id ? styles.selectedRow : ''} ${styles.clickableRow}`} tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedId(command.id) } }} onClick={() => setSelectedId(command.id)}>
         <td><div className={styles.commandName}><CommandIcon size={15} aria-hidden="true" /><strong>/{command.name}</strong>{command.format === 'toml' && <Badge variant="outline">TOML</Badge>}</div></td>
         <td><div className={styles.cliName}><AgentIcon name={command.agent} className="size-4" /><span>{tValue(command.agent)}</span></div></td>
         <td><Badge variant={command.scope === 'global' ? 'outline' : 'info'}>{commandScopeLabel(command.scope)}</Badge></td>
         <td><span className={styles.commandDescription}>{command.description || t('commands.noDescription')}</span></td>
         <td><code>{command.path}</code></td>
+        <td><Button variant="ghost" size="icon-xs" className="text-destructive" title={t('commands.deleteCommand')} aria-label={t('commands.deleteCommand')} onClick={(event) => { event.stopPropagation(); setDeleting(command) }}><Trash2 size={13} /></Button></td>
       </tr>)}</tbody>
     </table></div>
-    {selected && <CommandDetailSheet command={selected} onClose={() => setSelectedId(undefined)} onEdit={() => setEditing(selected)} onConvert={() => setConverting(selected)} />}
+    {selected && <CommandDetailSheet command={selected} onClose={() => setSelectedId(undefined)} onEdit={() => setEditing(selected)} onConvert={() => setConverting(selected)} onDelete={() => setDeleting(selected)} />}
     {editing && <CommandEditorDialog command={editing === true ? undefined : editing} targets={targets} onClose={() => setEditing(undefined)} onSaved={onRefresh} />}
+    {deleting && <CommandDeleteDialog command={deleting} onClose={() => setDeleting(undefined)} onDeleted={() => { setSelectedId(undefined); void onRefresh() }} />}
     {converting && <CommandEditorDialog convertFrom={converting} targets={targets} onClose={() => setConverting(undefined)} onSaved={onRefresh} />}
   </section>
 }

@@ -25,8 +25,16 @@ import * as model$0 from "../../internal/core/model/models.js";
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
+export function AgentSessions(agent: string): $CancellablePromise<model$0.Session[] | null> {
+    return $Call.ByID(1224160527, agent);
+}
+
 export function AppInfo(): $CancellablePromise<$models.AppInfo> {
     return $Call.ByID(2585217892);
+}
+
+export function ApplyCommandDelete(planID: string): $CancellablePromise<model$0.Operation> {
+    return $Call.ByID(3704782263, planID);
 }
 
 export function ApplyCommandWrite(planID: string): $CancellablePromise<model$0.Operation> {
@@ -45,12 +53,44 @@ export function ApplyPlanWithResolutions(planID: string, resolutions: { [_ in st
     return $Call.ByID(1281102867, planID, resolutions);
 }
 
+export function ApplySkillCreate(planID: string): $CancellablePromise<model$0.Operation> {
+    return $Call.ByID(1958788544, planID);
+}
+
+export function ApplySkillEdit(planID: string): $CancellablePromise<model$0.Operation> {
+    return $Call.ByID(1401937200, planID);
+}
+
+export function ApplySkillRename(planID: string): $CancellablePromise<model$0.Operation> {
+    return $Call.ByID(185137750, planID);
+}
+
+export function CLIVersion(cliID: string): $CancellablePromise<string> {
+    return $Call.ByID(2803279295, cliID);
+}
+
+export function CancelCommandDelete(planID: string): $CancellablePromise<void> {
+    return $Call.ByID(1627701631, planID);
+}
+
 export function CancelCommandWrite(planID: string): $CancellablePromise<void> {
     return $Call.ByID(997356579, planID);
 }
 
 export function CancelScan(): $CancellablePromise<boolean> {
     return $Call.ByID(3315272766);
+}
+
+export function CancelSkillCreate(planID: string): $CancellablePromise<void> {
+    return $Call.ByID(3142854392, planID);
+}
+
+export function CancelSkillEdit(planID: string): $CancellablePromise<void> {
+    return $Call.ByID(2298555032, planID);
+}
+
+export function CancelSkillRename(planID: string): $CancellablePromise<void> {
+    return $Call.ByID(4167536046, planID);
 }
 
 export function CatalogDescription(source: string, skillID: string): $CancellablePromise<string> {
@@ -140,6 +180,14 @@ export function MCPTargets(): $CancellablePromise<model$0.MCPAgent[] | null> {
     return $Call.ByID(1436709707);
 }
 
+export function NativeCLIUpdate(cliID: string): $CancellablePromise<string> {
+    return $Call.ByID(2135651257, cliID);
+}
+
+export function NativeCLIUpdateCheck(cliID: string): $CancellablePromise<model$0.NativeCLIUpdateInfo> {
+    return $Call.ByID(346548043, cliID);
+}
+
 export function Operations(): $CancellablePromise<model$0.Operation[] | null> {
     return $Call.ByID(2455791563);
 }
@@ -154,6 +202,10 @@ export function PickFolder(): $CancellablePromise<string> {
 
 export function PlanCLI(cliID: string, uninstall: boolean, latest: string): $CancellablePromise<model$0.Plan> {
     return $Call.ByID(3089801904, cliID, uninstall, latest);
+}
+
+export function PlanCommandDelete(path: string): $CancellablePromise<model$0.CommandDeletePlan> {
+    return $Call.ByID(907817764, path);
 }
 
 export function PlanCommandWrite(req: model$0.CommandWriteRequest): $CancellablePromise<model$0.CommandWritePlan> {
@@ -196,6 +248,18 @@ export function PlanMCPUpdate(serverID: string, name: string, command: string, a
     return $Call.ByID(2976330587, serverID, name, command, args, url, agentPaths);
 }
 
+export function PlanSkillCreate(name: string, content: string): $CancellablePromise<model$0.SkillCreatePlan> {
+    return $Call.ByID(610613239, name, content);
+}
+
+export function PlanSkillEdit(skillID: string, content: string): $CancellablePromise<model$0.SkillEditPlan> {
+    return $Call.ByID(2439023747, skillID, content);
+}
+
+export function PlanSkillRename(skillID: string, newName: string): $CancellablePromise<model$0.SkillRenamePlan> {
+    return $Call.ByID(488665765, skillID, newName);
+}
+
 export function PlanSkillUpdate(skillID: string): $CancellablePromise<model$0.Plan> {
     return $Call.ByID(1006088158, skillID);
 }
@@ -228,6 +292,10 @@ export function RecordCatalogInstall(path: string, source: string, skillID: stri
     return $Call.ByID(2382907166, path, source, skillID);
 }
 
+export function RefreshSessions(): $CancellablePromise<void> {
+    return $Call.ByID(1618934869);
+}
+
 export function ResolveCatalogSkill(source: string, skillID: string): $CancellablePromise<string> {
     return $Call.ByID(43552267, source, skillID);
 }
@@ -242,6 +310,10 @@ export function RestoreBackup(path: string): $CancellablePromise<backup$0.Result
 
 export function RevealCLI(cliID: string): $CancellablePromise<void> {
     return $Call.ByID(219159190, cliID);
+}
+
+export function RevealSession(path: string): $CancellablePromise<void> {
+    return $Call.ByID(1301949488, path);
 }
 
 export function RevealSkill(skillID: string): $CancellablePromise<void> {
@@ -272,6 +344,14 @@ export function SearchMCPRegistry(query: string): $CancellablePromise<mcp$0.Regi
     return $Call.ByID(700383348, query);
 }
 
+export function SessionMessages(path: string, limit: number): $CancellablePromise<model$0.SessionMessage[] | null> {
+    return $Call.ByID(3512378259, path, limit);
+}
+
+export function Sessions(projectPath: string): $CancellablePromise<model$0.Session[] | null> {
+    return $Call.ByID(2779076680, projectPath);
+}
+
 /**
  * SetApp wires the Wails application after it is constructed. Keeping it
  * optional lets service tests and non-GUI callers use the service without a
@@ -289,8 +369,20 @@ export function Shutdown(): $CancellablePromise<void> {
     return $Call.ByID(1407700671);
 }
 
+export function SkillAudit(skillID: string): $CancellablePromise<model$0.SkillAudit> {
+    return $Call.ByID(1846135101, skillID);
+}
+
+export function SkillContent(skillID: string): $CancellablePromise<string> {
+    return $Call.ByID(2234014507, skillID);
+}
+
 export function SkillIcon(skillID: string): $CancellablePromise<string> {
     return $Call.ByID(1398227551, skillID);
+}
+
+export function SourceAudit(source: string, skill: string): $CancellablePromise<model$0.SkillAudit> {
+    return $Call.ByID(2558197683, source, skill);
 }
 
 export function Startup(): $CancellablePromise<void> {

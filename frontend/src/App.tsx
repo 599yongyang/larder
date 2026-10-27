@@ -3,6 +3,8 @@ import { Events } from '@wailsio/runtime'
 import { Monitor, Moon, RefreshCw, Search, Sun } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { CommandPalette } from './components/CommandPalette'
+import { AgentCLIBar } from './components/AgentCLIBar'
+import { AgentSessionsView } from './features/agent/AgentSessionsView'
 import { Kbd } from '@/components/ui/kbd'
 import { GooeyToaster, gooeyToast } from 'goey-toast'
 import { toastError, toastSuccess } from './lib/toast'
@@ -24,7 +26,7 @@ import { CommandsView } from './features/commands/CommandsView'
 import { ProjectView } from './features/project/ProjectView'
 import { formatRelativeTime, skillSourceLabel } from './lib/format'
 import { emptySnapshot } from './types'
-import type { AppInfo, Command, InstructionFile, Issue, Operation, TimelineEvent, UpdateReport, UsageStat, View } from './types'
+import type { AppInfo, Command, InstructionFile, Issue, Operation, Session, TimelineEvent, UpdateReport, UsageStat, View } from './types'
 import styles from './App.module.css'
 import { backend } from './backend'
 import { useAppStore } from './store'
@@ -55,6 +57,13 @@ function App() {
   const [mcps, setMcps] = useState<any[]>([])
   const [instructions, setInstructions] = useState<InstructionFile[]>([])
   const [commands, setCommands] = useState<Command[]>([])
+  const [sessions, setSessions] = useState<Session[]>([])
+  const [sessionsLoading, setSessionsLoading] = useState(false)
+  const [sessionsError, setSessionsError] = useState(false)
+  const [agentSessions, setAgentSessions] = useState<Session[]>([])
+  const [agentSessionsLoading, setAgentSessionsLoading] = useState(false)
+  const [agentSessionsError, setAgentSessionsError] = useState(false)
+  const [sessionRefreshKey, setSessionRefreshKey] = useState(0)
   const [appInfo, setAppInfo] = useState<AppInfo>()
   const [updates, setUpdates] = useState<UpdateReport>()
   const [updatesLoading, setUpdatesLoading] = useState(false)
@@ -121,6 +130,17 @@ function App() {
   useEffect(() => { try { localStorage.setItem('larder.view', view) } catch {} }, [view])
   useEffect(() => { try { localStorage.setItem('larder.skills.source', source) } catch {} }, [source])
   useEffect(() => { void refresh().finally(() => setReady(true)) }, [refresh])
+  useEffect(() => { if (view === 'agent-sessions' && scope?.kind !== 'agent') setView('skills') }, [view, scope])
+  const projectPath = scope?.kind === 'project' ? scope.path : undefined
+  useEffect(() => {
+    if (view !== 'project' || !projectPath) { setSessions([]); setSessionsLoading(false); setSessionsError(false); return }
+    let active = true
+    setSessions([])
+    setSessionsLoading(true)
+    setSessionsError(false)
+    backend.sessions(projectPath).then((items) => { if (active) { setSessions(items); setSessionsError(false) } }).catch(() => { if (active) { setSessions([]); setSessionsError(true) } }).finally(() => { if (active) setSessionsLoading(false) })
+    return () => { active = false }
+  }, [view, projectPath, state.updatedAt, sessionRefreshKey])
   const refreshVisibleView = useCallback(async () => {
     try {
       const results = await Promise.allSettled([backend.state(), backend.settings()])
@@ -138,9 +158,13 @@ function App() {
         const result = await Promise.allSettled([backend.instructions()])
         if (result[0].status === 'fulfilled') setInstructions(result[0].value)
       }
-      if (view === 'commands') {
+      if (view === 'commands' || view === 'project') {
         const result = await Promise.allSettled([backend.commands()])
         if (result[0].status === 'fulfilled') setCommands(result[0].value)
+      }
+      if (view === 'project') {
+        const result = await Promise.allSettled([backend.operations()])
+        if (result[0].status === 'fulfilled') setOperations(result[0].value)
       }
       if (view === 'history') {
         const [nextOperations, nextTimeline, nextUsage] = await Promise.allSettled([backend.operations(), backend.timeline(), backend.usageStats()])
@@ -158,8 +182,20 @@ function App() {
     }
   }, [view])
   const lastFocusRefresh = useRef(0)
+  const lastSessionCacheRefresh = useRef(0)
   useEffect(() => {
-    const onFocus = () => { const now = Date.now(); if (now - lastFocusRefresh.current < 60_000) return; lastFocusRefresh.current = now; void refreshVisibleView() }
+    const onFocus = () => {
+      const now = Date.now()
+      if (now - lastSessionCacheRefresh.current > 30_000) {
+        lastSessionCacheRefresh.current = now
+        void backend.refreshSessions().catch(() => {}).finally(() => setSessionRefreshKey((value) => value + 1))
+      } else {
+        setSessionRefreshKey((value) => value + 1)
+      }
+      if (now - lastFocusRefresh.current < 60_000) return
+      lastFocusRefresh.current = now
+      void refreshVisibleView()
+    }
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
   }, [refreshVisibleView])
@@ -317,23 +353,35 @@ function App() {
     return { id: root.id, label: agentLabel(root), icon: root.logicalAgent || root.label, count: ids.size, status: root.status }
   })
   const activeAgentRoot = scope?.kind === 'agent' ? agentRoots.find((root) => root.id === scope.id) : undefined
+  const agentRootID = activeAgentRoot?.id
+  const agentName = activeAgentRoot?.logicalAgent || activeAgentRoot?.label
+  useEffect(() => {
+    if (view !== 'agent-sessions' || !agentRootID || !agentName) { setAgentSessions([]); setAgentSessionsLoading(false); setAgentSessionsError(false); return }
+    let active = true
+    setAgentSessions([])
+    setAgentSessionsLoading(true)
+    setAgentSessionsError(false)
+    backend.agentSessions(agentName).then((items) => { if (active) { setAgentSessions(items); setAgentSessionsError(false) } }).catch(() => { if (active) { setAgentSessions([]); setAgentSessionsError(true) } }).finally(() => { if (active) setAgentSessionsLoading(false) })
+    return () => { active = false }
+  }, [view, agentRootID, agentName, state.updatedAt, sessionRefreshKey])
   const projectItems = settings.projectWorkspaces.map((workspace) => { const projectSkills = snapshot.skills.filter((skill) => skill.isProject && (skill.path === workspace || skill.path.startsWith(workspace + '/'))); return { path: workspace, label: workspace.split('/').filter(Boolean).pop() || workspace, count: new Set(projectSkills.map(uniqueSkillKey)).size } })
   const addProject = async (value: string) => { const path = value.trim(); if (!path) return; const next = await backend.saveSettings({ ...settings, projectWorkspaces: [...new Set([...settings.projectWorkspaces, path])] }); setSettings(next); await backend.scan(); await refresh(); toastSuccess(t('app.projectWorkspaceAdded'), t('app.scanningAgain')) }
   const removeProject = async (path: string) => { const next = await backend.saveSettings({ ...settings, projectWorkspaces: settings.projectWorkspaces.filter((item) => item !== path) }); setSettings(next); await backend.scan(); await refresh() }
   return <SidebarProvider className={styles.appShell} style={{ "--sidebar-width": "232px" } as React.CSSProperties}>
     <AppSidebar view={view} scope={scope} onView={goView} onScope={goScope} onManageAgents={() => setAgentManagerOpen(true)} skillsCount={uniqueVisibleSkills} cliCount={clis.length} mcpCount={mcps.length}
       instructionCount={instructions.length} commandCount={commands.length} onManageProjects={() => setProjectManagerOpen(true)} agents={agentItems} projects={projectItems} centralCount={snapshot.skills.filter((skill) => skill.rootKind === 'global').length} />
-    <SidebarInset className={styles.main}><header className={styles.topbar} title={t('app.doubleClickToMaximize')} onDoubleClick={(event) => { const target = event.target as HTMLElement; if (target.closest('button, a, input, [role="button"]')) return; event.preventDefault(); void backend.toggleWindowMaximised() }}><h1>{view === 'xray' && scope?.kind === 'agent' ? `${scope.label} · ${t('xray.inspector')}` : view === 'skills' && scope ? (scope.kind === 'library' ? t('common.sharedLibrary') : `${scope.label} · ${t('common.skills')}`) : view === 'project' && scope?.kind === 'project' ? `${scope.label} · ${t('common.projects')}` : viewTitle(view)}</h1><div className={styles.topActions}><Button variant="outline" size="sm" onClick={() => setCommandOpen(true)} className="w-[260px] justify-start gap-2 font-normal text-muted-foreground"><Search size={14} aria-hidden="true" /><span>{t('app.searchOrJump')}</span><Kbd className="ml-auto">{shortcutLabel('K')}</Kbd></Button><Button variant="outline" size="icon-sm" title={state.scanning ? t('app.cancelScan') : t('common.rescan')} aria-label={state.scanning ? t('app.cancelScan') : t('common.rescan')} aria-keyshortcuts={ariaShortcut('R')} onClick={() => state.scanning ? void backend.cancel() : void scan()}><RefreshCw size={14} aria-hidden="true" className={state.scanning ? 'animate-spin' : undefined} /></Button><Button variant="ghost" size="icon-sm" aria-label={t('app.appearanceClickToSwitch', { mode: themeMode === 'system' ? t('app.system') : themeMode === 'light' ? t('common.light') : t('common.dark') })} title={t('app.appearanceClickToSwitch', { mode: themeMode === 'system' ? t('app.system') : themeMode === 'light' ? t('common.light') : t('common.dark') })} onClick={(event) => changeTheme(nextThemeMode(themeMode), event)}>{themeMode === 'system' ? <Monitor size={15} aria-hidden="true" /> : themeMode === 'dark' ? <Moon size={15} aria-hidden="true" /> : <Sun size={15} aria-hidden="true" />}</Button></div></header>
+    <SidebarInset className={styles.main}><header className={styles.topbar} title={t('app.doubleClickToMaximize')} onDoubleClick={(event) => { const target = event.target as HTMLElement; if (target.closest('button, a, input, [role="button"]')) return; event.preventDefault(); void backend.toggleWindowMaximised() }}>{scope?.kind === 'agent' && activeAgentRoot && (view === 'skills' || view === 'xray' || view === 'agent-sessions') ? <AgentCLIBar root={activeAgentRoot} clis={clis} updates={updates} loading={updatesLoading} onCheck={() => void checkUpdates(true)} onUpdated={() => { void refresh(); void checkUpdates(false) }} /> : <h1>{view === 'xray' && scope?.kind === 'agent' ? `${scope.label} · ${t('xray.inspector')}` : view === 'skills' && scope ? (scope.kind === 'library' ? t('common.sharedLibrary') : `${scope.label} · ${t('common.skills')}`) : view === 'project' && scope?.kind === 'project' ? `${scope.label} · ${t('common.projects')}` : viewTitle(view)}</h1>}<div className={styles.topActions}><Button variant="outline" size="sm" onClick={() => setCommandOpen(true)} className={`${styles.topSearch} justify-start gap-2 font-normal text-muted-foreground`}><Search size={14} aria-hidden="true" /><span>{t('app.searchOrJump')}</span><Kbd className="ml-auto">{shortcutLabel('K')}</Kbd></Button><Button variant="outline" size="icon-sm" title={state.scanning ? t('app.cancelScan') : t('common.rescan')} aria-label={state.scanning ? t('app.cancelScan') : t('common.rescan')} aria-keyshortcuts={ariaShortcut('R')} onClick={() => state.scanning ? void backend.cancel() : void scan()}><RefreshCw size={14} aria-hidden="true" className={state.scanning ? 'animate-spin' : undefined} /></Button><Button variant="ghost" size="icon-sm" aria-label={t('app.appearanceClickToSwitch', { mode: themeMode === 'system' ? t('app.system') : themeMode === 'light' ? t('common.light') : t('common.dark') })} title={t('app.appearanceClickToSwitch', { mode: themeMode === 'system' ? t('app.system') : themeMode === 'light' ? t('common.light') : t('common.dark') })} onClick={(event) => changeTheme(nextThemeMode(themeMode), event)}>{themeMode === 'system' ? <Monitor size={15} aria-hidden="true" /> : themeMode === 'dark' ? <Moon size={15} aria-hidden="true" /> : <Sun size={15} aria-hidden="true" />}</Button></div></header>
       <div className={`${styles.scanProgress} ${state.scanning ? styles.scanProgressActive : ''}`} aria-hidden={!state.scanning} role="status" aria-live="polite" aria-label={state.scanning ? t('common.scanning') : undefined}><span /></div>
-      {scope?.kind === 'agent' && (view === 'skills' || view === 'xray') && <div className={styles.agentViewTabs} role="tablist" aria-label={t('xray.title')}><button type="button" role="tab" aria-selected={view === 'skills'} className={`${styles.agentViewTab} ${view === 'skills' ? styles.agentViewTabActive : ''}`} onClick={() => pageTransition(() => setView('skills'))}>{t('common.skills')}</button><button type="button" role="tab" aria-selected={view === 'xray'} className={`${styles.agentViewTab} ${view === 'xray' ? styles.agentViewTabActive : ''}`} onClick={() => pageTransition(() => setView('xray'))}>{t('xray.inspector')}</button></div>}
+      {scope?.kind === 'agent' && (view === 'skills' || view === 'xray' || view === 'agent-sessions') && <div className={styles.agentViewTabs} role="tablist" aria-label={t('xray.title')}><button type="button" role="tab" aria-selected={view === 'skills'} className={`${styles.agentViewTab} ${view === 'skills' ? styles.agentViewTabActive : ''}`} onClick={() => pageTransition(() => setView('skills'))}>{t('common.skills')}</button><button type="button" role="tab" aria-selected={view === 'agent-sessions'} className={`${styles.agentViewTab} ${view === 'agent-sessions' ? styles.agentViewTabActive : ''}`} onClick={() => pageTransition(() => setView('agent-sessions'))}>{t('common.sessions')}</button><button type="button" role="tab" aria-selected={view === 'xray'} className={`${styles.agentViewTab} ${view === 'xray' ? styles.agentViewTabActive : ''}`} onClick={() => pageTransition(() => setView('xray'))}>{t('xray.inspector')}</button></div>}
       <div ref={viewBodyRef} className={styles.viewBody} onScroll={saveScroll}>
         {!ready ? <InitialSkeleton /> : <>
         {view === 'skills' && <SkillsView skills={visibleSkills} allSkills={scopedSkills} roots={agentRoots} scopeKind={scope?.kind} links={snapshot.agentLinks} operations={operations} selected={selectedSkill} onSelect={setSelectedId} onCloseDetail={() => setSelectedId(undefined)} source={source} sources={sources} onSource={setSource} onRefresh={refresh} issues={snapshot.issues} updates={updates} updatesLoading={updatesLoading} onCheckUpdates={() => void checkUpdates(true)} clis={clis} onOpenCLI={(id) => pageTransition(() => { setScope(undefined); setCliFocus(id); setView('cli') })} />}
+        {view === 'agent-sessions' && activeAgentRoot && <AgentSessionsView sessions={agentSessions} loading={agentSessionsLoading} error={agentSessionsError} onRetry={() => setSessionRefreshKey((value) => value + 1)} onOpenProject={(path) => goScope({ kind: 'project', path, label: path.split('/').filter(Boolean).pop() || path })} />}
         {view === 'xray' && activeAgentRoot && <XrayView root={activeAgentRoot} projects={settings.projectWorkspaces} compareOptions={agentRoots.map((root) => ({ id: root.id, label: root.label, logicalAgent: root.logicalAgent }))} refreshKey={state.updatedAt} onOpenSkill={(id, project) => pageTransition(() => { if (project) setScope({ kind: 'project', path: project, label: project.split('/').filter(Boolean).pop() || project }); setSource('all'); setView('skills'); setSelectedId(id) })} onReveal={(id) => void backend.revealSkill(id).catch((error) => toastError(error, t('app.unableToRevealSkill')))} />}
         {view === 'mcp' && <MCPView servers={mcps} clis={clis} onRefresh={refresh} focusMCP={mcpFocus} onFocusConsumed={() => setMcpFocus(undefined)} onOpenCLI={(id) => pageTransition(() => { setScope(undefined); setCliFocus(id); setView('cli') })} />}
         {view === 'instructions' && <InstructionsView files={instructions} projects={settings.projectWorkspaces} onRefresh={refresh} />}
         {view === 'commands' && <CommandsView commands={commands} onRefresh={refresh} />}
-        {view === 'project' && scope?.kind === 'project' && <ProjectView path={scope.path} skills={snapshot.skills} servers={mcps} instructions={instructions} projects={settings.projectWorkspaces} issues={snapshot.issues} onRefresh={refresh} />}
+        {view === 'project' && scope?.kind === 'project' && <ProjectView path={scope.path} skills={snapshot.skills} servers={mcps} instructions={instructions} projects={settings.projectWorkspaces} issues={snapshot.issues} commands={commands} operations={operations} sessions={sessions} sessionsLoading={sessionsLoading} sessionsError={sessionsError} onRetrySessions={() => setSessionRefreshKey((value) => value + 1)} onRefresh={refresh} onOpenCommands={() => pageTransition(() => { setScope(undefined); setView('commands') })} />}
         {view === 'cli' && <CLIView clis={visibleClis} skills={snapshot.skills} mcps={mcps} onOpenSkill={(id) => pageTransition(() => { setScope(undefined); setView('skills'); setSelectedId(id) })} onOpenMCP={() => pageTransition(() => { setScope(undefined); setView('mcp') })} onRefresh={refresh} updates={updates} updatesLoading={updatesLoading} onCheckUpdates={() => void checkUpdates(true)} focusCLI={cliFocus} onFocusConsumed={() => setCliFocus(undefined)} />}
         {view === 'history' && <HistoryView events={timeline} usage={usage} operations={operations} onRefresh={refresh} onRollback={async (id) => { const operation = await backend.rollbackOperation(id) as Operation; await refresh(); return operation }} />}
         {view === 'settings' && <SettingsView settings={settings} onToggle={(value) => void backend.saveSettings({ ...settings, showAgentBuiltins: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} onUsageToggle={(value) => void backend.saveSettings({ ...settings, usageStatsEnabled: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} onAutoCheckToggle={(value) => void backend.saveSettings({ ...settings, autoCheckUpdates: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} onInterval={(value) => void backend.saveSettings({ ...settings, updateCheckIntervalHours: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} onRetention={(value) => void backend.saveSettings({ ...settings, snapshotRetention: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} onTrashRetention={(value) => void backend.saveSettings({ ...settings, trashRetentionDays: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} themeMode={themeMode} onThemeMode={changeTheme} info={appInfo} onBackup={() => void backend.exportBackup().then((path) => toastSuccess(t('app.backupExported'), path)).catch((error) => toastError(error, t('app.failedToExportBackup')))} onRestored={() => void refresh()} />}
@@ -354,6 +402,6 @@ function App() {
   </SidebarProvider>
 }
 
-function viewTitle(view: View) { return view === 'xray' ? t('xray.inspector') : view === 'skills' ? t('common.skills') : view === 'cli' ? 'CLI' : view === 'mcp' ? 'MCP' : view === 'instructions' ? t('common.instructions') : view === 'project' ? t('common.projects') : view === 'commands' ? t('common.commands') : view === 'history' ? t('common.history') : t('common.settings') }
+function viewTitle(view: View) { return view === 'xray' ? t('xray.inspector') : view === 'agent-sessions' ? t('common.sessions') : view === 'skills' ? t('common.skills') : view === 'cli' ? 'CLI' : view === 'mcp' ? 'MCP' : view === 'instructions' ? t('common.instructions') : view === 'project' ? t('common.projects') : view === 'commands' ? t('common.commands') : view === 'history' ? t('common.history') : t('common.settings') }
 
 export default App

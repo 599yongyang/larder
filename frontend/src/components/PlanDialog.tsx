@@ -7,7 +7,8 @@ import { backend } from '../backend'
 import styles from '../App.module.css'
 import { t } from '../i18n'
 import { backendErrorMessage } from '../lib/backendError'
-import type { Plan } from '../types'
+import type { Plan, SkillAudit } from '../types'
+import { SkillAuditInline } from './SkillAuditSection'
 import { shortPath } from '../lib/format'
 
 const operationMeta = (operation: string) => {
@@ -24,6 +25,8 @@ const operationMeta = (operation: string) => {
 export function PlanDialog({ plan, onClose, onApplied }: { plan: Plan; onClose: () => void; onApplied: () => void }) {
   const actionLabels: Record<string, string> = { create_symlink: t('common.createLink'), already_linked: t('common.alreadyLinked'), replace_link: t('common.repairBrokenLink'), replace_copy: t('common.useSharedVersion'), sync_copy: t('common.syncContent'), remove_link: t('common.removeLink'), conflict: t('common.targetConflict'), error: t('common.checkFailed'), install_skill: t('common.installFromSource'), uninstall_skill: t('common.removeFromSharedLibrary'), remove_mcp_entry: t('common.removeConfig'), cli_uninstall: t('common.uninstallCliAction') }
   const [confirmed, setConfirmed] = useState(false)
+  const [audit, setAudit] = useState<SkillAudit>()
+  const [auditConfirmed, setAuditConfirmed] = useState(false)
   const [applying, setApplying] = useState(false)
   const [error, setError] = useState('')
   const meta = operationMeta(plan.operation)
@@ -31,6 +34,10 @@ export function PlanDialog({ plan, onClose, onApplied }: { plan: Plan; onClose: 
   const OperationIcon = meta.icon
   const warnings = plan.warningMessages?.length ? plan.warningMessages.map((message) => t(message.code, message.params)) : (plan.warnings ?? []).filter((item) => !item.includes('快照') && !item.includes('snapshot'))
   const coreChanges = (plan.changes ?? []).filter((change) => change.action !== 'already_linked')
+  const installChange = coreChanges.find((change) => change.action === 'install_skill')
+  const auditSource = installChange?.source ?? ''
+  const auditSkill = plan.skillSlug || plan.skillName || ''
+  const auditApplies = Boolean(auditSource && auditSkill)
   const overwritten = coreChanges.filter((change) => change.exists).length
   const changeVerb = (change: { action: string; exists: boolean }) => {
     if (['uninstall_skill', 'remove_mcp_entry', 'cli_uninstall', 'remove_link'].includes(change.action)) return ''
@@ -59,6 +66,7 @@ export function PlanDialog({ plan, onClose, onApplied }: { plan: Plan; onClose: 
         </div>
       </DialogHeader>
       <div className={styles.planBody}>
+        {auditApplies && <SkillAuditInline source={auditSource} skill={auditSkill} onAudit={setAudit} />}
         {(coreChanges.length > 0 || plan.command) && <div className={styles.planFlat}>
           {coreChanges.length > 0 && <div className={styles.planSummary}><span>{t('plan.changeSummary', { n: coreChanges.length })}</span>{overwritten > 0 && <span>{t('plan.overwriteSummary', { n: overwritten })}</span>}{warnings.length > 0 && <span>{t('plan.warningSummary', { n: warnings.length })}</span>}</div>}
           {coreChanges.length > 0 && <ul className={styles.planFlatList}>{coreChanges.map((change) => {
@@ -71,9 +79,10 @@ export function PlanDialog({ plan, onClose, onApplied }: { plan: Plan; onClose: 
         </div>}
         {warnings.length > 0 && <div className={styles.planWarning}><AlertTriangle size={15} aria-hidden="true" /><div>{warnings.map((item) => <p key={item}>{item}</p>)}</div></div>}
         {needsExplicitConfirm ? <label className={styles.planConfirm}><Checkbox checked={confirmed} onCheckedChange={(checked) => setConfirmed(Boolean(checked))} /><span className={styles.planConfirmLabel}>{t('common.confirmOperationSnapshotFirst')}</span><span className={styles.planConfirmInfo} title={t('common.aSnapshotIsCreatedFirstFailuresFollowTheOperationPolicy')} aria-label={t('common.aSnapshotIsCreatedFirstFailuresFollowTheOperationPolicy')}><Info size={12} /></span></label> : <div className={styles.planConfirm}><Info size={12} aria-hidden="true" /><span className={styles.planConfirmLabel}>{t('common.aSnapshotIsCreatedFirstFailuresFollowTheOperationPolicy')}</span></div>}
+        {audit?.verdict === 'fail' && <label className={styles.auditGate}><Checkbox checked={auditConfirmed} onCheckedChange={(checked) => setAuditConfirmed(Boolean(checked))} /><span>{t('skills.auditHighRiskConfirm')}</span></label>}
         {error && <p className={styles.planError} role="alert">{error}</p>}
       </div>
-      <DialogFooter className={styles.planFooter}><Button size="sm" variant="outline" onClick={onClose} disabled={applying}>{t('common.cancel')}</Button><Button size="sm" variant={meta.tone === 'danger' ? 'destructive' : 'default'} disabled={(needsExplicitConfirm && !confirmed) || applying} onClick={() => void apply()}>{applying ? t('common.running') : meta.confirm}</Button></DialogFooter>
+      <DialogFooter className={styles.planFooter}><Button size="sm" variant="outline" onClick={onClose} disabled={applying}>{t('common.cancel')}</Button><Button size="sm" variant={meta.tone === 'danger' ? 'destructive' : 'default'} disabled={(needsExplicitConfirm && !confirmed) || applying || (audit?.verdict === 'fail' && !auditConfirmed)} onClick={() => void apply()}>{applying ? t('common.running') : meta.confirm}</Button></DialogFooter>
     </DialogContent>
   </Dialog>
 }

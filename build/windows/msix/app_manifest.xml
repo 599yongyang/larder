@@ -10,7 +10,7 @@
   <Identity 
     Name="dev.larder.app"
     Publisher="CN=Larder contributors"
-    Version="0.0.5.0"
+    Version="0.0.6.0"
     ProcessorArchitecture="arm64" />
   
   <Properties>

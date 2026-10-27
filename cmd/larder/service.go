@@ -5,11 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,13 +22,16 @@ import (
 	"larder/internal/core/appupdate"
 	"larder/internal/core/backup"
 	"larder/internal/core/catalog"
+	"larder/internal/core/clis"
 	"larder/internal/core/commands"
 	"larder/internal/core/instructions"
 	"larder/internal/core/inventory"
 	coremcp "larder/internal/core/mcp"
 	"larder/internal/core/model"
 	"larder/internal/core/ops"
+	"larder/internal/core/sessions"
 	"larder/internal/core/store"
+	"larder/internal/core/trust"
 	"larder/internal/core/xray"
 	"larder/internal/platform"
 )
@@ -48,11 +55,16 @@ type AppState struct {
 	UpdatedAt     time.Time          `json:"updatedAt"`
 }
 
-var Version = "0.0.5"
+var Version = "0.0.6"
 
 type MCPTestResult struct {
 	OK      bool   `json:"ok"`
 	Message string `json:"message"`
+}
+
+type sessionCacheEntry struct {
+	items []model.Session
+	at    time.Time
 }
 
 type AppInfo struct {
@@ -69,13 +81,20 @@ type AppService struct {
 	catalog *catalog.Client
 	app     *application.App
 
-	installsPath string
-	installs     map[string]CatalogInstall
-	commandPlans map[string]model.CommandWritePlan
-	disabledPath string
-	disabled     []ops.DetachedMCP
-	dataDir      string
-	homeDir      string
+	installsPath       string
+	installs           map[string]CatalogInstall
+	commandPlans       map[string]model.CommandWritePlan
+	commandDeletePlans map[string]model.CommandDeletePlan
+	skillEditPlans     map[string]model.SkillEditPlan
+	skillCreatePlans   map[string]model.SkillCreatePlan
+	skillRenamePlans   map[string]model.SkillRenamePlan
+	trust              *trust.Client
+	sessionMu          sync.Mutex
+	sessionCache       map[string]sessionCacheEntry
+	disabledPath       string
+	disabled           []ops.DetachedMCP
+	dataDir            string
+	homeDir            string
 
 	mu         sync.RWMutex
 	ctx        context.Context
@@ -97,7 +116,7 @@ func NewAppService() (*AppService, error) {
 	core := inventory.NewService(paths, platform.OSFileSystem{}, db)
 	core.SetSnapshotRoot(filepath.Join(dataDir, "snapshots"))
 	homeDir, _ := paths.HomeDir()
-	service := &AppService{core: core, catalog: catalog.NewClient(), installsPath: filepath.Join(dataDir, "catalog-installs.json"), installs: map[string]CatalogInstall{}, commandPlans: map[string]model.CommandWritePlan{}, disabledPath: filepath.Join(dataDir, "disabled-mcp.json"), dataDir: dataDir, homeDir: homeDir}
+	service := &AppService{core: core, catalog: catalog.NewClient(), installsPath: filepath.Join(dataDir, "catalog-installs.json"), installs: map[string]CatalogInstall{}, commandPlans: map[string]model.CommandWritePlan{}, commandDeletePlans: map[string]model.CommandDeletePlan{}, skillEditPlans: map[string]model.SkillEditPlan{}, skillCreatePlans: map[string]model.SkillCreatePlan{}, skillRenamePlans: map[string]model.SkillRenamePlan{}, trust: trust.New(), sessionCache: map[string]sessionCacheEntry{}, disabledPath: filepath.Join(dataDir, "disabled-mcp.json"), dataDir: dataDir, homeDir: homeDir}
 	service.loadCatalogInstalls()
 	service.loadDisabledMCPs()
 	service.state = AppState{SchemaVersion: model.SchemaVersion, Snapshot: model.ScanResult{SchemaVersion: model.SchemaVersion}, UpdatedAt: time.Now()}
@@ -178,8 +197,682 @@ func (s *AppService) refresh(parent context.Context) {
 // State returns a snapshot suitable for the Wails binding. The result is
 // explicitly marked cached or live so stale data is never presented as fresh.
 func (s *AppService) State() AppState { s.mu.RLock(); defer s.mu.RUnlock(); return s.state }
+func (s *AppService) PlanSkillCreate(name, content string) (model.SkillCreatePlan, error) {
+	name, err := cleanSkillName(name)
+	if err != nil {
+		return model.SkillCreatePlan{}, err
+	}
+	root, err := s.sharedSkillRoot()
+	if err != nil {
+		return model.SkillCreatePlan{}, err
+	}
+	path := filepath.Join(root, name)
+	if _, err := os.Stat(path); err == nil {
+		return model.SkillCreatePlan{}, errors.New("a Skill with this name already exists")
+	}
+	if len(content) > 512*1024 {
+		return model.SkillCreatePlan{}, errors.New("skill content is too large")
+	}
+	plan := model.SkillCreatePlan{ID: fmt.Sprintf("skill-create-%d", time.Now().UnixNano()), Name: name, Path: path, Content: content, Warnings: validateSkillMarkdown(content), CreatedAt: time.Now()}
+	s.mu.Lock()
+	if s.skillCreatePlans == nil {
+		s.skillCreatePlans = map[string]model.SkillCreatePlan{}
+	}
+	s.skillCreatePlans[plan.ID] = plan
+	s.mu.Unlock()
+	return plan, nil
+}
+
+func (s *AppService) ApplySkillCreate(planID string) (model.Operation, error) {
+	s.mu.Lock()
+	plan, ok := s.skillCreatePlans[planID]
+	s.mu.Unlock()
+	if !ok {
+		return model.Operation{}, errors.New("skill create plan not found or expired")
+	}
+	root, err := s.sharedSkillRoot()
+	if err != nil {
+		return model.Operation{}, err
+	}
+	if filepath.Dir(plan.Path) != root || filepath.Base(plan.Path) != plan.Name {
+		return model.Operation{}, errors.New("skill create path is outside the shared library")
+	}
+	if _, err := os.Stat(plan.Path); err == nil {
+		return model.Operation{}, errors.New("skill target already exists")
+	}
+	snapshotDir := filepath.Join(s.dataDir, "snapshots", "skill-create-"+plan.ID)
+	if err := os.MkdirAll(snapshotDir, 0o700); err != nil {
+		return model.Operation{}, err
+	}
+	manifest := ops.SnapshotManifest{ID: filepath.Base(snapshotDir), PlanID: plan.ID, CreatedAt: time.Now(), Targets: []ops.SnapshotTarget{{Target: plan.Path, Action: "install_skill"}}}
+	payload, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return model.Operation{}, err
+	}
+	if err := os.WriteFile(filepath.Join(snapshotDir, "manifest.json"), payload, 0o600); err != nil {
+		return model.Operation{}, err
+	}
+	if err := os.MkdirAll(plan.Path, 0o755); err != nil {
+		return model.Operation{}, err
+	}
+	if err := writeFileAtomically(filepath.Join(plan.Path, "SKILL.md"), plan.Content); err != nil {
+		_ = os.RemoveAll(plan.Path)
+		return model.Operation{}, err
+	}
+	now := time.Now()
+	op := model.Operation{ID: fmt.Sprintf("op-skill-create-%d", now.UnixNano()), PlanID: plan.ID, Operation: "skill_create", Status: "success", Message: "Skill created", Changes: []string{"skill:" + plan.Path}, SnapshotPath: snapshotDir, CreatedAt: now}
+	if store := s.core.Store(); store != nil {
+		_ = store.SaveOperation(s.context(), op)
+	}
+	s.mu.Lock()
+	delete(s.skillCreatePlans, planID)
+	s.mu.Unlock()
+	s.rescanAfterSkillMutation()
+	return op, nil
+}
+
+func (s *AppService) CancelSkillCreate(planID string) {
+	s.mu.Lock()
+	delete(s.skillCreatePlans, planID)
+	s.mu.Unlock()
+}
+
+func (s *AppService) PlanSkillRename(skillID, newName string) (model.SkillRenamePlan, error) {
+	skill, err := s.findSkill(skillID)
+	if err != nil {
+		return model.SkillRenamePlan{}, err
+	}
+	newName, err = cleanSkillName(newName)
+	if err != nil {
+		return model.SkillRenamePlan{}, err
+	}
+	from := skill.Path
+	to := filepath.Join(filepath.Dir(from), newName)
+	if from == to {
+		return model.SkillRenamePlan{}, errors.New("skill name is unchanged")
+	}
+	if _, err := os.Stat(to); err == nil {
+		return model.SkillRenamePlan{}, errors.New("a Skill directory with this name already exists")
+	}
+	plan := model.SkillRenamePlan{ID: fmt.Sprintf("skill-rename-%d", time.Now().UnixNano()), SkillID: skill.ID, Name: newName, From: from, To: to, CreatedAt: time.Now()}
+	s.mu.Lock()
+	if s.skillRenamePlans == nil {
+		s.skillRenamePlans = map[string]model.SkillRenamePlan{}
+	}
+	s.skillRenamePlans[plan.ID] = plan
+	s.mu.Unlock()
+	return plan, nil
+}
+
+func (s *AppService) ApplySkillRename(planID string) (model.Operation, error) {
+	s.mu.Lock()
+	plan, ok := s.skillRenamePlans[planID]
+	s.mu.Unlock()
+	if !ok {
+		return model.Operation{}, errors.New("skill rename plan not found or expired")
+	}
+	if _, err := os.Stat(plan.To); err == nil {
+		return model.Operation{}, errors.New("skill rename target already exists")
+	}
+	if _, err := os.Stat(plan.From); err != nil {
+		return model.Operation{}, err
+	}
+	snapshotDir := filepath.Join(s.dataDir, "snapshots", "skill-rename-"+plan.ID)
+	if err := os.MkdirAll(snapshotDir, 0o700); err != nil {
+		return model.Operation{}, err
+	}
+	manifest := ops.SnapshotManifest{ID: filepath.Base(snapshotDir), PlanID: plan.ID, CreatedAt: time.Now()}
+	payload, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return model.Operation{}, err
+	}
+	if err := os.WriteFile(filepath.Join(snapshotDir, "manifest.json"), payload, 0o600); err != nil {
+		return model.Operation{}, err
+	}
+	if err := ops.SnapshotDirectoryRename(snapshotDir, plan.From, plan.To); err != nil {
+		return model.Operation{}, err
+	}
+	if err := os.Rename(plan.From, plan.To); err != nil {
+		return model.Operation{}, err
+	}
+	if err := renameSkillFrontmatter(filepath.Join(plan.To, "SKILL.md"), plan.Name); err != nil {
+		_ = os.Rename(plan.To, plan.From)
+		return model.Operation{}, err
+	}
+	now := time.Now()
+	op := model.Operation{ID: fmt.Sprintf("op-skill-rename-%d", now.UnixNano()), PlanID: plan.ID, Operation: "skill_rename", Status: "success", Message: "Skill renamed", Changes: []string{"skill:" + plan.From, "skill:" + plan.To}, SnapshotPath: snapshotDir, CreatedAt: now}
+	if store := s.core.Store(); store != nil {
+		_ = store.SaveOperation(s.context(), op)
+	}
+	s.mu.Lock()
+	delete(s.skillRenamePlans, planID)
+	s.mu.Unlock()
+	s.rescanAfterSkillMutation()
+	return op, nil
+}
+
+func (s *AppService) CancelSkillRename(planID string) {
+	s.mu.Lock()
+	delete(s.skillRenamePlans, planID)
+	s.mu.Unlock()
+}
+
+func (s *AppService) sharedSkillRoot() (string, error) {
+	home, err := (platform.LocalPaths{}).HomeDir()
+	if err != nil {
+		return "", err
+	}
+	for _, root := range (platform.LocalPaths{}).DefaultRoots(home) {
+		if root.ID == "global" {
+			return root.Path, nil
+		}
+	}
+	return filepath.Join(home, ".agents", "skills"), nil
+}
+
+func cleanSkillName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, "/\\") {
+		return "", errors.New("invalid Skill name")
+	}
+	return name, nil
+}
+
+func (s *AppService) rescanAfterSkillMutation() {
+	_, _ = s.Scan()
+}
+
+func (s *AppService) SkillContent(skillID string) (string, error) {
+	skill, err := s.findSkill(skillID)
+	if err != nil {
+		return "", err
+	}
+	path := filepath.Join(skill.Path, "SKILL.md")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	if len(raw) > 512*1024 {
+		return "", errors.New("skill file is too large")
+	}
+	return string(raw), nil
+}
+
+func (s *AppService) PlanSkillEdit(skillID, content string) (model.SkillEditPlan, error) {
+	skill, err := s.findSkill(skillID)
+	if err != nil {
+		return model.SkillEditPlan{}, err
+	}
+	if len(content) > 512*1024 {
+		return model.SkillEditPlan{}, errors.New("skill content is too large")
+	}
+	path := filepath.Join(skill.Path, "SKILL.md")
+	current, readErr := os.ReadFile(path)
+	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+		return model.SkillEditPlan{}, readErr
+	}
+	if readErr == nil && string(current) == content {
+		return model.SkillEditPlan{}, errors.New("skill content has not changed")
+	}
+	plan := model.SkillEditPlan{ID: fmt.Sprintf("skill-edit-%d", time.Now().UnixNano()), SkillID: skill.ID, Path: path, Content: content, CurrentContent: string(current), Exists: readErr == nil, CreatedAt: time.Now()}
+	plan.Warnings = validateSkillMarkdown(content)
+	s.mu.Lock()
+	if s.skillEditPlans == nil {
+		s.skillEditPlans = map[string]model.SkillEditPlan{}
+	}
+	s.skillEditPlans[plan.ID] = plan
+	s.mu.Unlock()
+	return plan, nil
+}
+
+func (s *AppService) ApplySkillEdit(planID string) (model.Operation, error) {
+	s.mu.Lock()
+	plan, ok := s.skillEditPlans[planID]
+	s.mu.Unlock()
+	if !ok {
+		return model.Operation{}, errors.New("skill edit plan not found or expired")
+	}
+	skill, err := s.findSkill(plan.SkillID)
+	if err != nil {
+		return model.Operation{}, err
+	}
+	expected := filepath.Join(skill.Path, "SKILL.md")
+	if filepath.Clean(plan.Path) != filepath.Clean(expected) {
+		return model.Operation{}, errors.New("skill edit path is outside the Skill directory")
+	}
+	snapshotDir := filepath.Join(s.dataDir, "snapshots", "skill-edit-"+plan.ID)
+	if err := os.MkdirAll(snapshotDir, 0o700); err != nil {
+		return model.Operation{}, err
+	}
+	manifest := ops.SnapshotManifest{ID: filepath.Base(snapshotDir), PlanID: plan.ID, CreatedAt: time.Now()}
+	payload, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return model.Operation{}, err
+	}
+	if err := os.WriteFile(filepath.Join(snapshotDir, "manifest.json"), payload, 0o600); err != nil {
+		return model.Operation{}, err
+	}
+	if err := ops.SnapshotFile(snapshotDir, plan.Path); err != nil {
+		return model.Operation{}, err
+	}
+	if err := writeFileAtomically(plan.Path, plan.Content); err != nil {
+		return model.Operation{}, err
+	}
+	now := time.Now()
+	op := model.Operation{ID: fmt.Sprintf("op-skill-edit-%d", now.UnixNano()), PlanID: plan.ID, Operation: "skill_edit", Status: "success", Message: "Skill edited", Changes: []string{"skill:" + plan.Path}, SnapshotPath: snapshotDir, CreatedAt: now}
+	if store := s.core.Store(); store != nil {
+		if err := store.SaveOperation(s.context(), op); err != nil {
+			return op, err
+		}
+	}
+	s.mu.Lock()
+	delete(s.skillEditPlans, planID)
+	s.mu.Unlock()
+	s.rescanAfterSkillMutation()
+	return op, nil
+}
+
+func (s *AppService) CancelSkillEdit(planID string) {
+	s.mu.Lock()
+	delete(s.skillEditPlans, planID)
+	s.mu.Unlock()
+}
+
+func (s *AppService) findSkill(skillID string) (*model.Skill, error) {
+	state := s.State()
+	for index := range state.Snapshot.Skills {
+		if state.Snapshot.Skills[index].ID == skillID {
+			return &state.Snapshot.Skills[index], nil
+		}
+	}
+	return nil, messageError("skills.skillNotFound", "skill not found", nil)
+}
+
+func renameSkillFrontmatter(path, name string) error {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	normalized := strings.ReplaceAll(string(raw), "\r\n", "\n")
+	if !strings.HasPrefix(normalized, "---\n") {
+		return nil
+	}
+	end := strings.Index(normalized[4:], "\n---")
+	if end < 0 {
+		return nil
+	}
+	header := normalized[4 : 4+end]
+	updated := regexp.MustCompile(`(?m)^name:.*$`).ReplaceAllString(header, "name: "+strconv.Quote(name))
+	if updated == header {
+		updated = strings.TrimRight(header, "\n") + "\nname: " + strconv.Quote(name)
+	}
+	content := "---\n" + updated + normalized[4+end:]
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		return err
+	}
+	return nil
+}
+
+func sameHashes(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for path, hash := range a {
+		if b[path] != hash {
+			return false
+		}
+	}
+	return true
+}
+
+func validateSkillMarkdown(content string) []string {
+	normalized := strings.ReplaceAll(content, "\r\n", "\n")
+	if !strings.HasPrefix(normalized, "---\n") {
+		return []string{"SKILL.md should start with YAML frontmatter"}
+	}
+	end := strings.Index(normalized[4:], "\n---")
+	if end < 0 {
+		return []string{"frontmatter is not closed with ---"}
+	}
+	warnings := make([]string, 0)
+	header := normalized[4 : 4+end]
+	if !strings.Contains(header, "name:") {
+		warnings = append(warnings, "frontmatter is missing name")
+	}
+	if !strings.Contains(header, "description:") {
+		warnings = append(warnings, "frontmatter is missing description")
+	}
+	return warnings
+}
+
+type nativeCLIAdapter struct {
+	Package        string
+	ReleaseRepo    string
+	PyPI           string
+	VersionURL     string
+	VersionPattern string
+	UpdateArgs     []string
+}
+
+var nativeCLIAdapters = map[string]nativeCLIAdapter{
+	"codex":        {Package: "@openai/codex", UpdateArgs: []string{"update"}},
+	"claude":       {Package: "@anthropic-ai/claude-code", UpdateArgs: []string{"update"}},
+	"gemini":       {Package: "@google/gemini-cli"},
+	"opencode":     {Package: "opencode-ai"},
+	"cline":        {Package: "cline"},
+	"copilot":      {Package: "@github/copilot"},
+	"amp":          {Package: "@sourcegraph/amp"},
+	"qwen":         {Package: "@qwen-code/qwen-code"},
+	"cursor-agent": {VersionURL: "https://cursor.com/install", VersionPattern: `downloads\.cursor\.com/lab/([^/]+)/`, UpdateArgs: []string{"update"}},
+	"omp":          {Package: "@oh-my-pi/pi-coding-agent", UpdateArgs: []string{"update"}},
+	"openclaw":     {Package: "openclaw"},
+	"goose":        {ReleaseRepo: "block/goose"},
+	"crush":        {ReleaseRepo: "charmbracelet/crush"},
+	"aider":        {PyPI: "aider-chat"},
+}
+
+func (s *AppService) NativeCLIUpdateCheck(cliID string) (model.NativeCLIUpdateInfo, error) {
+	state := s.State()
+	var cli *model.CLIInfo
+	for index := range state.Snapshot.CLIs {
+		if state.Snapshot.CLIs[index].ID == cliID {
+			cli = &state.Snapshot.CLIs[index]
+			break
+		}
+	}
+	if cli == nil {
+		return model.NativeCLIUpdateInfo{}, errors.New("CLI not found")
+	}
+	adapter, ok := nativeCLIAdapters[strings.ToLower(cli.Name)]
+	if !ok || (adapter.Package == "" && adapter.VersionURL == "" && adapter.ReleaseRepo == "" && adapter.PyPI == "") {
+		return model.NativeCLIUpdateInfo{}, errors.New("this CLI has no update source")
+	}
+	current := cli.Version
+	if current == "" {
+		current, _ = clis.ProbeVersion(s.context(), cli.Path)
+	}
+	ctx, cancel := context.WithTimeout(s.context(), 15*time.Second)
+	defer cancel()
+	latest, err := nativeLatestVersion(ctx, adapter)
+	if err != nil {
+		return model.NativeCLIUpdateInfo{CLIID: cli.ID, Current: current, CanUpdate: len(adapter.UpdateArgs) > 0, UpdateCommand: strings.TrimSpace(cli.Name + " " + strings.Join(adapter.UpdateArgs, " ")), Error: err.Error(), CheckedAt: time.Now()}, nil
+	}
+	available := current != "" && compareVersions(latest, current) > 0
+	return model.NativeCLIUpdateInfo{CLIID: cli.ID, Current: current, Latest: latest, Available: available, CanUpdate: len(adapter.UpdateArgs) > 0, UpdateCommand: strings.TrimSpace(cli.Name + " " + strings.Join(adapter.UpdateArgs, " ")), CheckedAt: time.Now()}, nil
+}
+
+func nativeLatestVersion(ctx context.Context, adapter nativeCLIAdapter) (string, error) {
+	if adapter.VersionURL != "" {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, adapter.VersionURL, nil)
+		if err != nil {
+			return "", err
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return "", err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return "", fmt.Errorf("latest version: HTTP %d", resp.StatusCode)
+		}
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		if err != nil {
+			return "", err
+		}
+		pattern, err := regexp.Compile(adapter.VersionPattern)
+		if err != nil {
+			return "", err
+		}
+		match := pattern.FindSubmatch(body)
+		if len(match) < 2 {
+			return "", errors.New("latest version not found")
+		}
+		return string(match[1]), nil
+	}
+	if adapter.ReleaseRepo != "" {
+		endpoint := "https://github.com/" + adapter.ReleaseRepo + "/releases/latest"
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		if err != nil {
+			return "", err
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return "", err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return "", fmt.Errorf("latest release: HTTP %d", resp.StatusCode)
+		}
+		pattern := regexp.MustCompile(`/releases/tag/([^/?#]+)`)
+		match := pattern.FindStringSubmatch(resp.Request.URL.String())
+		if len(match) < 2 {
+			return "", errors.New("latest release not found")
+		}
+		return match[1], nil
+	}
+	if adapter.PyPI != "" {
+		endpoint := "https://pypi.org/pypi/" + url.PathEscape(adapter.PyPI) + "/json"
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		if err != nil {
+			return "", err
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return "", err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return "", fmt.Errorf("latest version: HTTP %d", resp.StatusCode)
+		}
+		var payload struct {
+			Info struct {
+				Version string `json:"version"`
+			} `json:"info"`
+		}
+		if err := json.NewDecoder(io.LimitReader(resp.Body, 2<<20)).Decode(&payload); err != nil {
+			return "", err
+		}
+		return payload.Info.Version, nil
+	}
+	endpoint := "https://registry.npmjs.org/" + url.PathEscape(adapter.Package) + "/latest"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("latest version: HTTP %d", resp.StatusCode)
+	}
+	var payload struct {
+		Version string `json:"version"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&payload); err != nil {
+		return "", err
+	}
+	return payload.Version, nil
+}
+
+func compareVersions(a, b string) int {
+	parse := func(value string) []int {
+		value = strings.TrimPrefix(strings.TrimSpace(value), "v")
+		parts := strings.Split(value, ".")
+		out := make([]int, 0, len(parts))
+		for _, part := range parts {
+			n := 0
+			for _, r := range part {
+				if r < '0' || r > '9' {
+					break
+				}
+				n = n*10 + int(r-'0')
+			}
+			out = append(out, n)
+		}
+		return out
+	}
+	left, right := parse(a), parse(b)
+	for index := 0; index < len(left) || index < len(right); index++ {
+		l, r := 0, 0
+		if index < len(left) {
+			l = left[index]
+		}
+		if index < len(right) {
+			r = right[index]
+		}
+		if l != r {
+			if l > r {
+				return 1
+			}
+			return -1
+		}
+	}
+	return 0
+}
+
+func (s *AppService) NativeCLIUpdate(cliID string) (string, error) {
+	state := s.State()
+	var cli *model.CLIInfo
+	for index := range state.Snapshot.CLIs {
+		if state.Snapshot.CLIs[index].ID == cliID {
+			cli = &state.Snapshot.CLIs[index]
+			break
+		}
+	}
+	if cli == nil {
+		return "", errors.New("CLI not found")
+	}
+	if cli.Status == "broken" {
+		return "", errors.New("CLI path is broken")
+	}
+	adapter, ok := nativeCLIAdapters[strings.ToLower(cli.Name)]
+	if !ok || len(adapter.UpdateArgs) == 0 {
+		return "", errors.New("this CLI has no native update adapter")
+	}
+	args := adapter.UpdateArgs
+	if cli.Path == "" {
+		return "", errors.New("CLI path is unavailable")
+	}
+	ctx, cancel := context.WithTimeout(s.context(), 10*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, cli.Path, args...)
+	cmd.Stdin = nil
+	cmd.Env = append(os.Environ(), "NO_COLOR=1")
+	out, err := cmd.CombinedOutput()
+	output := strings.TrimSpace(string(out))
+	if len(output) > 16<<10 {
+		output = output[:16<<10] + "…"
+	}
+	if ctx.Err() != nil {
+		return output, errors.New("native CLI update timed out")
+	}
+	if err != nil {
+		return output, fmt.Errorf("native CLI update failed: %w", err)
+	}
+	_, _ = s.Scan()
+	return output, nil
+}
+
+func (s *AppService) CLIVersion(cliID string) (string, error) {
+	state := s.State()
+	for _, cli := range state.Snapshot.CLIs {
+		if cli.ID != cliID {
+			continue
+		}
+		if cli.Version != "" {
+			return cli.Version, nil
+		}
+		if cli.Path == "" {
+			return "", nil
+		}
+		return clis.ProbeVersion(s.context(), cli.Path)
+	}
+	return "", errors.New("CLI not found")
+}
+
+func (s *AppService) SkillAudit(skillID string) (model.SkillAudit, error) {
+	var skill *model.Skill
+	state := s.State()
+	for index := range state.Snapshot.Skills {
+		if state.Snapshot.Skills[index].ID == skillID {
+			skill = &state.Snapshot.Skills[index]
+			break
+		}
+	}
+	if skill == nil {
+		return model.SkillAudit{}, messageError("skills.skillNotFound", "skill not found", nil)
+	}
+	source := trust.NormalizeSource(skill.Source, skill.SourceURL)
+	audit, err := s.trust.Lookup(s.context(), source, skill.Name)
+	if err != nil {
+		return model.SkillAudit{}, err
+	}
+	audit.SkillID = skill.ID
+	audit.LocalHash = skill.FolderHash
+	if baseline, ok, loadErr := s.core.Store().LoadSkillBaseline(s.context(), skill.Path); loadErr == nil && ok {
+		audit.LocalBaselineAt = baseline.UpdatedAt
+		if current, hashErr := ops.FileHashes(skill.Path); hashErr == nil {
+			audit.LocalChanged = !sameHashes(current, baseline.Files)
+		}
+	}
+	return audit, nil
+}
+
+func (s *AppService) SourceAudit(source, skill string) (model.SkillAudit, error) {
+	audit, err := s.trust.Lookup(s.context(), trust.NormalizeSource(source, ""), skill)
+	if err != nil {
+		return model.SkillAudit{}, err
+	}
+	return audit, nil
+}
+
 func (s *AppService) DownloadAppUpdate(version string) (string, error) {
 	return appupdate.Download(s.context(), version)
+}
+
+func (s *AppService) RefreshSessions() {
+	s.sessionMu.Lock()
+	s.sessionCache = map[string]sessionCacheEntry{}
+	s.sessionMu.Unlock()
+}
+
+func (s *AppService) AgentSessions(agent string) []model.Session {
+	if strings.TrimSpace(agent) == "" {
+		return nil
+	}
+	key := "agent:" + agent
+	s.sessionMu.Lock()
+	if cached, ok := s.sessionCache[key]; ok && time.Since(cached.at) < 20*time.Second {
+		items := append([]model.Session(nil), cached.items...)
+		s.sessionMu.Unlock()
+		return items
+	}
+	s.sessionMu.Unlock()
+	items := sessions.ScanAgent(s.context(), s.homeDir, agent)
+	s.sessionMu.Lock()
+	s.sessionCache[key] = sessionCacheEntry{items: items, at: time.Now()}
+	s.sessionMu.Unlock()
+	return items
+}
+
+func (s *AppService) Sessions(projectPath string) []model.Session {
+	if strings.TrimSpace(projectPath) == "" {
+		return nil
+	}
+	s.sessionMu.Lock()
+	if cached, ok := s.sessionCache[projectPath]; ok && time.Since(cached.at) < 20*time.Second {
+		items := append([]model.Session(nil), cached.items...)
+		s.sessionMu.Unlock()
+		return items
+	}
+	s.sessionMu.Unlock()
+	items := sessions.Scan(s.context(), s.homeDir, projectPath)
+	s.sessionMu.Lock()
+	s.sessionCache[projectPath] = sessionCacheEntry{items: items, at: time.Now()}
+	s.sessionMu.Unlock()
+	return items
 }
 
 func (s *AppService) Commands() []model.Command {
@@ -357,6 +1050,75 @@ func (s *AppService) storeCommandPlan(plan model.CommandWritePlan) (model.Comman
 	return plan, nil
 }
 
+func (s *AppService) PlanCommandDelete(path string) (model.CommandDeletePlan, error) {
+	for _, command := range s.Commands() {
+		if command.Path != path {
+			continue
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return model.CommandDeletePlan{}, err
+		}
+		target := model.CommandTarget{Agent: command.Agent, Scope: command.Scope, Project: command.Project, RootPath: command.RootPath, Format: command.Format}
+		plan := model.CommandDeletePlan{ID: fmt.Sprintf("command-delete-%d", time.Now().UnixNano()), Target: target, Name: command.Name, Path: command.Path, CurrentContent: string(raw), CreatedAt: time.Now()}
+		s.mu.Lock()
+		if s.commandDeletePlans == nil {
+			s.commandDeletePlans = map[string]model.CommandDeletePlan{}
+		}
+		s.commandDeletePlans[plan.ID] = plan
+		s.mu.Unlock()
+		return plan, nil
+	}
+	return model.CommandDeletePlan{}, errors.New("command not found")
+}
+
+func (s *AppService) ApplyCommandDelete(planID string) (model.Operation, error) {
+	s.mu.Lock()
+	plan, ok := s.commandDeletePlans[planID]
+	s.mu.Unlock()
+	if !ok {
+		return model.Operation{}, errors.New("command delete plan not found or expired")
+	}
+	if plan.Target.RootPath == "" || !strings.HasPrefix(filepath.Clean(plan.Path), filepath.Clean(plan.Target.RootPath)+string(filepath.Separator)) {
+		return model.Operation{}, errors.New("command path is outside target root")
+	}
+	snapshotDir := filepath.Join(s.dataDir, "snapshots", "command-delete-"+plan.ID)
+	if err := os.MkdirAll(snapshotDir, 0o700); err != nil {
+		return model.Operation{}, err
+	}
+	manifest := ops.SnapshotManifest{ID: filepath.Base(snapshotDir), PlanID: plan.ID, CreatedAt: time.Now()}
+	payload, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return model.Operation{}, err
+	}
+	if err := os.WriteFile(filepath.Join(snapshotDir, "manifest.json"), payload, 0o600); err != nil {
+		return model.Operation{}, err
+	}
+	if err := ops.SnapshotFile(snapshotDir, plan.Path); err != nil {
+		return model.Operation{}, err
+	}
+	if err := os.Remove(plan.Path); err != nil {
+		return model.Operation{}, err
+	}
+	now := time.Now()
+	op := model.Operation{ID: fmt.Sprintf("op-command-delete-%d", now.UnixNano()), PlanID: plan.ID, Operation: "command_delete", Status: "success", Message: "Command deleted", Changes: []string{"command:" + plan.Path}, SnapshotPath: snapshotDir, CreatedAt: now}
+	if store := s.core.Store(); store != nil {
+		if err := store.SaveOperation(s.context(), op); err != nil {
+			return op, err
+		}
+	}
+	s.mu.Lock()
+	delete(s.commandDeletePlans, planID)
+	s.mu.Unlock()
+	return op, nil
+}
+
+func (s *AppService) CancelCommandDelete(planID string) {
+	s.mu.Lock()
+	delete(s.commandDeletePlans, planID)
+	s.mu.Unlock()
+}
+
 func (s *AppService) ApplyCommandWrite(planID string) (model.Operation, error) {
 	s.mu.Lock()
 	plan, ok := s.commandPlans[planID]
@@ -382,7 +1144,7 @@ func (s *AppService) ApplyCommandWrite(planID string) (model.Operation, error) {
 	if err := ops.SnapshotFile(snapshotDir, plan.Path); err != nil {
 		return model.Operation{}, err
 	}
-	if err := writeCommandFile(plan.Path, plan.Content); err != nil {
+	if err := writeFileAtomically(plan.Path, plan.Content); err != nil {
 		return model.Operation{}, err
 	}
 	now := time.Now()
@@ -404,7 +1166,7 @@ func (s *AppService) CancelCommandWrite(planID string) {
 	s.mu.Unlock()
 }
 
-func writeCommandFile(path, content string) error {
+func writeFileAtomically(path, content string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -709,6 +1471,64 @@ func (s *AppService) RestoreAgent(path string) (model.Settings, error) {
 
 func (s *AppService) TrashAgent(path string) (model.Settings, error) {
 	return s.core.TrashAgent(s.context(), path)
+}
+
+func (s *AppService) SessionMessages(path string, limit int) ([]model.SessionMessage, error) {
+	clean := filepath.Clean(strings.TrimSpace(path))
+	if clean == "" || clean == "." || !isSessionSourcePath(s.homeDir, clean) {
+		return nil, errors.New("session path is outside the supported session roots")
+	}
+	return sessions.ReadMessages(clean, limit)
+}
+
+func (s *AppService) RevealSession(path string) error {
+	clean := filepath.Clean(strings.TrimSpace(path))
+	if clean == "" || clean == "." || !isSessionSourcePath(s.homeDir, clean) {
+		return errors.New("session path is outside the supported session roots")
+	}
+	if _, err := os.Stat(clean); err != nil {
+		return err
+	}
+	var command *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		command = exec.Command("open", "-R", clean)
+	case "windows":
+		command = exec.Command("explorer", "/select,", clean)
+	default:
+		command = exec.Command("xdg-open", filepath.Dir(clean))
+	}
+	return command.Start()
+}
+
+func isSessionSourcePath(home, path string) bool {
+	if home == "" {
+		return false
+	}
+	roots := []string{
+		filepath.Join(home, ".claude", "projects"),
+		filepath.Join(home, ".codex", "sessions"),
+		filepath.Join(home, ".codex", "archived_sessions"),
+		filepath.Join(home, ".local", "share", "opencode", "storage"),
+		filepath.Join(home, ".cursor", "projects"),
+		filepath.Join(home, ".cline", "data", "sessions"),
+		filepath.Join(home, ".local", "share", "goose", "sessions"),
+		filepath.Join(home, ".omp", "agent", "sessions"),
+		filepath.Join(home, ".workbuddy", "projects"),
+		filepath.Join(home, ".qoder", "projects"),
+		filepath.Join(home, ".qoder-cn", "projects"),
+		filepath.Join(home, ".codebuddy", "projects"),
+		filepath.Join(home, ".gemini", "tmp"),
+		filepath.Join(home, ".dsh", "sessions"),
+	}
+	for _, root := range roots {
+		rel, err := filepath.Rel(root, path)
+		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 func (s *AppService) RevealSkill(skillID string) error {

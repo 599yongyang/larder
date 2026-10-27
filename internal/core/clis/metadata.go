@@ -3,6 +3,7 @@ package clis
 import (
 	"encoding/json"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"larder/internal/platform"
@@ -46,8 +47,29 @@ func (r *metadataResolver) version(name, path, target, owner string) (string, st
 	case "winget":
 		return wingetVersion(target)
 	default:
+		return standaloneVersion(target)
+	}
+}
+
+var standaloneVersionPattern = regexp.MustCompile(`^([0-9]+\.[0-9]+\.[0-9]+)(?:-|$)`)
+
+// standaloneVersion reads versions from native release layouts such as
+// ~/.codex/packages/standalone/releases/<version>-<arch>/bin/codex.
+func standaloneVersion(target string) (string, string) {
+	if resolved, err := filepath.EvalSymlinks(target); err == nil {
+		target = resolved
+	}
+	slash := filepath.ToSlash(target)
+	if !strings.Contains(slash, "/standalone/") && !strings.Contains(slash, "/releases/") && !strings.Contains(slash, "/versions/") {
 		return "", ""
 	}
+	parts := strings.Split(slash, "/")
+	for index := len(parts) - 2; index >= 0; index-- {
+		if match := standaloneVersionPattern.FindStringSubmatch(parts[index]); len(match) == 2 {
+			return match[1], "standalone"
+		}
+	}
+	return "", ""
 }
 
 func homebrewVersion(target string) (string, string) {

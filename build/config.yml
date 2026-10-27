@@ -6,7 +6,7 @@ info:
   description: "本机 Skills、MCP、CLI 与指令管理"
   copyright: "© 2026 Larder contributors"
   comments: "只读 Skill 扫描与诊断"
-  version: "0.0.5"
+  version: "0.0.6"
 dev_mode:
   root_path: .
   log_level: warn

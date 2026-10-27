@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatTime, matrixGlyph, shortPath, skillSourceLabel } from './format'
+import { formatCompactNumber, formatTime, matrixGlyph, shortPath, skillSourceLabel } from './format'
 
 describe('format helpers', () => {
   it('shortens deep paths', () => {
@@ -22,4 +22,13 @@ describe('format helpers', () => {
   it('handles invalid times', () => {
     expect(formatTime('not-a-date')).toBe('')
   })
+})
+
+it('formats large session token counts with locale units', () => {
+  expect(formatCompactNumber(62280117, 'en')).toBe('62.3M')
+  expect(formatCompactNumber(9358652, 'en')).toBe('9.4M')
+  expect(formatCompactNumber(8420, 'en')).toBe('8.4k')
+  expect(formatCompactNumber(999, 'en')).toBe('999')
+  expect(formatCompactNumber(62280117, 'zh')).toBe('6228万')
+  expect(formatCompactNumber(14765, 'zh')).toBe('1.5万')
 })

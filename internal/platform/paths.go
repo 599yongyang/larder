@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -234,6 +235,7 @@ func (LocalPaths) PathDirs(home string) []string {
 		return nil
 	}
 	var raw []string
+	raw = append(raw, versionManagerBins(home)...)
 	if runtime.GOOS == "windows" {
 		localAppData := os.Getenv("LOCALAPPDATA")
 		appData := os.Getenv("APPDATA")
@@ -263,6 +265,12 @@ func (LocalPaths) PathDirs(home string) []string {
 			filepath.Join(home, ".volta", "bin"),
 			filepath.Join(home, ".asdf", "shims"),
 			filepath.Join(home, ".local", "share", "pnpm"),
+			filepath.Join(home, ".opencode", "bin"),
+			filepath.Join(home, ".codebuddy", "bin"),
+			filepath.Join(home, ".openclaw", "bin"),
+			filepath.Join(home, ".omp", "bin"),
+			filepath.Join(home, ".goose", "bin"),
+			filepath.Join(home, ".config", "goose", "bin"),
 		)
 	}
 	seen := map[string]bool{}
@@ -282,6 +290,53 @@ func (LocalPaths) PathDirs(home string) []string {
 		dirs = append(dirs, dir)
 	}
 	return dirs
+}
+
+// versionManagerBins returns Node version-manager binary directories that
+// hold globally-installed agent CLIs (Claude Code, Codex wrappers, …). Finder
+// launches do not inherit the shell's nvm/fnm PATH, so these are discovered
+// directly from their conventional home-directory layouts.
+func versionManagerBins(home string) []string {
+	patterns := []string{
+		filepath.Join(home, ".nvm", "versions", "node", "*", "bin"),
+		filepath.Join(home, ".local", "share", "fnm", "node-versions", "*", "installation", "bin"),
+		filepath.Join(home, ".fnm", "node-versions", "*", "installation", "bin"),
+		filepath.Join(home, ".nvm", "versions", "io.js", "*", "bin"),
+	}
+	var dirs []string
+	for _, pattern := range patterns {
+		matches, err := filepath.Glob(pattern)
+		if err != nil {
+			continue
+		}
+		sort.Slice(matches, func(i, j int) bool {
+			return nodeVersionAt(matches[i]) > nodeVersionAt(matches[j])
+		})
+		dirs = append(dirs, matches...)
+	}
+	return dirs
+}
+
+// nodeVersionAt extracts the numeric Node version from a
+// .../versions/node/v22.1.0/bin path. Unknown shapes sort to the end.
+func nodeVersionAt(dir string) int64 {
+	parts := strings.Split(filepath.ToSlash(dir), "/")
+	for index, part := range parts {
+		if (part == "node" || part == "io.js") && index+1 < len(parts) {
+			value := strings.TrimPrefix(parts[index+1], "v")
+			pieces := strings.Split(value, ".")
+			var result int64
+			for _, piece := range pieces {
+				n, err := strconv.ParseInt(piece, 10, 64)
+				if err != nil {
+					return 0
+				}
+				result = result*1000 + n
+			}
+			return result
+		}
+	}
+	return 0
 }
 
 func isSystemBin(dir string) bool {

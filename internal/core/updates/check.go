@@ -125,9 +125,13 @@ func Check(ctx context.Context, opts Options) model.UpdateReport {
 				cancel()
 				parsed := map[string]npmPackage{}
 				if json.Unmarshal(stdout, &parsed) == nil {
-					npmChecked = true
-					for name, pkg := range parsed {
-						npmOutdated[name] = pkg.Latest
+					if _, failed := parsed["error"]; failed {
+						report.Errors = append(report.Errors, fmt.Sprintf("npm outdated 失败: %s", strings.TrimSpace(string(stdout))))
+					} else {
+						npmChecked = true
+						for name, pkg := range parsed {
+							npmOutdated[name] = pkg.Latest
+						}
 					}
 				} else {
 					report.Errors = append(report.Errors, fmt.Sprintf("npm outdated 失败: %v %s", err, strings.TrimSpace(string(stderr))))

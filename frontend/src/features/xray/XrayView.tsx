@@ -129,6 +129,7 @@ export function XrayView({ root, projects = [], compareOptions = [], refreshKey,
   const skillTokens = report?.budget.skillTokens ?? 0
   const instructionTokens = report?.budget.instructionTokens ?? 0
 
+
   return <div className={styles.xrayPage}>
     {root.status !== 'available' && <div className={styles.xrayRootAlert} role="status"><CircleAlert size={14} aria-hidden="true" /><span>{t('xray.rootUnavailable', { status: root.status })}{root.error ? ` · ${root.error}` : ''}</span></div>}
     <div className={styles.xrayHeader}>

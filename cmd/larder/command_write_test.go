@@ -102,3 +102,53 @@ func TestPlanCommandConversionToGeminiTOML(t *testing.T) {
 		t.Fatalf("converted = %q", raw)
 	}
 }
+
+func TestPlanAndApplyCommandDeleteCanBeRolledBack(t *testing.T) {
+	home := t.TempDir()
+	data := t.TempDir()
+	t.Setenv("LARDER_HOME", home)
+	t.Setenv("LARDER_DATA_DIR", data)
+	service, err := NewAppService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var target model.CommandTarget
+	for _, candidate := range service.CommandTargets() {
+		if candidate.Agent == "Claude Code" && candidate.Scope == "global" {
+			target = candidate
+			break
+		}
+	}
+	if target.RootPath == "" {
+		t.Fatal("Claude Code global target not found")
+	}
+	path := filepath.Join(target.RootPath, "delete-me.md")
+	createPlan, err := service.PlanCommandWrite(model.CommandWriteRequest{Agent: target.Agent, Scope: target.Scope, RootPath: target.RootPath, Name: "delete-me", Content: "# Delete me\n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ApplyCommandWrite(createPlan.ID); err != nil {
+		t.Fatal(err)
+	}
+	deletePlan, err := service.PlanCommandDelete(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deleteOp, err := service.ApplyCommandDelete(deletePlan.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("command still exists: %v", err)
+	}
+	if _, err := service.core.RollbackOperation(service.context(), deleteOp.ID); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != "# Delete me\n" {
+		t.Fatalf("restored content = %q", raw)
+	}
+}

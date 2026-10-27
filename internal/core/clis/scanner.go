@@ -111,11 +111,7 @@ func (s *Scanner) Scan(ctx context.Context, opts Options) ([]model.CLIInfo, []mo
 				continue
 			}
 			current.seen[path] = true
-			isEffective := len(current.info.Paths) == 0
-			current.info.Paths = append(current.info.Paths, model.CLIPath{Path: path, TargetPath: target, Owner: owner, OwnerDetail: ownerDetail, Broken: broken, Effective: isEffective})
-			if broken {
-				current.info.Status = "broken"
-			}
+			current.info.Paths = append(current.info.Paths, model.CLIPath{Path: path, TargetPath: target, Owner: owner, OwnerDetail: ownerDetail, Broken: broken})
 		}
 	}
 
@@ -123,17 +119,32 @@ func (s *Scanner) Scan(ctx context.Context, opts Options) ([]model.CLIInfo, []mo
 	for _, current := range byName {
 		info := current.info
 		info.DuplicateCount = len(info.Paths) - 1
-		if info.Status != "broken" && info.DuplicateCount > 0 {
-			info.Status = "duplicate"
+		effectiveIndex := 0
+		hasWorking := false
+		for index := range info.Paths {
+			if !info.Paths[index].Broken {
+				effectiveIndex = index
+				hasWorking = true
+				break
+			}
 		}
-		if info.Path == "" && len(info.Paths) > 0 {
-			info.Path = info.Paths[0].Path
-			info.Owner = info.Paths[0].Owner
-			info.OwnerDetail = info.Paths[0].OwnerDetail
+		for index := range info.Paths {
+			info.Paths[index].Effective = index == effectiveIndex
+		}
+		switch {
+		case !hasWorking:
+			info.Status = "broken"
+		case info.DuplicateCount > 0:
+			info.Status = "duplicate"
+		default:
+			info.Status = "ok"
 		}
 		if len(info.Paths) > 0 {
-			effective := info.Paths[0]
-			info.Version, info.OwnerDetail = resolver.version(info.Name, effective.Path, effective.TargetPath, info.Owner)
+			effective := info.Paths[effectiveIndex]
+			info.Path = effective.Path
+			info.Owner = effective.Owner
+			info.OwnerDetail = effective.OwnerDetail
+			info.Version, info.OwnerDetail = resolver.version(info.Name, effective.Path, effective.TargetPath, effective.Owner)
 		}
 		result = append(result, info)
 	}
