@@ -120,7 +120,7 @@ On Windows, an unsigned build may show a SmartScreen warning.
 
 ## Status
 
-`0.0.7` — early development. The current focus is local truth, safe writes, and a clearer view of what each Agent actually sees.
+`0.0.8` — early development. The current focus is local truth, safe writes, and a clearer view of what each Agent actually sees.
 
 ## License
 

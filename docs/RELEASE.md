@@ -24,6 +24,20 @@ Build the macOS app bundle, updater archive and DMG:
 
 The updater archive is `bin/Larder-darwin-arm64.zip`. It must contain exactly one top-level `Larder.app` bundle; the packaging script creates it with `ditto`.
 
+After copying the artifacts for a version, regenerate the static update manifest and verify it matches the archive:
+
+```sh
+mkdir -p bin/0.0.8
+cp bin/Larder-darwin-arm64.zip bin/Larder.dmg bin/larder-amd64-installer.exe bin/checksums.txt bin/0.0.8/
+./scripts/write-update-manifest.sh 0.0.8 bin/0.0.8/Larder-darwin-arm64.zip
+```
+
+Set `UPDATE_NOTES="..."` when running the script if the in-app update dialog should show a custom summary. Commit `updates/macos-arm64.json` with the release snapshot. Verify it against the archive before publishing:
+
+```sh
+./scripts/check-update-manifest.sh 0.0.8 bin/0.0.8/Larder-darwin-arm64.zip
+```
+
 Build a Windows installer from macOS (requires NSIS):
 
 ```sh
@@ -47,14 +61,14 @@ The build must run on a machine with the platform toolchain available:
 The app version lives in `cmd/larder/service.go`:
 
 ```go
-var Version = "0.0.7"
+var Version = "0.0.8"
 ```
 
 The public release tag and the in-app version must match.
 
 Upload `checksums.txt` alongside `Larder.dmg`, `Larder-darwin-arm64.zip` and the Windows installer.
 
-The macOS app checks `updates/macos-arm64.json` first. Keep that static manifest in sync with every release: version, artifact URL, size, archive digest (base64 SHA-256) and published time. If the static manifest cannot be fetched, the app falls back to the GitHub Releases API. DMG remains the first-install/manual installer. Windows still uses the NSIS installer and does not self-update yet.
+The macOS app checks GitHub Releases first and falls back to `updates/macos-arm64.json` when the API is unavailable or rate limited. Keep that static manifest in sync with every release: version, artifact URL, size, archive digest (base64 SHA-256) and published time. DMG remains the first-install/manual installer. Windows still uses the NSIS installer and does not self-update yet.
 
 ## macOS signing
 

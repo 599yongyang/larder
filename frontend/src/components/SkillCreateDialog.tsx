@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { FilePlus2, Loader2, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { backend } from '../backend'
 import { backendErrorMessage } from '../lib/backendError'
@@ -44,10 +46,10 @@ export function SkillCreateDialog({ onClose, onSaved }: { onClose: () => void; o
       <div className="max-h-[68vh] overflow-y-auto px-6 py-5">
         {!plan ? <>
           <div className={styles.commandFieldRow}>
-            <label className={styles.commandField}><span>{t('skills.nameLabel')}</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="my-skill" disabled={busy} /></label>
-            <label className={styles.commandField}><span>{t('skills.descriptionLabel')}</span><input value={description} onChange={(event) => setDescription(event.target.value)} placeholder={t('skills.shortDescription')} disabled={busy} /></label>
+            <label className={styles.commandField}><span>{t('skills.nameLabel')}</span><Input className="!h-8" value={name} onChange={(event) => setName(event.target.value)} placeholder="my-skill" disabled={busy} /></label>
+            <label className={styles.commandField}><span>{t('skills.descriptionLabel')}</span><Input className="!h-8" value={description} onChange={(event) => setDescription(event.target.value)} placeholder={t('skills.shortDescription')} disabled={busy} /></label>
           </div>
-          <label className={styles.commandField}><span>SKILL.md</span><textarea className={styles.commandTextarea} value={generated} onChange={(event) => setContent(event.target.value)} spellCheck={false} aria-label="SKILL.md" /></label>
+          <label className={styles.commandField}><span>SKILL.md</span><Textarea className={styles.commandTextarea} value={generated} onChange={(event) => setContent(event.target.value)} spellCheck={false} aria-label="SKILL.md" /></label>
           {error && <p className={styles.planError} role="alert">{error}</p>}
         </> : <div className={styles.commandPlan}>
           <div className={styles.commandPlanHead}><div><strong>{t('skills.createSkillPlan')}</strong><small>{plan.path}</small></div></div>

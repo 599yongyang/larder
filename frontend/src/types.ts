@@ -1,7 +1,7 @@
 export type View = 'skills' | 'cli' | 'mcp' | 'instructions' | 'commands' | 'project' | 'history' | 'settings' | 'xray' | 'agent-sessions'
 export type LinkMode = 'linked' | 'copied' | 'local' | 'missing' | 'broken' | 'unavailable' | 'shared'
 export type Root = { id: string; label: string; logicalAgent?: string; path: string; kind: string; known: boolean; status: string; error?: string; entryCount: number; sharedSkills?: boolean }
-export type Skill = { id: string; name: string; path: string; rootId: string; rootKind: string; source?: string; sourceUrl?: string; skillPath?: string; locked: boolean; hasSkillMd: boolean; description?: string; descTokens: number; folderHash?: string; contentHash?: string; scanState: string; isAgentLocal: boolean; isProject: boolean; copyDrift: boolean; icon?: string; iconSource?: string; bins?: string[]; origin?: string; originDetail?: string }
+export type Skill = { id: string; name: string; path: string; rootId: string; rootKind: string; source?: string; sourceUrl?: string; skillPath?: string; locked: boolean; hasSkillMd: boolean; description?: string; descTokens: number; folderHash?: string; contentHash?: string; scanState: string; isAgentLocal: boolean; isProject: boolean; copyDrift: boolean; icon?: string; iconRoot?: string; iconSource?: string; bins?: string[]; origin?: string; originDetail?: string }
 export type Link = { skillId: string; rootId: string; mode: LinkMode; path?: string; targetPath?: string; drift: boolean; visible: boolean; reason?: string }
 export type Issue = { kind: string; path?: string; message: string }
 export type Snapshot = { schemaVersion: string; startedAt?: string; finishedAt?: string; status: string; roots: Root[]; skills: Skill[]; agentLinks: Link[]; clis: CLIInfo[]; issues: Issue[]; fromCache: boolean }
@@ -25,7 +25,7 @@ export type Plan = { id: string; operation: string; title: string; titleMessage?
 export type UpdateItem = { kind: 'cli' | 'skill'; cliId?: string; owner: string; package?: string; name: string; description?: string; commands?: string[]; currentVersion?: string; latestVersion?: string; source?: string; state: 'available' | 'current' | 'changed' | 'removed' | 'new' | 'unknown' | 'error'; skillPath?: string; copies?: number; message?: string }
 export type UpdateReport = { checkedAt: string; items: UpdateItem[]; errors?: string[]; scanned: number; available: number; current: number; skillScanned: number; skillAdded?: number; skillChanged: number; skillRemoved?: number; skillCurrent: number; skillErrors: number }
 export type IgnoredAgent = { rootId?: string; label: string; path: string }
-export type Settings = { projectWorkspaces: string[]; ignoredAgents?: IgnoredAgent[]; showAgentBuiltins: boolean; usageStatsEnabled: boolean; autoCheckUpdates: boolean; updateCheckIntervalHours: number; snapshotRetention: number; trashRetentionDays?: number }
+export type Settings = { projectWorkspaces: string[]; ignoredAgents?: IgnoredAgent[]; showAgentBuiltins: boolean; usageStatsEnabled: boolean; autoCheckUpdates: boolean; updateCheckIntervalHours: number; snapshotRetention: number; trashRetentionDays?: number; globalShortcutEnabled?: boolean; globalShortcut?: string }
 export type UsageStat = { name: string; count: number }
 
 export const emptySnapshot: Snapshot = { schemaVersion: '1', status: 'idle', roots: [], skills: [], agentLinks: [], clis: [], issues: [], fromCache: false }
@@ -53,3 +53,11 @@ export type Session = { id: string; agent: string; cwd: string; title?: string; 
 export type SessionMessage = { role: string; text: string; at: string }
 
 export type ResourceUsage = { kind: string; name: string; count: number; lastAt: string }
+
+export type AppUpdateInfo = { available: boolean; version: string; name: string; notes: string; publishedAt: string; size: number }
+
+export type DataPackageSelection = { settings: boolean; appState: boolean; mcp: boolean; instructions: boolean; commands: boolean; skills: boolean }
+export type DataPackageInfo = { createdAt: string; selection: DataPackageSelection; total: number; categories: Record<string, number>; settings?: Settings }
+export type DataPackageResult = { restored: number; skipped: number; snapshotDir: string }
+
+export type SyncConfig = { provider: string; url: string; username: string; endpoint: string; region: string; bucket: string; prefix: string; accessKey: string; filename: string; passwordSet: boolean; lastSyncAt: string; lastSyncKind: string; encryptionEnabled: boolean; encryptionPassphraseSet: boolean }

@@ -2,7 +2,7 @@ import { copyText as writeClipboard } from '../../lib/clipboard'
 import { nativeContextMenu } from '../../lib/nativeContextMenu'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { MotionConfig, motion } from 'framer-motion'
-import { AlertTriangle, CheckCircle2, Coins, Crosshair, FilePenLine, GitCompareArrows, History as HistoryIcon, Layers2, LayoutGrid, List, Plus, RefreshCw, RotateCcw, Sparkles, Trash2, Wrench, X } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Coins, Crosshair, ExternalLink, FilePenLine, GitCompareArrows, History as HistoryIcon, Layers2, LayoutGrid, Link2, List, Plus, RefreshCw, RotateCcw, Sparkles, Trash2, Wrench, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { AgentIcon } from '../../components/AgentIcon'
 import { SkillIcon } from '../../components/SkillIcon'
@@ -25,8 +25,10 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Kbd } from '@/components/ui/kbd'
+import { Input } from '@/components/ui/input'
 import styles from '../../App.module.css'
 import { backend } from '../../backend'
+import { openExternal } from '../../lib/appUpdate'
 import { formatTime, skillSourceLabel } from '../../lib/format'
 import { modifierLabel } from '../../lib/platform'
 import { toastError, toastSuccess } from '../../lib/toast'
@@ -513,6 +515,13 @@ function SkillCard({ skill, roots, links, issues, update, selected, onSelect, on
 
 function SkillDetail({ skill, roots, links, operations, issues, clis, update, onUpdate, onCopyPath, onReveal, onRepairLinks, onAddLink, planning, planError, onSyncPlan, syncPlanning, syncError, onDisable, disabling, onUninstall, onOpenCLI, onRestored, onEdit, onRenamed }: { skill: Skill; roots: Root[]; links: Link[]; operations: Operation[]; issues: Issue[]; clis: CLIInfo[]; update?: UpdateItem; onCopyPath?: () => void; onReveal?: () => void; onUpdate?: () => void; onRepairLinks?: () => void; onAddLink?: (rootID: string) => void; planning?: boolean; planError?: string; onSyncPlan?: () => void; syncPlanning?: boolean; syncError?: string; onDisable?: (rootID: string) => void; disabling?: boolean; onUninstall?: () => void; onOpenCLI?: (id: string) => void; onRestored: () => void; onEdit: () => void; onRenamed?: () => void }) {
   const [renaming, setRenaming] = useState(false)
+  const [bindOpen, setBindOpen] = useState(false)
+  const [bindSource, setBindSource] = useState('')
+  const [bindURL, setBindURL] = useState('')
+  const [bindPath, setBindPath] = useState('')
+  const [binding, setBinding] = useState(false)
+  const [sourceCandidates, setSourceCandidates] = useState<Array<{ source: string; name: string; skillId: string; isOfficial?: boolean }>>([])
+  const [searchingSource, setSearchingSource] = useState(false)
   const skillLinks = links.filter((link) => link.skillId === skill.id)
   const visibleCount = skillLinks.filter((link) => link.visible).length
   const linkForRoot = (rootID: string) => skillLinks.find((link) => link.rootId === rootID)
@@ -580,8 +589,9 @@ function SkillDetail({ skill, roots, links, operations, issues, clis, update, on
     <section className={styles.detailSection}>
       <h3>{t('skills.sourceBaseline')}</h3>
       <dl className={styles.definition}><dt>{t('skills.localPath')}</dt><dd><code className={styles.detailPath}>{skill.path}</code></dd><dt>{t('common.sourceLabel')}</dt><dd>{skillSourceLabel(skill)}</dd><dt>{t('skills.upstreamPath')}</dt><dd>{skill.skillPath || '—'}</dd><dt>{t('skills.contentBaseline')}</dt><dd><code>{skill.folderHash ? skill.folderHash.slice(0, 16) : t('skills.notCalculated')}</code></dd></dl>
-      <div className={styles.detailPathActions}>{onCopyPath && <Button size="xs" variant="outline" onClick={onCopyPath}>{t('common.copyPath')}</Button>}{onReveal && <Button size="xs" variant="ghost" onClick={onReveal}>{t('common.revealInFinder')}</Button>}</div>
+      <div className={styles.detailPathActions}>{onCopyPath && <Button size="xs" variant="outline" onClick={onCopyPath}>{t('common.copyPath')}</Button>}{skill.sourceUrl && <Button size="xs" variant="ghost" onClick={() => void openExternal(skill.sourceUrl!)}><ExternalLink size={12} />{t('skills.openSource')}</Button>}<Button size="xs" variant="ghost" onClick={() => { setBindSource(skill.source || ''); setBindURL(skill.sourceUrl || ''); setBindPath(skill.skillPath || ''); setBindOpen(true) }}><Link2 size={12} />{t('skills.bindSource')}</Button>{onReveal && <Button size="xs" variant="ghost" onClick={onReveal}>{t('common.revealInFinder')}</Button>}</div>
     </section>
+    <Dialog open={bindOpen} onOpenChange={setBindOpen}><DialogContent className="max-w-md"><DialogHeader><DialogTitle>{t('skills.bindSourceTitle')}</DialogTitle><DialogDescription>{t('skills.bindSourceHint')}</DialogDescription></DialogHeader><div className="grid gap-3 py-2"><label className="grid gap-1.5 text-[11px]"><span>{t('skills.sourceName')}</span><Input className="!h-8" value={bindSource} onChange={(event) => setBindSource(event.target.value)} placeholder="owner/repository" /></label><label className="grid gap-1.5 text-[11px]"><span>{t('skills.sourceUrl')}</span><Input className="!h-8" value={bindURL} onChange={(event) => setBindURL(event.target.value)} placeholder="https://github.com/owner/repository" /></label><label className="grid gap-1.5 text-[11px]"><span>{t('skills.upstreamPath')}</span><Input className="!h-8" value={bindPath} onChange={(event) => setBindPath(event.target.value)} placeholder="skills/my-skill" /></label><div className="flex flex-wrap items-center gap-2"><Button size="xs" variant="outline" disabled={searchingSource} onClick={() => { setSearchingSource(true); setSourceCandidates([]); void backend.searchCatalogSkills((bindSource.trim() || skill.name)).then((items: Array<{ source: string; name: string; skillId: string; isOfficial?: boolean }>) => setSourceCandidates(items.slice(0, 5))).catch((error) => { setSourceCandidates([]); toastError(error, t('skills.sourceSearchFailed')) }).finally(() => setSearchingSource(false)) }}>{searchingSource ? t('common.searching') : t('skills.findSource')}</Button>{sourceCandidates.map((candidate) => <Button key={`${candidate.source}/${candidate.skillId}`} size="xs" variant="ghost" onClick={() => { setBindSource(candidate.source); setBindURL(`https://github.com/${candidate.source}`); setSourceCandidates([]) }}><span className="max-w-[220px] truncate">{candidate.source}</span>{candidate.isOfficial && <span className="text-[9px] text-[var(--brand)]">{t('skills.officialSource')}</span>}</Button>)}</div></div><DialogFooter>{skill.source && <Button size="sm" variant="outline" disabled={binding} onClick={() => { setBinding(true); void backend.clearSkillSource(skill.path).then(() => { toastSuccess(t('skills.sourceCleared')); setBindOpen(false); onRestored() }).catch((error) => toastError(error, t('skills.sourceSaveFailed'))).finally(() => setBinding(false)) }}>{t('skills.clearSource')}</Button>}<Button size="sm" variant="outline" disabled={binding} onClick={() => setBindOpen(false)}>{t('common.cancel')}</Button><Button size="sm" disabled={binding || (!bindSource.trim() && !bindURL.trim())} onClick={() => { setBinding(true); void backend.bindSkillSource(skill.path, bindSource, bindURL, bindPath).then(() => { toastSuccess(t('skills.sourceSaved')); setBindOpen(false); onRestored() }).catch((error) => toastError(error, t('skills.sourceSaveFailed'))).finally(() => setBinding(false)) }}>{t('common.save')}</Button></DialogFooter></DialogContent></Dialog>
   </div>
 }
 

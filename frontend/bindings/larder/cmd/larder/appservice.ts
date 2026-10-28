@@ -20,6 +20,9 @@ import * as mcp$0 from "../../internal/core/mcp/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as model$0 from "../../internal/core/model/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as transfer$0 from "../../internal/core/transfer/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -73,6 +76,14 @@ export function AutostartEnabled(): $CancellablePromise<boolean> {
     return $Call.ByID(2576665495);
 }
 
+/**
+ * BindSkillSource records a user-supplied source for an otherwise unresolved
+ * skill. Overrides take precedence over local lockfiles and source indexes.
+ */
+export function BindSkillSource(path: string, source: string, sourceURL: string, skillPath: string): $CancellablePromise<void> {
+    return $Call.ByID(962443574, path, source, sourceURL, skillPath);
+}
+
 export function CLIVersion(cliID: string): $CancellablePromise<string> {
     return $Call.ByID(2803279295, cliID);
 }
@@ -116,12 +127,16 @@ export function CatalogSkills(view: string): $CancellablePromise<catalog$0.Skill
     return $Call.ByID(2245386990, view);
 }
 
-export function CheckAppUpdate(): $CancellablePromise<void> {
+export function CheckAppUpdate(): $CancellablePromise<$models.AppUpdateInfo | null> {
     return $Call.ByID(1192310087);
 }
 
 export function CheckUpdates(): $CancellablePromise<model$0.UpdateReport> {
     return $Call.ByID(3271042347);
+}
+
+export function ClearSkillSource(path: string): $CancellablePromise<void> {
+    return $Call.ByID(1233306162, path);
 }
 
 export function CommandContent(path: string): $CancellablePromise<string> {
@@ -148,12 +163,24 @@ export function Doctor(): $CancellablePromise<model$0.Finding[] | null> {
     return $Call.ByID(871889094);
 }
 
+export function DownloadAppUpdate(): $CancellablePromise<void> {
+    return $Call.ByID(918375453);
+}
+
+export function DownloadSyncPackage(): $CancellablePromise<string> {
+    return $Call.ByID(1970104514);
+}
+
 export function EnableMCPAgent(name: string, agentPath: string): $CancellablePromise<void> {
     return $Call.ByID(486487643, name, agentPath);
 }
 
 export function ExportBackup(): $CancellablePromise<string> {
     return $Call.ByID(3675794277);
+}
+
+export function ExportDataPackage(selection: transfer$0.Selection): $CancellablePromise<string> {
+    return $Call.ByID(3252074781, selection);
 }
 
 export function ExportReport(): $CancellablePromise<string> {
@@ -168,17 +195,25 @@ export function IgnoreAgent(path: string, label: string, rootID: string): $Cance
     return $Call.ByID(2209234508, path, label, rootID);
 }
 
+export function ImportDataPackage(path: string, selection: transfer$0.Selection): $CancellablePromise<transfer$0.Result> {
+    return $Call.ByID(3496547208, path, selection);
+}
+
 export function InspectBackup(path: string): $CancellablePromise<backup$0.Info> {
     return $Call.ByID(1617118777, path);
 }
 
+export function InspectDataPackage(path: string): $CancellablePromise<transfer$0.Info> {
+    return $Call.ByID(2932308897, path);
+}
+
 /**
- * InstallNativeContextMenu registers the resource context menu. The menu is
+ * InstallNativeMenus registers the application and resource menus. Menus are
  * rebuilt when the frontend reports a language change so native labels follow
  * the in-app locale.
  */
-export function InstallNativeContextMenu(): $CancellablePromise<void> {
-    return $Call.ByID(2499098497);
+export function InstallNativeMenus(): $CancellablePromise<void> {
+    return $Call.ByID(3475588593);
 }
 
 export function InstallUpstreamSkills(repo: string, items: model$0.UpstreamSkillInstall[] | null): $CancellablePromise<model$0.Operation[] | null> {
@@ -219,6 +254,10 @@ export function Operations(): $CancellablePromise<model$0.Operation[] | null> {
 
 export function PickBackupFile(): $CancellablePromise<string> {
     return $Call.ByID(2990752500);
+}
+
+export function PickDataPackage(): $CancellablePromise<string> {
+    return $Call.ByID(3501259084);
 }
 
 export function PickFolder(): $CancellablePromise<string> {
@@ -333,6 +372,10 @@ export function ResolveCatalogSkill(source: string, skillID: string): $Cancellab
     return $Call.ByID(43552267, source, skillID);
 }
 
+export function RestartAppUpdate(): $CancellablePromise<void> {
+    return $Call.ByID(337698570);
+}
+
 export function RestoreAgent(path: string): $CancellablePromise<model$0.Settings> {
     return $Call.ByID(1086275390, path);
 }
@@ -363,6 +406,10 @@ export function SaveInstruction(path: string, content: string): $CancellableProm
 
 export function SaveSettings(settings: model$0.Settings): $CancellablePromise<model$0.Settings> {
     return $Call.ByID(3600206561, settings);
+}
+
+export function SaveSyncConfig(config: $models.SyncConfig, password: string, encryptionPassword: string): $CancellablePromise<void> {
+    return $Call.ByID(86628237, config, password, encryptionPassword);
 }
 
 export function Scan(): $CancellablePromise<$models.AppState> {
@@ -442,8 +489,16 @@ export function State(): $CancellablePromise<$models.AppState> {
     return $Call.ByID(2673280426);
 }
 
+export function SyncConfig(): $CancellablePromise<$models.SyncConfig> {
+    return $Call.ByID(2250717376);
+}
+
 export function TestMCP(serverID: string): $CancellablePromise<$models.MCPTestResult> {
     return $Call.ByID(2518918863, serverID);
+}
+
+export function TestSync(): $CancellablePromise<void> {
+    return $Call.ByID(4017800862);
 }
 
 export function Timeline(): $CancellablePromise<model$0.TimelineEvent[] | null> {
@@ -460,6 +515,10 @@ export function ToggleWindowMaximised(): $CancellablePromise<boolean> {
 
 export function TrashAgent(path: string): $CancellablePromise<model$0.Settings> {
     return $Call.ByID(4081708994, path);
+}
+
+export function UploadSyncPackage(selection: transfer$0.Selection, allowPlaintext: boolean, force: boolean): $CancellablePromise<void> {
+    return $Call.ByID(1232772873, selection, allowPlaintext, force);
 }
 
 export function UsageStats(): $CancellablePromise<model$0.UsageStat[] | null> {

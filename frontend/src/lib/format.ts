@@ -34,6 +34,8 @@ export function skillSourceLabel(skill: Pick<Skill, 'source' | 'origin' | 'origi
   if (skill.source) return skill.source
   if (skill.origin === 'plugin') return `${t('common.plugIn')} · ${skill.originDetail || t('common.unknownPlugIn')}`
   if (skill.origin === 'system') return `${t('common.system')} · ${skill.originDetail || t('common.builtIn')}`
+  if (skill.origin === 'local') return t('common.localInstall')
+  if (skill.origin === 'linked') return t('common.linkedInstall')
   return t('common.noSource')
 }
 

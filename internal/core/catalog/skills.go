@@ -78,6 +78,16 @@ func NewClient() *Client {
 // API for this view needs a Vercel OIDC token, so the public page is read
 // instead. It is cached for six hours, then on disk, then falls back to the
 // snapshot shipped with the app.
+// LocalPopular returns the bundled skills.sh snapshot without network access.
+// It is intended for resolving source metadata during a local scan.
+func LocalPopular() []Skill {
+	var skills []Skill
+	if json.Unmarshal(popularSnapshot, &skills) != nil {
+		return nil
+	}
+	return tidyPopular(skills)
+}
+
 func (c *Client) Popular(ctx context.Context) ([]Skill, error) {
 	c.mu.Lock()
 	if c.popular != nil && time.Since(c.popularAt) < 6*time.Hour {

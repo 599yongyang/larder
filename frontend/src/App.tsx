@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Events } from '@wailsio/runtime'
+import { Events, Updater } from '@wailsio/runtime'
 import { Monitor, Moon, RefreshCw, Search, Sun } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { CommandPalette } from './components/CommandPalette'
 import { AgentCLIBar } from './components/AgentCLIBar'
 import { AgentSessionsView } from './features/agent/AgentSessionsView'
 import { SessionDetailSheet } from './components/SessionDetailSheet'
+import { AppUpdateDialog, type AppUpdateStage } from './components/AppUpdateDialog'
 import { Kbd } from '@/components/ui/kbd'
 import { GooeyToaster, gooeyToast } from 'goey-toast'
 import { toastError, toastSuccess } from './lib/toast'
@@ -38,6 +39,7 @@ import { pageTransition } from './lib/pageTransition'
 import { getLanguage, t } from './i18n'
 import { sortAgentRoots } from './lib/agentOrder'
 import { backendErrorMessage } from './lib/backendError'
+import type { AppUpdateInfo } from './types'
 import { cycleZoom, resetZoom } from './lib/zoom'
 import { ariaShortcut, shortcutLabel } from './lib/platform'
 
@@ -68,6 +70,10 @@ function App() {
   const [recentSessionsLoading, setRecentSessionsLoading] = useState(false)
   const recentSessionsLoaded = useRef(false)
   const [previewSession, setPreviewSession] = useState<Session>()
+  const [appUpdateStage, setAppUpdateStage] = useState<AppUpdateStage>('idle')
+  const [appUpdateInfo, setAppUpdateInfo] = useState<AppUpdateInfo>()
+  const [appUpdateError, setAppUpdateError] = useState('')
+  const [appUpdateProgress, setAppUpdateProgress] = useState<{ written: number; total: number }>()
   const [sessionRefreshKey, setSessionRefreshKey] = useState(0)
   const [appInfo, setAppInfo] = useState<AppInfo>()
   const [updates, setUpdates] = useState<UpdateReport>()
@@ -220,8 +226,14 @@ function App() {
     const off = Events.On(LarderState, () => { void refresh() })
     const openSettings = Events.On('larder:open-settings', () => pageTransition(() => { setScope(undefined); setView('settings') }))
     const filesDropped = Events.On('larder:files-dropped', (event: { data?: string[] }) => { for (const path of event.data ?? []) void addProject(path) })
+    const checkAppUpdateEvent = Events.On('larder:check-app-update', () => { void checkAppUpdate() })
+    const downloadProgress = Events.On(Updater.Events.DownloadProgress, (event: { data?: { written?: number; total?: number } }) => { const data = event.data; if (data) setAppUpdateProgress({ written: Number(data.written) || 0, total: Number(data.total) || 0 }) })
+    const updateReady = Events.On(Updater.Events.UpdateReady, () => setAppUpdateStage('ready'))
+    const updateError = Events.On(Updater.Events.Error, (event: { data?: { message?: string } }) => { setAppUpdateError(event.data?.message || t('appUpdate.errorHint')); setAppUpdateStage('error') })
+    const nativeCopied = Events.On('larder:native-copied', () => toastSuccess(t('native.copied')))
+    const nativeRevealed = Events.On('larder:native-revealed', () => toastSuccess(t('native.revealed')))
     const openCommand = Events.On('larder:open-command', () => setCommandOpen(true))
-    return () => { off?.(); openSettings?.(); openCommand?.(); filesDropped?.() }
+    return () => { off?.(); openSettings?.(); openCommand?.(); filesDropped?.(); checkAppUpdateEvent?.(); downloadProgress?.(); updateReady?.(); updateError?.(); nativeCopied?.(); nativeRevealed?.() }
   }, [refresh])
   useEffect(() => {
     if (!ready) return
@@ -318,6 +330,35 @@ function App() {
       return false
     }
   }
+  const checkAppUpdate = async () => {
+    setAppUpdateError('')
+    setAppUpdateProgress(undefined)
+    setAppUpdateStage('checking')
+    try {
+      const info = await backend.checkAppUpdate()
+      setAppUpdateInfo(info)
+      setAppUpdateStage(info.available ? 'available' : 'uptodate')
+    } catch (error) {
+      setAppUpdateError(backendErrorMessage(error, t('appUpdate.errorHint')))
+      setAppUpdateStage('error')
+    }
+  }
+  const installAppUpdate = async () => {
+    setAppUpdateError('')
+    setAppUpdateProgress(undefined)
+    setAppUpdateStage('downloading')
+    try {
+      await backend.downloadAppUpdate()
+      setAppUpdateStage('ready')
+    } catch (error) {
+      setAppUpdateError(backendErrorMessage(error, t('appUpdate.errorHint')))
+      setAppUpdateStage('error')
+    }
+  }
+  const restartAppUpdate = async () => {
+    try { await backend.restartAppUpdate() } catch (error) { setAppUpdateError(backendErrorMessage(error, t('appUpdate.errorHint'))); setAppUpdateStage('error') }
+  }
+  const closeAppUpdate = () => { if (appUpdateStage !== 'downloading' && appUpdateStage !== 'checking') { setAppUpdateStage('idle'); setAppUpdateProgress(undefined) } }
   const checkUpdates = async (notify = false) => { setUpdatesLoading(true); try { const next = await backend.checkUpdates(); setUpdates(next); if (notify) toastSuccess(t('app.updateCheckComplete'), t('app.skillsClisCanUpdate', { skills: next.skillChanged, clis: next.available })) } catch (error) { toastError(error, t('app.updateCheckFailed')) } finally { setUpdatesLoading(false) } }
   useEffect(() => {
     if (!ready || !settings.autoCheckUpdates || updatesLoading) return
@@ -402,7 +443,7 @@ function App() {
         {view === 'project' && scope?.kind === 'project' && <ProjectView path={scope.path} skills={snapshot.skills} servers={mcps} instructions={instructions} projects={settings.projectWorkspaces} issues={snapshot.issues} commands={commands} operations={operations} sessions={sessions} sessionsLoading={sessionsLoading} sessionsError={sessionsError} onRetrySessions={() => setSessionRefreshKey((value) => value + 1)} onRefresh={refresh} onOpenCommands={() => pageTransition(() => { setScope(undefined); setView('commands') })} />}
         {view === 'cli' && <CLIView clis={visibleClis} skills={snapshot.skills} mcps={mcps} onOpenSkill={(id) => pageTransition(() => { setScope(undefined); setView('skills'); setSelectedId(id) })} onOpenMCP={() => pageTransition(() => { setScope(undefined); setView('mcp') })} onRefresh={refresh} updates={updates} updatesLoading={updatesLoading} onCheckUpdates={() => void checkUpdates(true)} focusCLI={cliFocus} onFocusConsumed={() => setCliFocus(undefined)} />}
         {view === 'history' && <HistoryView events={timeline} usage={usage} operations={operations} onRefresh={refresh} onRollback={async (id) => { const operation = await backend.rollbackOperation(id) as Operation; await refresh(); return operation }} />}
-        {view === 'settings' && <SettingsView settings={settings} onToggle={(value) => void backend.saveSettings({ ...settings, showAgentBuiltins: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} onUsageToggle={(value) => void backend.saveSettings({ ...settings, usageStatsEnabled: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} onAutoCheckToggle={(value) => void backend.saveSettings({ ...settings, autoCheckUpdates: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} onInterval={(value) => void backend.saveSettings({ ...settings, updateCheckIntervalHours: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} onRetention={(value) => void backend.saveSettings({ ...settings, snapshotRetention: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} onTrashRetention={(value) => void backend.saveSettings({ ...settings, trashRetentionDays: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} themeMode={themeMode} onThemeMode={changeTheme} info={appInfo} onBackup={() => void backend.exportBackup().then((path) => toastSuccess(t('app.backupExported'), path)).catch((error) => toastError(error, t('app.failedToExportBackup')))} onRestored={() => void refresh()} />}
+        {view === 'settings' && <SettingsView settings={settings} onToggle={(value) => void backend.saveSettings({ ...settings, showAgentBuiltins: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} onUsageToggle={(value) => void backend.saveSettings({ ...settings, usageStatsEnabled: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} onCheckAppUpdate={() => void checkAppUpdate()} checkingAppUpdate={appUpdateStage === 'checking'} onGlobalShortcutToggle={(value) => void backend.saveSettings({ ...settings, globalShortcutEnabled: value }).then(setSettings).catch((error) => { toastError(error, t('common.failedToSave')); void backend.settings().then(setSettings).catch(() => {}) })} onGlobalShortcutChange={(value) => void backend.saveSettings({ ...settings, globalShortcut: value }).then(setSettings).catch((error) => { toastError(error, t('settings.globalShortcutFailed')); void backend.settings().then(setSettings).catch(() => {}) })} onAutoCheckToggle={(value) => void backend.saveSettings({ ...settings, autoCheckUpdates: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} onInterval={(value) => void backend.saveSettings({ ...settings, updateCheckIntervalHours: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} onRetention={(value) => void backend.saveSettings({ ...settings, snapshotRetention: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} onTrashRetention={(value) => void backend.saveSettings({ ...settings, trashRetentionDays: value }).then(setSettings).catch((error) => toastError(error, t('common.failedToSave')))} themeMode={themeMode} onThemeMode={changeTheme} info={appInfo} onRestored={() => void refresh()} />}
         </>}
       </div>
       {projectManagerOpen && <ProjectManagerDialog projects={projectItems} onClose={() => setProjectManagerOpen(false)} onAdd={addProject} onRemove={removeProject} />}
@@ -417,6 +458,7 @@ function App() {
       <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} skills={snapshot.skills.filter((skill) => settings.showAgentBuiltins || !skill.isAgentLocal)} clis={clis} mcps={mcps} instructions={instructions} sessions={recentSessions} sessionsLoading={recentSessionsLoading} onMCP={(mcp) => pageTransition(() => { setScope(undefined); setView('mcp'); setMcpFocus(mcp.id) })} onInstruction={() => pageTransition(() => { setScope(undefined); setView('instructions') })} onSession={setPreviewSession} onView={(next) => pageTransition(() => { setScope(undefined); setSource('all'); setView(next) })} onSkill={(skill) => pageTransition(() => { setScope(undefined); setSource('all'); setView('skills'); setSelectedId(skill.id) })} onCLI={(cli) => pageTransition(() => { setCliFocus(cli.id); setView('cli') })} onScan={() => void scan()} onCheckUpdates={() => void checkUpdates(true)} onToggleAppearance={() => changeTheme(nextThemeMode(themeMode))} />
     </SidebarInset>
     {previewSession && <SessionDetailSheet session={previewSession} onClose={() => setPreviewSession(undefined)} onOpenProject={previewSession.cwd ? () => { const target = previewSession; setPreviewSession(undefined); goScope({ kind: 'project', path: target.cwd, label: target.cwd.split('/').filter(Boolean).pop() || target.cwd }) } : undefined} />}
+    <AppUpdateDialog stage={appUpdateStage} info={appUpdateInfo} error={appUpdateError} progress={appUpdateProgress} currentVersion={appInfo?.version} onClose={closeAppUpdate} onInstall={() => void installAppUpdate()} onRestart={() => void restartAppUpdate()} onRetry={() => void checkAppUpdate()} />
     <GooeyToaster position="bottom-right" theme={resolvedTheme} closeButton />
   </SidebarProvider>
 }

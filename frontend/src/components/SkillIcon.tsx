@@ -6,19 +6,22 @@ import { githubAvatarUrls } from '../lib/github'
 
 const localIconCache = new Map<string, string>()
 const localIconPending = new Map<string, Promise<string>>()
-const localIconFailed = new Set<string>()
+const localIconFailed = new Map<string, number>()
+const localIconFailTTL = 60_000
 
 function loadLocalIcon(skillID: string, icon: string): Promise<string> {
   const key = `${skillID}:${icon}`
   if (localIconCache.has(key)) return Promise.resolve(localIconCache.get(key) ?? '')
-  if (localIconFailed.has(key)) return Promise.resolve('')
+  const failedUntil = localIconFailed.get(key)
+  if (failedUntil && failedUntil > Date.now()) return Promise.resolve('')
   const pending = localIconPending.get(key)
   if (pending) return pending
   const request = backend.skillIcon(skillID).then((value) => {
+    localIconFailed.delete(key)
     localIconCache.set(key, value)
     return value
   }).catch(() => {
-    localIconFailed.add(key)
+    localIconFailed.set(key, Date.now() + localIconFailTTL)
     return ''
   }).finally(() => { localIconPending.delete(key) })
   localIconPending.set(key, request)

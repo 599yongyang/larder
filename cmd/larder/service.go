@@ -30,6 +30,7 @@ import (
 	"larder/internal/core/model"
 	"larder/internal/core/ops"
 	"larder/internal/core/sessions"
+	"larder/internal/core/skills"
 	"larder/internal/core/store"
 	"larder/internal/core/trust"
 	"larder/internal/core/xray"
@@ -55,7 +56,7 @@ type AppState struct {
 	UpdatedAt     time.Time          `json:"updatedAt"`
 }
 
-var Version = "0.0.7"
+var Version = "0.0.8"
 
 type MCPTestResult struct {
 	OK      bool   `json:"ok"`
@@ -82,9 +83,10 @@ type AppInfo struct {
 }
 
 type AppService struct {
-	core    *inventory.Service
-	catalog *catalog.Client
-	app     *application.App
+	core          *inventory.Service
+	catalog       *catalog.Client
+	catalogByName map[string]catalog.Skill
+	app           *application.App
 
 	installsPath       string
 	installs           map[string]CatalogInstall
@@ -99,9 +101,12 @@ type AppService struct {
 	usageCache         map[string]usageCacheEntry
 	disabledPath       string
 	disabled           []ops.DetachedMCP
+	skillSourcesPath   string
+	skillSources       map[string]skills.SourceOverride
 	dataDir            string
 	homeDir            string
 	locale             string
+	localeListener     func(string)
 
 	mu         sync.RWMutex
 	ctx        context.Context
@@ -123,9 +128,15 @@ func NewAppService() (*AppService, error) {
 	core := inventory.NewService(paths, platform.OSFileSystem{}, db)
 	core.SetSnapshotRoot(filepath.Join(dataDir, "snapshots"))
 	homeDir, _ := paths.HomeDir()
-	service := &AppService{core: core, catalog: catalog.NewClient(), installsPath: filepath.Join(dataDir, "catalog-installs.json"), installs: map[string]CatalogInstall{}, commandPlans: map[string]model.CommandWritePlan{}, commandDeletePlans: map[string]model.CommandDeletePlan{}, skillEditPlans: map[string]model.SkillEditPlan{}, skillCreatePlans: map[string]model.SkillCreatePlan{}, skillRenamePlans: map[string]model.SkillRenamePlan{}, trust: trust.New(), sessionCache: map[string]sessionCacheEntry{}, usageCache: map[string]usageCacheEntry{}, disabledPath: filepath.Join(dataDir, "disabled-mcp.json"), dataDir: dataDir, homeDir: homeDir}
+	catalogClient := catalog.NewClient()
+	catalogByName := map[string]catalog.Skill{}
+	for _, item := range catalog.LocalPopular() {
+		catalogByName[strings.ToLower(item.Name)] = item
+	}
+	service := &AppService{core: core, catalog: catalogClient, catalogByName: catalogByName, installsPath: filepath.Join(dataDir, "catalog-installs.json"), installs: map[string]CatalogInstall{}, commandPlans: map[string]model.CommandWritePlan{}, commandDeletePlans: map[string]model.CommandDeletePlan{}, skillEditPlans: map[string]model.SkillEditPlan{}, skillCreatePlans: map[string]model.SkillCreatePlan{}, skillRenamePlans: map[string]model.SkillRenamePlan{}, trust: trust.New(), sessionCache: map[string]sessionCacheEntry{}, usageCache: map[string]usageCacheEntry{}, disabledPath: filepath.Join(dataDir, "disabled-mcp.json"), skillSourcesPath: filepath.Join(dataDir, "skill-sources.json"), dataDir: dataDir, homeDir: homeDir}
 	service.loadCatalogInstalls()
 	service.loadDisabledMCPs()
+	service.loadSkillSources()
 	service.state = AppState{SchemaVersion: model.SchemaVersion, Snapshot: model.ScanResult{SchemaVersion: model.SchemaVersion}, UpdatedAt: time.Now()}
 	return service, nil
 }
@@ -141,6 +152,7 @@ func (s *AppService) SetApp(app *application.App) {
 
 func (s *AppService) Startup() {
 	settings, _ := s.core.Settings(s.context())
+	_ = s.applyGlobalShortcut(settings)
 	retention := settings.SnapshotRetention
 	if retention <= 0 {
 		retention = 50
@@ -157,6 +169,7 @@ func (s *AppService) Startup() {
 	ctx := s.ctx
 	s.mu.Unlock()
 	if cached, ok, err := s.core.LoadCache(ctx); err == nil && ok {
+		s.enrichSkillSources(&cached)
 		s.updateState(func(state *AppState) {
 			state.Snapshot = cached
 			state.Updates = s.core.Updates()
@@ -835,6 +848,26 @@ func (s *AppService) SourceAudit(source, skill string) (model.SkillAudit, error)
 	return audit, nil
 }
 
+func (s *AppService) applyGlobalShortcut(settings model.Settings) error {
+	s.mu.RLock()
+	app := s.app
+	s.mu.RUnlock()
+	if app == nil {
+		return nil
+	}
+	_ = app.GlobalShortcut.UnregisterAll()
+	if settings.GlobalShortcutEnabled != nil && !*settings.GlobalShortcutEnabled {
+		return nil
+	}
+	accelerator := strings.TrimSpace(settings.GlobalShortcut)
+	if accelerator == "" {
+		accelerator = "CmdOrCtrl+Shift+L"
+	}
+	return app.GlobalShortcut.Register(accelerator, func() {
+		s.emitWindowEvent("larder:open-command")
+	})
+}
+
 func (s *AppService) AutostartEnabled() (bool, error) {
 	if s.app == nil {
 		return false, errors.New("app is not ready")
@@ -962,11 +995,51 @@ func safeSessionFilename(title, id string) string {
 	return strings.TrimSpace(name) + "-" + id
 }
 
-func (s *AppService) CheckAppUpdate() error {
+type AppUpdateInfo struct {
+	Available bool   `json:"available"`
+	Version   string `json:"version"`
+	Name      string `json:"name"`
+	Notes     string `json:"notes"`
+	Published string `json:"publishedAt"`
+	Size      int64  `json:"size"`
+}
+
+func (s *AppService) CheckAppUpdate() (*AppUpdateInfo, error) {
+	if s.app == nil || s.app.Updater == nil {
+		return nil, errors.New("app updater is unavailable")
+	}
+	release, err := s.app.Updater.Check(s.context())
+	if err != nil {
+		return nil, err
+	}
+	if release == nil {
+		return &AppUpdateInfo{Available: false}, nil
+	}
+	info := &AppUpdateInfo{
+		Available: true,
+		Version:   release.Version,
+		Name:      release.Name,
+		Notes:     release.Notes,
+		Size:      release.Artifact.Size,
+	}
+	if !release.PublishedAt.IsZero() {
+		info.Published = release.PublishedAt.Format(time.RFC3339)
+	}
+	return info, nil
+}
+
+func (s *AppService) DownloadAppUpdate() error {
 	if s.app == nil || s.app.Updater == nil {
 		return errors.New("app updater is unavailable")
 	}
-	return s.app.Updater.CheckAndInstall(s.context())
+	return s.app.Updater.DownloadAndInstall(s.context())
+}
+
+func (s *AppService) RestartAppUpdate() error {
+	if s.app == nil || s.app.Updater == nil {
+		return errors.New("app updater is unavailable")
+	}
+	return s.app.Updater.Restart(s.context())
 }
 
 func (s *AppService) AgentUsage(agent string) []model.ResourceUsage {
@@ -1499,6 +1572,31 @@ func (s *AppService) Xray(agentID string, project string, compareAgentIDs []stri
 	})
 }
 
+// enrichSkillSources fills unresolved local skills from the bundled official
+// catalog snapshot. It never performs a network request.
+func (s *AppService) enrichSkillSources(result *model.ScanResult) {
+	if result == nil || len(s.catalogByName) == 0 {
+		return
+	}
+	for index := range result.Skills {
+		skill := &result.Skills[index]
+		if skill.Source != "" {
+			continue
+		}
+		item, ok := s.catalogByName[strings.ToLower(skill.Name)]
+		if !ok || item.Source == "" {
+			continue
+		}
+		skill.Source = item.Source
+		skill.SourceType = "catalog"
+		skill.Locked = true
+		skill.Origin = "catalog"
+		if strings.Contains(item.Source, "/") {
+			skill.SourceURL = "https://github.com/" + item.Source
+		}
+	}
+}
+
 func (s *AppService) Scan() (AppState, error) {
 	s.mu.Lock()
 	if s.state.Scanning {
@@ -1517,6 +1615,7 @@ func (s *AppService) Scan() (AppState, error) {
 	s.mu.Unlock()
 	s.emit()
 	result, err := s.core.Scan(ctx)
+	s.enrichSkillSources(&result)
 	cancel()
 	s.mu.Lock()
 	s.scanCancel = nil
@@ -2261,11 +2360,18 @@ func (s *AppService) PickFolder() (string, error) {
 
 func (s *AppService) SaveSettings(settings model.Settings) (model.Settings, error) {
 	ctx := s.context()
+	previous, _ := s.core.Settings(ctx)
 	saved, err := s.core.SaveSettings(ctx, settings)
-	if err == nil {
-		_ = s.core.PruneTrash(ctx, saved.TrashRetentionDays)
+	if err != nil {
+		return saved, err
 	}
-	return saved, err
+	if shortcutErr := s.applyGlobalShortcut(saved); shortcutErr != nil {
+		_, _ = s.core.SaveSettings(ctx, previous)
+		_ = s.applyGlobalShortcut(previous)
+		return previous, fmt.Errorf("apply global shortcut: %w", shortcutErr)
+	}
+	_ = s.core.PruneTrash(ctx, saved.TrashRetentionDays)
+	return saved, nil
 }
 
 func (s *AppService) Shutdown() {

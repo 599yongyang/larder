@@ -24,6 +24,15 @@ export interface AppState {
     "updatedAt": string;
 }
 
+export interface AppUpdateInfo {
+    "available": boolean;
+    "version": string;
+    "name": string;
+    "notes": string;
+    "publishedAt": string;
+    "size": number;
+}
+
 /**
  * CatalogInstall records where a skill discovered on skills.sh was installed,
  * so the market can tell an installed skill apart from a same-named one.
@@ -38,4 +47,22 @@ export interface CatalogInstall {
 export interface MCPTestResult {
     "ok": boolean;
     "message": string;
+}
+
+export interface SyncConfig {
+    "provider": string;
+    "url": string;
+    "username": string;
+    "endpoint": string;
+    "region": string;
+    "bucket": string;
+    "prefix": string;
+    "accessKey": string;
+    "filename": string;
+    "passwordSet": boolean;
+    "encryptionEnabled": boolean;
+    "encryptionPassphraseSet": boolean;
+    "lastRemoteHash": string;
+    "lastSyncAt": string;
+    "lastSyncKind": string;
 }

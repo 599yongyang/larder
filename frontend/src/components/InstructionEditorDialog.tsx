@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { backend } from '../backend'
@@ -38,7 +39,7 @@ export function InstructionEditorDialog({ file, projects, project, onClose, onSa
       <DialogHeader className="border-b px-6 py-4 pr-12"><DialogTitle className="text-base">{file ? t('common.edit', { name: file.name }) : t('instructions.newInstructionFile')}</DialogTitle><DialogDescription className="text-xs">{file ? file.path : t('instructions.chooseAProjectAndFileNameExistingContentIsBackedUpBeforeSaving')}</DialogDescription></DialogHeader>
       <div className={styles.instructionEditorBody}>
         {!file && <div className={styles.instructionEditorRow}><Select value={selectedProject} onValueChange={setSelectedProject}><SelectTrigger size="sm"><SelectValue placeholder={t("instructions.chooseProject")} /></SelectTrigger><SelectContent>{projects.map((item) => <SelectItem key={item} value={item}>{item.split('/').filter(Boolean).pop()}</SelectItem>)}</SelectContent></Select><Select value={name} onValueChange={setName}><SelectTrigger size="sm"><SelectValue /></SelectTrigger><SelectContent>{instructionNames.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select></div>}
-        {loading ? <p className={styles.instructionEditorHint}>{t('common.loading')}</p> : <textarea className={styles.instructionEditor} value={content} onChange={(event) => setContent(event.target.value)} spellCheck={false} aria-label={t("instructions.instructionFileContent")} />}
+        {loading ? <p className={styles.instructionEditorHint}>{t('common.loading')}</p> : <Textarea className={styles.instructionEditor} value={content} onChange={(event) => setContent(event.target.value)} spellCheck={false} aria-label={t("instructions.instructionFileContent")} />}
         {error && <p className={styles.planError} role="alert">{error}</p>}
         <div className={styles.instructionEditorMeta}><span>{t('instructions.characters', { n: content.length.toLocaleString() })}</span><span>{t('instructions.aBackupIsKeptOnSave')}</span></div>
       </div>

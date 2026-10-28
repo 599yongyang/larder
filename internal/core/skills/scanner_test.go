@@ -55,7 +55,7 @@ func TestScannerBuildsLedgerAndMatrixFacts(t *testing.T) {
 		{ID: "global", Label: "Global", Path: central, Kind: platform.RootGlobal, Known: true},
 		{ID: "agent", Label: "Agent", LogicalAgent: "Agent", Path: agent, Kind: platform.RootKnownAgent, Known: true},
 		{ID: "absent", Label: "Absent agent", LogicalAgent: "Absent", Path: filepath.Join(root, "absent"), Kind: platform.RootKnownAgent, Known: true},
-	}, LockfilePath: lockPath})
+	}, SourceIndexPaths: []string{lockPath}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestScannerDedupesBrokenAgentTargets(t *testing.T) {
 		{ID: "global", Label: "Global", Path: central, Kind: platform.RootGlobal, Known: true},
 		{ID: "a", Label: "A", Path: agentA, Kind: platform.RootKnownAgent, Known: true},
 		{ID: "b", Label: "B", Path: agentB, Kind: platform.RootKnownAgent, Known: true},
-	}, LockfilePath: filepath.Join(root, "no-lock.json")})
+	}, SourceIndexPaths: []string{filepath.Join(root, "no-lock.json")}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestSharedSkillRootsAreVisible(t *testing.T) {
 	result, err := skills.NewScanner(platform.OSFileSystem{}).Scan(context.Background(), skills.Options{Roots: []platform.RootSpec{
 		{ID: "global", Label: "Global", Path: central, Kind: platform.RootGlobal, Known: true},
 		{ID: "codex", Label: "Codex", LogicalAgent: "Codex", Path: filepath.Join(root, "missing-codex"), Kind: platform.RootKnownAgent, Known: true, SharedSkills: true},
-	}, LockfilePath: filepath.Join(root, "no-lock.json")})
+	}, SourceIndexPaths: []string{filepath.Join(root, "no-lock.json")}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +187,7 @@ func TestExtraAgentSkillRoots(t *testing.T) {
 	result, err := skills.NewScanner(platform.OSFileSystem{}).Scan(context.Background(), skills.Options{Roots: []platform.RootSpec{
 		{ID: "global", Label: "Global", Path: central, Kind: platform.RootGlobal, Known: true},
 		{ID: "codex", Label: "Codex", LogicalAgent: "Codex", Path: codex, Kind: platform.RootKnownAgent, Known: true, SharedSkills: true, ExtraPaths: []string{filepath.Join(root, "plugins", "cache")}},
-	}, LockfilePath: filepath.Join(root, "no-lock.json")})
+	}, SourceIndexPaths: []string{filepath.Join(root, "no-lock.json")}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,5 +207,133 @@ func TestExtraAgentSkillRoots(t *testing.T) {
 		if root.ID == "codex" && root.EntryCount < 2 {
 			t.Fatalf("codex entry count = %d", root.EntryCount)
 		}
+	}
+}
+
+func TestScanResolvesGenericSourceIndex(t *testing.T) {
+	root := t.TempDir()
+	skillsDir := filepath.Join(root, "skills")
+	skillDir := filepath.Join(skillsDir, "design-taste-frontend")
+	if err := os.MkdirAll(skillDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: design-taste-frontend\ndescription: taste\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	library := filepath.Join(root, "library.json")
+	if err := os.WriteFile(library, []byte(`{"skills":[{"name":"design-taste-frontend","source":{"kind":"github","repo":"leonxlnx/taste-skill","path":"skills/taste-skill"},"commit":"abc"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := skills.NewScanner(platform.OSFileSystem{}).Scan(context.Background(), skills.Options{Roots: []platform.RootSpec{{ID: "global", Path: skillsDir, Kind: platform.RootGlobal, Known: true}}, SourceIndexPaths: []string{filepath.Join(root, "missing-lock.json"), library}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Skills) != 1 {
+		t.Fatalf("skills = %d", len(result.Skills))
+	}
+	skill := result.Skills[0]
+	if skill.Source != "leonxlnx/taste-skill" || skill.SourceURL != "https://github.com/leonxlnx/taste-skill" {
+		t.Fatalf("source = %#v", skill)
+	}
+}
+
+func TestScanResolvesFrontmatterSource(t *testing.T) {
+	root := t.TempDir()
+	skillDir := filepath.Join(root, "design-taste-frontend")
+	if err := os.MkdirAll(skillDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	content := "---\nname: design-taste-frontend\ndescription: taste\nmetadata:\n  repository: leonxlnx/taste-skill\n  path: skills/taste-skill\n---\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := skills.NewScanner(platform.OSFileSystem{}).Scan(context.Background(), skills.Options{Roots: []platform.RootSpec{{ID: "global", Path: root, Kind: platform.RootGlobal, Known: true}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Skills) != 1 {
+		t.Fatalf("skills = %d", len(result.Skills))
+	}
+	skill := result.Skills[0]
+	if skill.Source != "leonxlnx/taste-skill" || skill.SourceURL != "https://github.com/leonxlnx/taste-skill" || skill.SkillPath != "skills/taste-skill" {
+		t.Fatalf("source = %#v", skill)
+	}
+}
+
+func TestScanResolvesTopLevelFrontmatterSource(t *testing.T) {
+	root := t.TempDir()
+	skillDir := filepath.Join(root, "custom-skill")
+	if err := os.MkdirAll(skillDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	content := "---\nname: custom-skill\ndescription: custom\nsource: leonxlnx/taste-skill\nskillPath: skills/taste-skill\n---\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := skills.NewScanner(platform.OSFileSystem{}).Scan(context.Background(), skills.Options{Roots: []platform.RootSpec{{ID: "global", Path: root, Kind: platform.RootGlobal, Known: true}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	skill := result.Skills[0]
+	if skill.Source != "leonxlnx/taste-skill" || skill.SkillPath != "skills/taste-skill" {
+		t.Fatalf("source = %#v", skill)
+	}
+}
+
+func TestScanResolvesPluginRootIcon(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "plugins", "cache", "vendor", "demo-plugin", "1.0.0")
+	skillDir := filepath.Join(root, "skills", "demo")
+	if err := os.MkdirAll(skillDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "assets"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "plugin.json"), []byte(`{"icon":"assets/icon.png"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "assets", "icon.png"), []byte("png"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: demo\ndescription: demo\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := skills.NewScanner(platform.OSFileSystem{}).Scan(context.Background(), skills.Options{Roots: []platform.RootSpec{{ID: "global", Path: filepath.Join(root, "skills"), Kind: platform.RootGlobal, Known: true}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Skills) != 1 {
+		t.Fatalf("skills = %d", len(result.Skills))
+	}
+	skill := result.Skills[0]
+	if skill.Icon != filepath.Join(root, "assets", "icon.png") || skill.IconRoot != root || skill.IconSource != "plugin" {
+		t.Fatalf("icon = %#v", skill)
+	}
+}
+
+func TestScanDoesNotTreatProjectPluginManifestAsPluginIcon(t *testing.T) {
+	root := t.TempDir()
+	skillDir := filepath.Join(root, "skills", "demo")
+	if err := os.MkdirAll(skillDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "assets"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "plugin.json"), []byte(`{"icon":"assets/icon.png"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "assets", "icon.png"), []byte("png"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: demo\ndescription: demo\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := skills.NewScanner(platform.OSFileSystem{}).Scan(context.Background(), skills.Options{Roots: []platform.RootSpec{{ID: "global", Path: filepath.Join(root, "skills"), Kind: platform.RootGlobal, Known: true}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Skills[0].Icon != "" {
+		t.Fatalf("unexpected icon: %#v", result.Skills[0])
 	}
 }

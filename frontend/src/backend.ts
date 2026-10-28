@@ -1,5 +1,5 @@
 import { AppService } from '../bindings/larder/cmd/larder'
-import type { Session } from './types'
+import type { AppUpdateInfo, DataPackageInfo, DataPackageResult, DataPackageSelection, Session, SyncConfig } from './types'
 
 // Errors are intentionally propagated. The UI must show a real failure state
 // instead of silently rendering an empty ledger.
@@ -46,8 +46,19 @@ export const backend = {
   setAutostart: async (enabled: boolean) => { await AppService.SetAutostart(enabled) },
   openSessionInTerminal: async (session: Session) => { await AppService.OpenSessionInTerminal(session) },
   sessionResumeCommand: async (session: Session) => String(await AppService.SessionResumeCommand(session)),
+  syncConfig: async () => ((await AppService.SyncConfig()) as any) as SyncConfig,
+  saveSyncConfig: async (config: SyncConfig, password: string, encryptionPassword: string) => { await AppService.SaveSyncConfig(config as any, password, encryptionPassword) },
+  testSync: async () => { await AppService.TestSync() },
+  uploadSyncPackage: async (selection: DataPackageSelection, allowPlaintext = false, force = false) => { await AppService.UploadSyncPackage(selection as any, allowPlaintext, force) },
+  downloadSyncPackage: async () => String(await AppService.DownloadSyncPackage()),
+  exportDataPackage: async (selection: DataPackageSelection) => String(await AppService.ExportDataPackage(selection as any)),
+  pickDataPackage: async () => String(await AppService.PickDataPackage()),
+  inspectDataPackage: async (path: string) => ((await AppService.InspectDataPackage(path)) as any) as DataPackageInfo,
+  importDataPackage: async (path: string, selection: DataPackageSelection) => ((await AppService.ImportDataPackage(path, selection as any)) as any) as DataPackageResult,
   exportSession: async (session: Session) => String(await AppService.ExportSession(session)),
-  checkAppUpdate: async () => { await AppService.CheckAppUpdate() },
+  checkAppUpdate: async (): Promise<AppUpdateInfo> => ((await AppService.CheckAppUpdate()) as any) ?? { available: false, version: '', name: '', notes: '', publishedAt: '', size: 0 },
+  downloadAppUpdate: async () => { await AppService.DownloadAppUpdate() },
+  restartAppUpdate: async () => { await AppService.RestartAppUpdate() },
   commandTargets: async () => ((await AppService.CommandTargets()) as any) ?? [],
   planCommandWrite: async (request: unknown) => (await AppService.PlanCommandWrite(request as any)) as any,
   planCommandDelete: async (path: string) => (await AppService.PlanCommandDelete(path)) as any,
@@ -104,6 +115,8 @@ export const backend = {
   usageStats: async () => ((await AppService.UsageStats()) as any) ?? [],
   skillIcon: async (skillID: string) => String(await AppService.SkillIcon(skillID)),
   toggleWindowMaximised: async () => Boolean(await AppService.ToggleWindowMaximised()),
+  bindSkillSource: async (path: string, source: string, sourceURL: string, skillPath: string) => { await AppService.BindSkillSource(path, source, sourceURL, skillPath) },
+  clearSkillSource: async (path: string) => { await AppService.ClearSkillSource(path) },
   rollbackOperation: async (operationID: string) => (await AppService.RollbackOperation(operationID)) as any,
 }
 
@@ -132,6 +145,8 @@ function normalizeSettings(value: any) {
     updateCheckIntervalHours: Number(value?.updateCheckIntervalHours || 24),
     snapshotRetention: Number(value?.snapshotRetention || 50),
     trashRetentionDays: Number(value?.trashRetentionDays ?? 30),
+    globalShortcutEnabled: value?.globalShortcutEnabled !== false,
+    globalShortcut: typeof value?.globalShortcut === 'string' && value.globalShortcut.trim() ? value.globalShortcut : 'CmdOrCtrl+Shift+L',
   }
 }
 

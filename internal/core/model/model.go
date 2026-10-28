@@ -59,6 +59,7 @@ type Skill struct {
 	CopyDrift    bool      `json:"copyDrift"`
 	Icon         string    `json:"icon,omitempty"`
 	IconSource   string    `json:"iconSource,omitempty"`
+	IconRoot     string    `json:"iconRoot,omitempty"`
 	Bins         []string  `json:"bins,omitempty"`
 	Origin       string    `json:"origin,omitempty"`
 	OriginDetail string    `json:"originDetail,omitempty"`
@@ -339,6 +340,8 @@ type Settings struct {
 	UpdateCheckIntervalHr int            `json:"updateCheckIntervalHours"`
 	SnapshotRetention     int            `json:"snapshotRetention"`
 	TrashRetentionDays    int            `json:"trashRetentionDays"`
+	GlobalShortcutEnabled *bool          `json:"globalShortcutEnabled,omitempty"`
+	GlobalShortcut        string         `json:"globalShortcut,omitempty"`
 }
 
 type MCPAgent struct {

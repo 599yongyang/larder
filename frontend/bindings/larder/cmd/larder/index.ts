@@ -9,6 +9,8 @@ export {
 export type {
     AppInfo,
     AppState,
+    AppUpdateInfo,
     CatalogInstall,
-    MCPTestResult
+    MCPTestResult,
+    SyncConfig
 } from "./models.js";

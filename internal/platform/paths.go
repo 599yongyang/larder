@@ -48,6 +48,19 @@ func (LocalPaths) LockfilePath(home string) string {
 	return filepath.Join(home, ".agents", ".skill-lock.json")
 }
 
+// SkillSourceIndexPaths lists optional local metadata files that map installed
+// skills back to their source. Indexes are vendor-neutral; unknown or invalid
+// files are ignored. The first index wins for duplicate skill names.
+func (LocalPaths) SkillSourceIndexPaths(home string) []string {
+	paths := []string{filepath.Join(home, ".agents", ".skill-lock.json")}
+	for _, name := range []string{"library.json", "skills.json", "skill-lock.json"} {
+		matches, _ := filepath.Glob(filepath.Join(home, ".config", "*", name))
+		paths = append(paths, matches...)
+	}
+	sort.Strings(paths)
+	return paths
+}
+
 func (LocalPaths) AppDataDir(appName string) (string, error) {
 	if override := strings.TrimSpace(firstEnv("LARDER_DATA_DIR", "AAM_DATA_DIR")); override != "" {
 		return filepath.Clean(override), nil

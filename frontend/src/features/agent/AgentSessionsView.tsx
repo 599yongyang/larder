@@ -56,11 +56,12 @@ export function AgentSessionsView({ sessions, loading, error, onRetry, onOpenPro
     {loading ? <div className={viewStyles.loading} role="status" aria-live="polite"><Loader2 size={18} className="animate-spin" aria-hidden="true" /><strong>{t('project.loadingSessions')}</strong><span>{t('sessions.loadingHint')}</span></div> : error ? <div className={viewStyles.empty} role="alert"><strong>{t('sessions.loadFailed')}</strong><span>{t('sessions.loadFailedHint')}</span>{onRetry && <Button size="sm" variant="outline" onClick={onRetry}>{t('common.retry')}</Button>}</div> : groups.length === 0 ? <div className={viewStyles.empty}><strong>{sessions.length === 0 ? t('agent.noSessionsTitle') : t('sessions.noMatchingSessions')}</strong><span>{sessions.length === 0 ? t('agent.noSessionsHint') : t('sessions.clearFiltersHint')}</span></div> : <div className={viewStyles.list}>
       {groups.map((group) => <section key={group.key} className={viewStyles.group}>
         <h4 className={viewStyles.groupTitle}>{group.label}<span>{group.sessions.length}</span></h4>
-        {group.sessions.map((session) => <div key={`${session.agent}:${session.id}`} role="button" tabIndex={0} className={viewStyles.row} title={session.path} onClick={() => setSelected(session)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelected(session) } }}>
-          <span className={viewStyles.titleRow}>
-            <span className={viewStyles.title}>{session.title || session.id}</span>
-            <span className={viewStyles.titleActions}><span className={viewStyles.time}>{formatRelativeTime(session.lastAt)}</span><SessionQuickActions session={session} /></span>
-          </span>
+        {group.sessions.map((session) => <div key={`${session.agent}:${session.id}`} className={viewStyles.row} title={session.path}>
+          <button type="button" className={viewStyles.rowBody} onClick={() => setSelected(session)}>
+            <span className={viewStyles.titleRow}>
+              <span className={viewStyles.title}>{session.title || session.id}</span>
+              <span className={viewStyles.time}>{formatRelativeTime(session.lastAt)}</span>
+            </span>
           <span className={viewStyles.meta}>
             <span className={viewStyles.project}>{session.cwd ? projectLabel(session.cwd) : t('agent.unknownProject')}</span>
             <span>{t('project.sessionMessages', { n: formatCompactNumber(session.messages) })}</span>
@@ -70,6 +71,8 @@ export function AgentSessionsView({ sessions, loading, error, onRetry, onOpenPro
               <span>{session.model}</span>
             </span>}
           </span>
+          </button>
+          <SessionQuickActions session={session} />
         </div>)}
       </section>)}
     </div>}

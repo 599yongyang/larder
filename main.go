@@ -1,12 +1,11 @@
 package main
 
 import (
-	"context"
 	"embed"
 	"log"
 	"os"
 	"runtime"
-	"time"
+	"strings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -61,14 +60,6 @@ func main() {
 	// app zip and a checksums.txt sidecar; Windows keeps the manual installer.
 	if runtime.GOOS == "darwin" {
 		providers := make([]updater.Provider, 0, 2)
-		if endpointProvider, endpointErr := endpoint.New(endpoint.Config{
-			URL:     "https://raw.githubusercontent.com/599yongyang/larder/main/updates/macos-arm64.json",
-			Channel: "stable",
-		}); endpointErr != nil {
-			log.Printf("updater endpoint: %v", endpointErr)
-		} else {
-			providers = append(providers, endpointProvider)
-		}
 		if githubProvider, githubErr := github.New(github.Config{
 			Repository:    "599yongyang/larder",
 			ChecksumAsset: "checksums.txt",
@@ -77,12 +68,20 @@ func main() {
 		} else {
 			providers = append(providers, githubProvider)
 		}
+		if endpointProvider, endpointErr := endpoint.New(endpoint.Config{
+			URL:     "https://raw.githubusercontent.com/599yongyang/larder/main/updates/macos-arm64.json",
+			Channel: "stable",
+		}); endpointErr != nil {
+			log.Printf("updater endpoint: %v", endpointErr)
+		} else {
+			providers = append(providers, endpointProvider)
+		}
 		if len(providers) == 0 {
 			log.Printf("updater: no providers configured")
 		} else if initErr := app.Updater.Init(updater.Config{
 			CurrentVersion: larder.Version,
 			Providers:      providers,
-			CheckInterval:  6 * time.Hour,
+			Window:         updater.WindowNone,
 		}); initErr != nil {
 			log.Printf("updater: %v", initErr)
 		}
@@ -117,41 +116,6 @@ func main() {
 			window.EmitEvent("larder:files-dropped", folders)
 		}
 	})
-	if runtime.GOOS == "darwin" {
-		appMenu := application.NewAppMenu()
-		extra := app.NewMenu()
-		settings := extra.Add("Settings…")
-		settings.SetAccelerator("CmdOrCtrl+,")
-		settings.OnClick(func(_ *application.Context) {
-			window.Show()
-			window.Focus()
-			window.EmitEvent("larder:open-settings")
-		})
-		extra.Add("Check for Updates…").OnClick(func(_ *application.Context) {
-			go func() {
-				if err := app.Updater.CheckAndInstall(context.Background()); err != nil {
-					log.Printf("updater: %v", err)
-				}
-			}()
-		})
-		appMenu.GetSubmenu().Prepend(extra)
-		menu := app.NewMenu()
-		menu.Append(application.NewMenuFromItems(
-			appMenu,
-			application.NewFileMenu(),
-			application.NewEditMenu(),
-			application.NewWindowMenu(),
-			application.NewHelpMenu(),
-		))
-		app.Menu.SetApplicationMenu(menu)
-	}
-	if err := app.GlobalShortcut.Register("CmdOrCtrl+Shift+L", func() {
-		window.Show()
-		window.Focus()
-		window.EmitEvent("larder:open-command")
-	}); err != nil {
-		log.Printf("global shortcut: %v", err)
-	}
 	tray := app.SystemTray.New()
 	tray.SetIcon(trayIcon)
 	tray.SetTooltip("Larder")
@@ -160,16 +124,25 @@ func main() {
 		window.Focus()
 	})
 	trayMenu := app.NewMenu()
-	trayMenu.Add("打开 Larder").OnClick(func(_ *application.Context) {
-		window.Show()
-		window.Focus()
-	})
-	trayMenu.Add("退出").OnClick(func(_ *application.Context) {
-		app.Quit()
-	})
-	tray.SetMenu(trayMenu)
+	setTrayLocale := func(locale string) {
+		openLabel, quitLabel := "Open Larder", "Quit Larder"
+		if strings.HasPrefix(strings.ToLower(locale), "zh") {
+			openLabel, quitLabel = "打开 Larder", "退出 Larder"
+		}
+		trayMenu.Clear()
+		trayMenu.Add(openLabel).OnClick(func(_ *application.Context) {
+			window.Show()
+			window.Focus()
+		})
+		trayMenu.Add(quitLabel).OnClick(func(_ *application.Context) {
+			app.Quit()
+		})
+		tray.SetMenu(trayMenu)
+	}
+	setTrayLocale("en")
 	service.SetApp(app)
-	service.InstallNativeContextMenu()
+	larder.SetLocaleListener(service, setTrayLocale)
+	service.InstallNativeMenus()
 	service.Startup()
 	if err := app.Run(); err != nil {
 		service.Shutdown()

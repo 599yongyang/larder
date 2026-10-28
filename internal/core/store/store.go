@@ -482,6 +482,13 @@ func (s *Store) LoadSettings(ctx context.Context) (model.Settings, error) {
 	if settings.TrashRetentionDays == 0 {
 		settings.TrashRetentionDays = 30
 	}
+	if settings.GlobalShortcutEnabled == nil {
+		enabled := true
+		settings.GlobalShortcutEnabled = &enabled
+	}
+	if strings.TrimSpace(settings.GlobalShortcut) == "" {
+		settings.GlobalShortcut = "CmdOrCtrl+Shift+L"
+	}
 	return settings, nil
 }
 

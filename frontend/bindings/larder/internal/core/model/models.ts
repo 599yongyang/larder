@@ -387,6 +387,8 @@ export interface Settings {
     "updateCheckIntervalHours": number;
     "snapshotRetention": number;
     "trashRetentionDays": number;
+    "globalShortcutEnabled"?: boolean | null;
+    "globalShortcut"?: string;
 }
 
 export enum Severity {
@@ -424,6 +426,7 @@ export interface Skill {
     "copyDrift": boolean;
     "icon"?: string;
     "iconSource"?: string;
+    "iconRoot"?: string;
     "bins"?: string[] | null;
     "origin"?: string;
     "originDetail"?: string;

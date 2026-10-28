@@ -17,7 +17,7 @@
         PackageDisplayName="Larder"
         PublisherName="CN=Larder contributors"
         PublisherDisplayName="Larder contributors"
-        Version="0.0.7.0"
+        Version="0.0.8.0"
         PackageDescription="Local Skills, MCP and CLI manager">
         <Capabilities>
             <Capability Name="runFullTrust" />

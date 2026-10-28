@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Command as CommandIcon, FileWarning, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { AgentIcon } from './AgentIcon'
 import { backend } from '../backend'
@@ -96,13 +99,13 @@ export function CommandEditorDialog({ command, convertFrom, targets, onClose, on
       <DialogHeader className="border-b px-6 py-4 pr-14"><DialogTitle className="flex items-center gap-2 text-base"><CommandIcon size={17} />{command ? t('commands.editCommand') : convertFrom ? t('commands.convertCommand') : t('commands.newCommand')}</DialogTitle><DialogDescription className="text-xs">{command ? t('commands.editHint') : convertFrom ? t('commands.convertHint') : t('commands.createHint')}</DialogDescription></DialogHeader>
       <div className="max-h-[68vh] overflow-y-auto px-6 py-5">
         {!plan ? <>
-          {!command && <label className={styles.commandField}><span>{t('commands.target')}</span><select value={selectedKey} onChange={(event) => { setSelectedKey(event.target.value); const next = allTargets.find((target) => targetKey(target) === event.target.value); if (next && !convertFrom) setContent(template(next.format)) }}>{allTargets.map((target) => <option key={targetKey(target)} value={targetKey(target)} title={target.rootPath}>{targetLabel(target)}</option>)}</select>{selected && <small className={styles.commandTargetPath}>{selected.rootPath}</small>}</label>}
+          {!command && <label className={styles.commandField}><span>{t('commands.target')}</span><Select value={selectedKey} onValueChange={(value) => { setSelectedKey(value); const next = allTargets.find((target) => targetKey(target) === value); if (next && !convertFrom) setContent(template(next.format)) }}><SelectTrigger size="sm" className="w-full"><SelectValue /></SelectTrigger><SelectContent>{allTargets.map((target) => <SelectItem key={targetKey(target)} value={targetKey(target)}><span title={target.rootPath}>{targetLabel(target)}</span></SelectItem>)}</SelectContent></Select>{selected && <small className={styles.commandTargetPath}>{selected.rootPath}</small>}</label>}
           {command && selected && <div className={styles.commandTargetStatic}><AgentIcon name={selected.agent} className="size-4" /><span>{targetLabel(selected)}</span><code>{command.path}</code></div>}
           <div className={styles.commandFieldRow}>
-            <label className={styles.commandField}><span>{t('commands.name')}</span><input value={name} disabled={Boolean(command)} onChange={(event) => setName(event.target.value)} placeholder="review" /></label>
+            <label className={styles.commandField}><span>{t('commands.name')}</span><Input className="!h-8" value={name} disabled={Boolean(command)} onChange={(event) => setName(event.target.value)} placeholder="review" /></label>
             {selected && <div className={styles.commandFormatHint}><span>{t('commands.format')}</span><strong>{selected.format === 'toml' ? 'TOML' : 'Markdown'}</strong></div>}
           </div>
-          <label className={styles.commandField}><span>{t('commands.content')}</span>{loading ? <div className={styles.commandLoading}><Loader2 size={14} className="animate-spin" />{t('common.loading')}</div> : <textarea className={styles.commandTextarea} value={content} readOnly={Boolean(convertFrom)} onChange={(event) => setContent(event.target.value)} spellCheck={false} aria-label={t('commands.content')} />}</label>
+          <label className={styles.commandField}><span>{t('commands.content')}</span>{loading ? <div className={styles.commandLoading}><Loader2 size={14} className="animate-spin" />{t('common.loading')}</div> : <Textarea className={styles.commandTextarea} value={content} readOnly={Boolean(convertFrom)} onChange={(event) => setContent(event.target.value)} spellCheck={false} aria-label={t('commands.content')} />}</label>
           {error && <p className={styles.planError} role="alert">{error}</p>}
         </> : <div className={styles.commandPlan}>
           <div className={styles.commandPlanHead}><div><strong>{plan.operation === 'command_create' ? t('commands.createPlan') : plan.operation === 'command_convert' ? t('commands.convertPlan') : t('commands.updatePlan')}</strong><small>{plan.path}</small></div>{plan.exists && <span className={styles.commandPlanWarn}>{t('commands.overwrite')}</span>}</div>

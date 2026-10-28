@@ -1,12 +1,16 @@
 package skills
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
 	"io/fs"
 	"path/filepath"
 	"sort"
@@ -28,14 +32,17 @@ func NewScanner(fs platform.FileSystem) *Scanner {
 	return &Scanner{FS: fs}
 }
 
-type Options struct {
-	Roots        []platform.RootSpec
-	LockfilePath string
+type SourceOverride struct {
+	Source     string `json:"source"`
+	SourceType string `json:"sourceType"`
+	SourceURL  string `json:"sourceUrl"`
+	SkillPath  string `json:"skillPath"`
 }
 
-type lockFile struct {
-	Version int                  `json:"version"`
-	Skills  map[string]lockSkill `json:"skills"`
+type Options struct {
+	Roots            []platform.RootSpec
+	SourceIndexPaths []string
+	SourceOverrides  map[string]SourceOverride
 }
 
 type lockSkill struct {
@@ -48,6 +55,21 @@ type lockSkill struct {
 	UpdatedAt   string `json:"updatedAt,omitempty"`
 }
 
+type sourceEntry struct {
+	Name       string          `json:"name"`
+	Source     json.RawMessage `json:"source"`
+	SourceType string          `json:"sourceType"`
+	SourceURL  string          `json:"sourceUrl"`
+	SkillPath  string          `json:"skillPath"`
+	PluginName string          `json:"pluginName,omitempty"`
+	SourceInfo struct {
+		Kind string `json:"kind"`
+		Repo string `json:"repo"`
+		Dir  string `json:"dir"`
+		Path string `json:"path"`
+	}
+}
+
 func (s *Scanner) Scan(ctx context.Context, opts Options) (model.ScanResult, error) {
 	started := time.Now()
 	result := model.ScanResult{SchemaVersion: model.SchemaVersion, StartedAt: started, Status: model.ScanComplete}
@@ -57,7 +79,7 @@ func (s *Scanner) Scan(ctx context.Context, opts Options) (model.ScanResult, err
 		return result, errors.New("no scan roots configured")
 	}
 
-	locks, lockIssues := s.readLockfile(opts.LockfilePath)
+	locks, lockIssues := s.readSourceIndexes(opts.SourceIndexPaths)
 	result.LockSkills = lockRecords(locks)
 	result.Issues = append(result.Issues, lockIssues...)
 
@@ -213,6 +235,22 @@ func (s *Scanner) Scan(ctx context.Context, opts Options) (model.ScanResult, err
 	// partial. Broken links, missing SKILL.md and invalid frontmatter are data
 	// findings, not incomplete scans (ADR-0022, ADR-0029). Never translate an
 	// unavailable/not-installed root into missing cells.
+	for index := range result.Skills {
+		override, ok := opts.SourceOverrides[filepath.Clean(result.Skills[index].Path)]
+		if !ok {
+			// Legacy files were keyed by skill name; keep them readable until
+			// the user rebinds or rescans.
+			override, ok = opts.SourceOverrides[result.Skills[index].Name]
+		}
+		if !ok {
+			continue
+		}
+		skill := &result.Skills[index]
+		skill.Source, skill.SourceType, skill.SourceURL, skill.SkillPath = override.Source, override.SourceType, override.SourceURL, override.SkillPath
+		skill.Locked = true
+		skill.Origin = "manual"
+	}
+	s.propagateSkillSources(&result)
 	dedupeBrokenAgentLocalSkills(&result)
 
 	// Only incomplete reads make the scan partial. Broken links, missing
@@ -230,29 +268,146 @@ func (s *Scanner) Scan(ctx context.Context, opts Options) (model.ScanResult, err
 	return result, nil
 }
 
-func (s *Scanner) readLockfile(path string) (map[string]lockSkill, []model.ScanIssue) {
-	if strings.TrimSpace(path) == "" {
-		return map[string]lockSkill{}, nil
-	}
-	b, err := s.FS.ReadFile(path)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return map[string]lockSkill{}, nil
+func (s *Scanner) propagateSkillSources(result *model.ScanResult) {
+	byContent := map[string]model.Skill{}
+	byFolder := map[string]model.Skill{}
+	for _, skill := range result.Skills {
+		if skill.Source == "" {
+			continue
 		}
-		kind := "lockfile_error"
-		if platform.IsPermissionError(err) {
-			kind = "permission"
+		if skill.ContentHash != "" {
+			if _, exists := byContent[skill.ContentHash]; !exists {
+				byContent[skill.ContentHash] = skill
+			}
 		}
-		return map[string]lockSkill{}, []model.ScanIssue{issue(kind, path, err.Error(), true)}
+		if skill.FolderHash != "" {
+			if _, exists := byFolder[skill.FolderHash]; !exists {
+				byFolder[skill.FolderHash] = skill
+			}
+		}
 	}
-	var lf lockFile
-	if err := json.Unmarshal(b, &lf); err != nil {
-		return map[string]lockSkill{}, []model.ScanIssue{issue("lockfile_error", path, err.Error(), true)}
+	for index := range result.Skills {
+		skill := &result.Skills[index]
+		if skill.Source != "" {
+			continue
+		}
+		var source model.Skill
+		var ok bool
+		if skill.FolderHash != "" {
+			source, ok = byFolder[skill.FolderHash]
+		}
+		if !ok && skill.ContentHash != "" {
+			source, ok = byContent[skill.ContentHash]
+		}
+		if !ok {
+			continue
+		}
+		skill.Source, skill.SourceType, skill.SourceURL = source.Source, source.SourceType, source.SourceURL
+		skill.SkillPath, skill.Locked = source.SkillPath, source.Locked
+		skill.Origin, skill.OriginDetail = "content", source.Source
 	}
-	if lf.Skills == nil {
-		lf.Skills = map[string]lockSkill{}
+}
+
+func (s *Scanner) readSourceIndexes(paths []string) (map[string]lockSkill, []model.ScanIssue) {
+	sources := map[string]lockSkill{}
+	var issues []model.ScanIssue
+	for _, path := range paths {
+		if strings.TrimSpace(path) == "" {
+			continue
+		}
+		raw, err := s.FS.ReadFile(path)
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			kind := "source_index_error"
+			if platform.IsPermissionError(err) {
+				kind = "permission"
+			}
+			issues = append(issues, issue(kind, path, err.Error(), true))
+			continue
+		}
+		var envelope struct {
+			Skills json.RawMessage `json:"skills"`
+		}
+		if json.Unmarshal(raw, &envelope) != nil || len(envelope.Skills) == 0 {
+			continue
+		}
+		var list []sourceEntry
+		if json.Unmarshal(envelope.Skills, &list) != nil {
+			var object map[string]sourceEntry
+			if json.Unmarshal(envelope.Skills, &object) != nil {
+				continue
+			}
+			for name, entry := range object {
+				entry.Name = name
+				list = append(list, entry)
+			}
+		}
+		for _, entry := range list {
+			name := strings.TrimSpace(entry.Name)
+			if name == "" {
+				continue
+			}
+			normalized, ok := normalizeSource(entry)
+			if !ok {
+				continue
+			}
+			if _, exists := sources[name]; !exists {
+				sources[name] = normalized
+			}
+		}
 	}
-	return lf.Skills, nil
+	return sources, issues
+}
+
+func normalizeSource(entry sourceEntry) (lockSkill, bool) {
+	var object struct {
+		Kind string `json:"kind"`
+		Repo string `json:"repo"`
+		Dir  string `json:"dir"`
+		Path string `json:"path"`
+	}
+	_ = json.Unmarshal(entry.Source, &object)
+	source := strings.TrimSpace(object.Repo)
+	sourceType := strings.TrimSpace(entry.SourceType)
+	sourceURL := strings.TrimSpace(entry.SourceURL)
+	skillPath := strings.TrimSpace(entry.SkillPath)
+	if source == "" {
+		_ = json.Unmarshal(entry.Source, &source)
+	}
+	if object.Kind == "github" {
+		sourceType = "github"
+		source = strings.TrimSpace(object.Repo)
+		if source != "" && sourceURL == "" {
+			sourceURL = "https://github.com/" + source
+		}
+		if skillPath == "" {
+			skillPath = object.Path
+		}
+	} else if object.Kind == "folder" {
+		sourceType = "folder"
+		source = strings.TrimSpace(object.Dir)
+		if sourceURL == "" {
+			sourceURL = source
+		}
+		if skillPath == "" {
+			skillPath = object.Path
+		}
+	}
+	if source == "" && sourceURL == "" && skillPath == "" {
+		return lockSkill{}, false
+	}
+	if sourceType == "" && strings.HasPrefix(sourceURL, "https://github.com/") {
+		sourceType = "github"
+	}
+	if sourceType == "" && sourceURL != "" {
+		sourceType = "url"
+	}
+	if sourceType == "" {
+		sourceType = "local"
+	}
+	return lockSkill{Source: source, SourceType: sourceType, SourceURL: sourceURL, SkillPath: skillPath, PluginName: entry.PluginName}, true
 }
 
 func lockRecords(locks map[string]lockSkill) []model.LockSkill {
@@ -298,17 +453,35 @@ func (s *Scanner) scanSkill(root platform.RootSpec, name string, locked lockSkil
 		// the whole scan partial.
 		return nil, nil
 	}
-	content, desc, hasMD, mdIssue := s.readSkillMarkdown(filepath.Join(resolvedPath, "SKILL.md"))
+	content, frontmatter, hasMD, mdIssue := s.readSkillMarkdown(filepath.Join(resolvedPath, "SKILL.md"))
+	desc := frontmatter.Description
 	bins := parseRequiredBins(content)
 	contentHash, folderHash, hashIssue := s.hashDirectory(resolvedPath)
-	icon, iconSource := s.findSkillIcon(path, content)
+	icon, iconSource := s.findSkillIcon(resolvedPath, content)
+	iconRoot := resolvedPath
+	if icon == "" {
+		icon, iconRoot, iconSource = s.findPluginIcon(resolvedPath)
+	}
 	skill := &model.Skill{
 		ID: skillID(root.ID, path), Name: name, Path: path, RootID: root.ID, RootKind: model.RootKind(root.Kind),
 		Source: locked.Source, SourceType: locked.SourceType, SourceURL: locked.SourceURL, SkillPath: locked.SkillPath,
 		Locked: locked.Source != "" || locked.SourceURL != "" || locked.SkillPath != "", HasSkillMD: hasMD,
 		Description: desc, DescChars: len([]rune(desc)), DescTokens: estimateTokens(desc), FolderHash: folderHash, ContentHash: contentHash,
 		ScanState: "ok", ScannedAt: time.Now(), IsProject: root.Kind == platform.RootProject,
-		Icon: icon, IconSource: iconSource, Bins: bins,
+		Icon: icon, IconSource: iconSource, IconRoot: iconRoot, Bins: bins,
+	}
+	if skill.Source == "" && (frontmatter.Source != "" || frontmatter.SourceURL != "") {
+		skill.Source, skill.SourceURL, skill.SkillPath = frontmatter.Source, frontmatter.SourceURL, frontmatter.SkillPath
+		skill.SourceType = "frontmatter"
+		skill.Locked = true
+		skill.Origin = "frontmatter"
+	}
+	if skill.Source == "" {
+		skill.Origin = "local"
+		if isLink {
+			skill.Origin = "linked"
+			skill.OriginDetail = resolvedPath
+		}
 	}
 	if mdIssue != nil {
 		return skill, mdIssue
@@ -318,6 +491,77 @@ func (s *Scanner) scanSkill(root platform.RootSpec, name string, locked lockSkil
 	}
 	_ = content
 	return skill, nil
+}
+
+// findPluginIcon walks up from a cached plugin skill to its plugin root and
+// resolves a local icon or a manifest-provided icon URL. Codex and other
+// plugin caches keep assets outside the individual skill folder.
+func (s *Scanner) findPluginIcon(dir string) (string, string, string) {
+	normalized := filepath.ToSlash(strings.ToLower(dir))
+	if !strings.Contains(normalized, "/plugins/") {
+		return "", "", ""
+	}
+	current := filepath.Clean(dir)
+	for depth := 0; depth < 5; depth++ {
+		for _, manifest := range []string{"plugin.json", ".codex-plugin/plugin.json", ".claude-plugin/plugin.json", ".cursor-plugin/plugin.json", ".kimi-plugin/plugin.json", ".omp-plugin/plugin.json"} {
+			path := filepath.Join(current, manifest)
+			raw, err := s.FS.ReadFile(path)
+			if err != nil {
+				continue
+			}
+			var meta struct {
+				Icon    string `json:"icon"`
+				Logo    string `json:"logo"`
+				IconURL string `json:"iconUrl"`
+				LogoURL string `json:"logoUrl"`
+			}
+			_ = json.Unmarshal(raw, &meta)
+			for _, value := range []string{meta.Icon, meta.Logo, meta.IconURL, meta.LogoURL} {
+				value = strings.TrimSpace(value)
+				if value == "" {
+					continue
+				}
+				if strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://") || strings.HasPrefix(value, "data:") {
+					return value, "", "plugin"
+				}
+				candidate := filepath.Join(current, filepath.FromSlash(value))
+				if info, err := s.FS.Stat(candidate); err == nil && !info.IsDir() {
+					return candidate, current, "plugin"
+				}
+			}
+			for _, candidate := range []string{"icon.svg", "icon.png", "icon.webp", "icon.jpg", "icon.jpeg", "logo.svg", "logo.png", "logo.webp", "logo.jpg", "logo.jpeg", "assets/icon.svg", "assets/icon.png", "assets/icon.webp", "assets/icon.jpg", "assets/logo.svg", "assets/logo.png", "assets/logo.webp"} {
+				candidatePath := filepath.Join(current, candidate)
+				if info, err := s.FS.Stat(candidatePath); err == nil && !info.IsDir() {
+					return candidatePath, current, "plugin"
+				}
+			}
+			for _, candidate := range []string{"assets/profile.png", "assets/profile.jpg", "assets/profile.jpeg"} {
+				candidatePath := filepath.Join(current, candidate)
+				if s.isSquareImage(candidatePath) {
+					return candidatePath, current, "plugin"
+				}
+			}
+			break
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	return "", "", ""
+}
+
+func (s *Scanner) isSquareImage(path string) bool {
+	raw, err := s.FS.ReadFile(path)
+	if err != nil || len(raw) == 0 || len(raw) > 2<<20 {
+		return false
+	}
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(raw))
+	if err != nil || (format != "png" && format != "jpeg") {
+		return false
+	}
+	return cfg.Width > 0 && cfg.Width == cfg.Height && cfg.Width >= 128
 }
 
 func (s *Scanner) findSkillIcon(dir, content string) (string, string) {
@@ -501,24 +745,23 @@ func (s *Scanner) inspectAgentEntry(path, name, rootID string, canonical map[str
 	return model.AgentLink{RootID: rootID, Mode: model.LinkLocal, Path: path, Visible: true, Reason: "仅存在于该 Agent 目录"}
 }
 
-func (s *Scanner) readSkillMarkdown(path string) (string, string, bool, *model.ScanIssue) {
+func (s *Scanner) readSkillMarkdown(path string) (string, frontmatter, bool, *model.ScanIssue) {
 	b, err := s.FS.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return "", "", false, ptrIssue(issue("missing_skill_md", path, "缺少 SKILL.md", true))
+			return "", frontmatter{}, false, ptrIssue(issue("missing_skill_md", path, "缺少 SKILL.md", true))
 		}
 		kind := "scan_failure"
 		if platform.IsPermissionError(err) {
 			kind = "permission"
 		}
-		return "", "", false, ptrIssue(issue(kind, path, err.Error(), true))
+		return "", frontmatter{}, false, ptrIssue(issue(kind, path, err.Error(), true))
 	}
-	name, description, ok := parseFrontmatter(string(b))
+	parsed, ok := parseFrontmatter(string(b))
 	if !ok {
-		return "", "", true, ptrIssue(issue("invalid_frontmatter", path, "SKILL.md 缺少可解析的 frontmatter", true))
+		return "", frontmatter{}, true, ptrIssue(issue("invalid_frontmatter", path, "SKILL.md 缺少可解析的 frontmatter", true))
 	}
-	_ = name
-	return string(b), description, true, nil
+	return string(b), parsed, true, nil
 }
 
 func (s *Scanner) hashDirectory(root string) (contentHash, folderHash string, scanIssue *model.ScanIssue) {
@@ -602,23 +845,42 @@ func parseRequiredBins(content string) []string {
 	return bins
 }
 
-func parseFrontmatter(content string) (name, description string, ok bool) {
+type frontmatter struct {
+	Name        string
+	Description string
+	Source      string
+	SourceURL   string
+	SkillPath   string
+}
+
+func parseFrontmatter(content string) (frontmatter, bool) {
+	var result frontmatter
 	if !strings.HasPrefix(content, "---") {
-		return "", "", false
+		return result, false
 	}
 	rest := content[3:]
 	end := strings.Index(rest, "\n---")
 	if end < 0 {
-		return "", "", false
+		return result, false
 	}
 	lines := strings.Split(rest[:end], "\n")
 	for i := 0; i < len(lines); i++ {
-		trimmed := strings.TrimSpace(lines[i])
-		switch {
-		case strings.HasPrefix(trimmed, "name:") && name == "":
-			name = strings.Trim(strings.TrimSpace(strings.TrimPrefix(trimmed, "name:")), "\"'")
-		case strings.HasPrefix(trimmed, "description:"):
-			value := strings.TrimSpace(strings.TrimPrefix(trimmed, "description:"))
+		raw := lines[i]
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		indented := strings.HasPrefix(raw, " ") || strings.HasPrefix(raw, "\t")
+		if !indented && strings.HasSuffix(trimmed, ":") {
+			continue
+		}
+		key, value, found := strings.Cut(trimmed, ":")
+		if !found {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		value = strings.Trim(strings.TrimSpace(value), "\"'")
+		if key == "description" {
 			if value == "" || value == ">" || value == "|" || value == ">-" || value == "|-" {
 				var parts []string
 				for j := i + 1; j < len(lines); j++ {
@@ -629,10 +891,42 @@ func parseFrontmatter(content string) (name, description string, ok bool) {
 				}
 				value = strings.Join(parts, " ")
 			}
-			description = strings.Trim(strings.TrimSpace(value), "\"'")
+			result.Description = value
+		}
+		if key == "name" {
+			result.Name = value
+		}
+		switch key {
+		case "source", "repository", "repo":
+			if key == "source" && value != "" {
+				result.Source = value
+			} else if result.Source == "" {
+				result.Source = value
+			}
+		case "homepage", "url", "source_url", "sourceUrl":
+			if result.SourceURL == "" {
+				result.SourceURL = value
+			}
+		case "path", "skill_path", "skillPath", "upstream":
+			if result.SkillPath == "" {
+				result.SkillPath = value
+			}
 		}
 	}
-	return name, description, true
+	if strings.HasPrefix(result.Source, "http") {
+		if result.SourceURL == "" {
+			result.SourceURL = result.Source
+		}
+		result.Source = ""
+	}
+	if result.SourceURL == "" && strings.Contains(result.Source, "/") {
+		result.SourceURL = "https://github.com/" + result.Source
+	}
+	if result.Source == "" && strings.Contains(result.SourceURL, "github.com/") {
+		parts := strings.SplitN(result.SourceURL, "github.com/", 2)
+		result.Source = strings.TrimSuffix(parts[1], ".git")
+	}
+	return result, true
 }
 
 func estimateTokens(value string) int {

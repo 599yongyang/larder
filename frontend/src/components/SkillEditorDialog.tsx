@@ -3,6 +3,8 @@ import { AlertTriangle, ArrowLeft, FilePenLine, Loader2 } from 'lucide-react'
 import { FileDiff } from './ai/file-diff'
 import { lineDiff } from '../lib/lineDiff'
 import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { MarkdownPreview, splitFrontmatter } from './MarkdownPreview'
 import { backend } from '../backend'
 import { backendErrorMessage } from '../lib/backendError'
@@ -57,10 +59,11 @@ export function SkillEditorPanel({ skill, onBack, onSaved }: { skill: Skill; onB
     }
   }
 
+  const [confirmDiscard, setConfirmDiscard] = useState(false)
   const back = () => {
     if (busy) return
+    if (!plan && content !== initialContent) { setConfirmDiscard(true); return }
     if (plan) void backend.cancelSkillEdit(plan.id)
-    if (!plan && content !== initialContent && !window.confirm(t('skills.discardChanges'))) return
     onBack()
   }
   const { meta, body } = splitFrontmatter(content)
@@ -81,7 +84,7 @@ export function SkillEditorPanel({ skill, onBack, onSaved }: { skill: Skill; onB
           </div>
           <span className={styles.skillEditorPath}>{skill.path}</span>
         </div>
-        {loading ? <div className={styles.commandLoading}><Loader2 size={14} className="animate-spin" />{t('common.loading')}</div> : tab === 'edit' ? <textarea className={`${styles.commandTextarea} ${styles.skillEditorTextarea}`} value={content} onChange={(event) => setContent(event.target.value)} spellCheck={false} aria-label={t('skills.skillContent')} /> : <div className={styles.skillEditorPreview}>{meta.length > 0 && <dl className={styles.definition}>{meta.map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}</dl>}<MarkdownPreview source={body} /></div>}
+        {loading ? <div className={styles.commandLoading}><Loader2 size={14} className="animate-spin" />{t('common.loading')}</div> : tab === 'edit' ? <Textarea className={`${styles.commandTextarea} ${styles.skillEditorTextarea}`} value={content} onChange={(event) => setContent(event.target.value)} spellCheck={false} aria-label={t('skills.skillContent')} /> : <div className={styles.skillEditorPreview}>{meta.length > 0 && <dl className={styles.definition}>{meta.map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}</dl>}<MarkdownPreview source={body} /></div>}
         {error && <p className={styles.planError} role="alert">{error}</p>}
       </> : <div className={styles.commandPlan}>
         <div className={styles.commandPlanHead}><div><strong>{t('skills.skillPlan')}</strong><small>{plan.path}</small></div></div>
@@ -96,5 +99,11 @@ export function SkillEditorPanel({ skill, onBack, onSaved }: { skill: Skill; onB
         {!plan ? <Button size="sm" disabled={busy || loading || !changed} title={changed ? t('skills.savePlanHint') : t('skills.noChangesToSave')} onClick={() => void planEdit()}>{busy && <Loader2 size={13} className="animate-spin" />}{t('skills.saveSkill')}</Button> : <><Button size="sm" variant="outline" onClick={() => setPlan(undefined)} disabled={busy}>{t('skills.backToEdit')}</Button><Button size="sm" onClick={() => void apply()} disabled={busy}>{busy && <Loader2 size={13} className="animate-spin" />}{t('skills.applyChanges')}</Button></>}
       </div>
     </footer>
+    <Dialog open={confirmDiscard} onOpenChange={setConfirmDiscard}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader><DialogTitle>{t('skills.discardChangesTitle')}</DialogTitle><DialogDescription>{t('skills.discardChanges')}</DialogDescription></DialogHeader>
+        <DialogFooter><Button size="sm" variant="outline" onClick={() => setConfirmDiscard(false)}>{t('common.cancel')}</Button><Button size="sm" variant="destructive" onClick={onBack}>{t('skills.discardAndBack')}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 }

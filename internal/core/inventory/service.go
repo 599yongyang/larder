@@ -27,16 +27,17 @@ import (
 )
 
 type Service struct {
-	paths        platform.LocalPaths
-	fs           platform.FileSystem
-	store        *store.Store
-	scanner      *skills.Scanner
-	cliScanner   *clis.Scanner
-	runner       platform.CommandRunner
-	fetcher      platform.Fetcher
-	linker       platform.Linker
-	snapshotRoot string
-	pendingPlans map[string]model.Plan
+	paths           platform.LocalPaths
+	fs              platform.FileSystem
+	store           *store.Store
+	scanner         *skills.Scanner
+	cliScanner      *clis.Scanner
+	runner          platform.CommandRunner
+	fetcher         platform.Fetcher
+	linker          platform.Linker
+	snapshotRoot    string
+	sourceOverrides map[string]skills.SourceOverride
+	pendingPlans    map[string]model.Plan
 
 	mu       sync.RWMutex
 	latest   model.ScanResult
@@ -49,7 +50,7 @@ func NewService(paths platform.LocalPaths, fs platform.FileSystem, db *store.Sto
 	if fs == nil {
 		fs = platform.OSFileSystem{}
 	}
-	return &Service{paths: paths, fs: fs, store: db, scanner: skills.NewScanner(fs), cliScanner: clis.NewScanner(fs), runner: platform.OSCommandRunner{}, fetcher: platform.NewCachedFetcher(platform.HTTPFetcher{}, 2*time.Minute, 6), linker: platform.OSLinker{}, pendingPlans: map[string]model.Plan{}}
+	return &Service{paths: paths, fs: fs, store: db, sourceOverrides: map[string]skills.SourceOverride{}, scanner: skills.NewScanner(fs), cliScanner: clis.NewScanner(fs), runner: platform.OSCommandRunner{}, fetcher: platform.NewCachedFetcher(platform.HTTPFetcher{}, 2*time.Minute, 6), linker: platform.OSLinker{}, pendingPlans: map[string]model.Plan{}}
 }
 
 func (s *Service) LoadCache(ctx context.Context) (model.ScanResult, bool, error) {
@@ -222,6 +223,16 @@ func (s *Service) Snapshot() model.ScanResult {
 	return s.latest
 }
 
+func (s *Service) sourceOverridesSnapshot() map[string]skills.SourceOverride {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	copied := make(map[string]skills.SourceOverride, len(s.sourceOverrides))
+	for path, override := range s.sourceOverrides {
+		copied[path] = override
+	}
+	return copied
+}
+
 func (s *Service) Scan(ctx context.Context) (model.ScanResult, error) {
 	s.scanMu.Lock()
 	defer s.scanMu.Unlock()
@@ -282,7 +293,7 @@ func (s *Service) Scan(ctx context.Context) (model.ScanResult, error) {
 		}
 		visibleRoots = append(visibleRoots, root)
 	}
-	result, scanErr := s.scanner.Scan(ctx, skills.Options{Roots: visibleRoots, LockfilePath: s.paths.LockfilePath(home)})
+	result, scanErr := s.scanner.Scan(ctx, skills.Options{Roots: visibleRoots, SourceIndexPaths: s.paths.SkillSourceIndexPaths(home), SourceOverrides: s.sourceOverridesSnapshot()})
 	result.ProjectRoots = projectRoots
 	if len(projectIssues) > 0 {
 		result.Issues = append(result.Issues, projectIssues...)
@@ -389,6 +400,10 @@ func (s *Service) CheckUpdates(ctx context.Context) (model.UpdateReport, error) 
 }
 
 func (s *Service) SetSnapshotRoot(path string) { s.snapshotRoot = path }
+
+func (s *Service) SetSkillSourceOverrides(overrides map[string]skills.SourceOverride) {
+	s.sourceOverrides = overrides
+}
 
 // PruneSnapshots keeps the newest max snapshot directories. Operations keep
 // only their last 50 records, so older snapshots can no longer be reached from
@@ -1257,9 +1272,13 @@ func (s *Service) SkillIcon(ctx context.Context, skillID string) (string, error)
 	if strings.HasPrefix(skill.Icon, "http://") || strings.HasPrefix(skill.Icon, "https://") || strings.HasPrefix(skill.Icon, "data:") {
 		return skill.Icon, nil
 	}
-	rel, err := filepath.Rel(skill.Path, skill.Icon)
+	iconRoot := skill.Path
+	if skill.IconRoot != "" {
+		iconRoot = skill.IconRoot
+	}
+	rel, err := filepath.Rel(iconRoot, skill.Icon)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", errors.New("icon is outside the skill folder")
+		return "", errors.New("icon is outside the skill or plugin folder")
 	}
 	raw, err := s.fs.ReadFile(skill.Icon)
 	if err != nil || len(raw) > 4<<20 {
