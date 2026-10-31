@@ -70,13 +70,12 @@ func ApplyLinkPlan(ctx context.Context, plan model.Plan, snapshotRoot string, fi
 			}
 			creates = append(creates, change)
 		case "replace_link":
-			info, err := filesystem.Lstat(change.Target)
-			if err != nil || info.Mode()&fs.ModeSymlink == 0 {
-				return op, fmt.Errorf("replace target is not a link: %s", change.Target)
+			if _, err := filesystem.Lstat(change.Target); err != nil {
+				return op, fmt.Errorf("replace target is missing: %s", change.Target)
 			}
-			old, err := filesystem.Readlink(change.Target)
-			if err != nil {
-				return op, err
+			old, isLink := linkTargetOf(filesystem, change.Target)
+			if !isLink {
+				return op, fmt.Errorf("replace target is not a link: %s", change.Target)
 			}
 			if !filepath.IsAbs(old) {
 				old = filepath.Join(filepath.Dir(change.Target), old)
@@ -98,13 +97,12 @@ func ApplyLinkPlan(ctx context.Context, plan model.Plan, snapshotRoot string, fi
 			}
 			syncs = append(syncs, change)
 		case "remove_link":
-			info, err := filesystem.Lstat(change.Target)
-			if err != nil || info.Mode()&fs.ModeSymlink == 0 {
-				return op, fmt.Errorf("remove target is not a symlink: %s", change.Target)
+			if _, err := filesystem.Lstat(change.Target); err != nil {
+				return op, fmt.Errorf("remove target is missing: %s", change.Target)
 			}
-			link, err := filesystem.Readlink(change.Target)
-			if err != nil {
-				return op, err
+			link, isLink := linkTargetOf(filesystem, change.Target)
+			if !isLink {
+				return op, fmt.Errorf("remove target is not a link: %s", change.Target)
 			}
 			if !filepath.IsAbs(link) {
 				link = filepath.Join(filepath.Dir(change.Target), link)
@@ -133,12 +131,10 @@ func ApplyLinkPlan(ctx context.Context, plan model.Plan, snapshotRoot string, fi
 	manifest := SnapshotManifest{ID: snapshotID, PlanID: plan.ID, CreatedAt: time.Now()}
 	for index, change := range plan.Changes {
 		entry := SnapshotTarget{RootID: change.RootID, Target: change.Target, Action: change.Action}
-		if info, err := filesystem.Lstat(change.Target); err == nil {
+		if _, err := filesystem.Lstat(change.Target); err == nil {
 			entry.Exists = true
-			if info.Mode()&fs.ModeSymlink != 0 {
-				if link, linkErr := filesystem.Readlink(change.Target); linkErr == nil {
-					entry.LinkTarget = link
-				}
+			if link, isLink := linkTargetOf(filesystem, change.Target); isLink {
+				entry.LinkTarget = link
 			}
 		}
 		if change.Action == "replace_copy" || change.Action == "sync_copy" {
@@ -226,11 +222,11 @@ func ApplyLinkPlan(ctx context.Context, plan model.Plan, snapshotRoot string, fi
 		op.Changes = append(op.Changes, "synced:"+change.Target)
 	}
 	for _, change := range disables {
-		old, err := filesystem.Readlink(change.Target)
-		if err != nil {
+		old, isLink := linkTargetOf(filesystem, change.Target)
+		if !isLink {
 			restoreCopies(manifest)
 			cleanup(linker, created)
-			return op, err
+			return op, fmt.Errorf("read link %s: not a link", change.Target)
 		}
 		removedLinks[change.Target] = old
 		if err := linker.Remove(change.Target); err != nil {
@@ -243,19 +239,18 @@ func ApplyLinkPlan(ctx context.Context, plan model.Plan, snapshotRoot string, fi
 		op.Changes = append(op.Changes, "removed:"+change.Target)
 	}
 	for _, change := range append(append(append([]model.PlanChange{}, creates...), replacements...), copies...) {
-		info, err := filesystem.Lstat(change.Target)
-		if err != nil || info.Mode()&fs.ModeSymlink == 0 {
+		if _, err := filesystem.Lstat(change.Target); err != nil {
 			restoreCopies(manifest)
 			restoreReplacements(linker, replacements, oldTargets)
 			cleanup(linker, created)
 			return op, fmt.Errorf("verify link %s: %v", change.Target, err)
 		}
-		link, err := filesystem.Readlink(change.Target)
-		if err != nil {
+		link, isLink := linkTargetOf(filesystem, change.Target)
+		if !isLink {
 			restoreCopies(manifest)
 			restoreReplacements(linker, replacements, oldTargets)
 			cleanup(linker, created)
-			return op, fmt.Errorf("verify link %s: %w", change.Target, err)
+			return op, fmt.Errorf("verify link %s: not a link", change.Target)
 		}
 		if !filepath.IsAbs(link) {
 			link = filepath.Join(filepath.Dir(change.Target), link)
@@ -317,17 +312,46 @@ func restoreCopy(target string, manifest SnapshotManifest) {
 	}
 }
 
+// linkTargetOf returns the target of path when path is a symbolic link or a
+// Windows directory junction.
+//
+// os.Lstat reports a Windows junction with ModeIrregular: it carries neither
+// ModeSymlink nor IsDir. Checking the mode bit alone therefore treats a
+// junction as a plain file, and the later os.ReadFile fails with
+// "Incorrect function". platform.OSFileSystem.Readlink detects the reparse
+// point attribute instead and covers both link kinds; os.Readlink is the
+// fallback for the cases the platform adapter cannot answer.
+//
+// The platform adapter may answer with EvalSymlinks, which on Windows returns
+// the link path itself when the target cannot be resolved. Such an answer can
+// never serve as a link target, so it is rejected.
+func linkTargetOf(filesystem platform.FileSystem, path string) (string, bool) {
+	if filesystem == nil {
+		filesystem = platform.OSFileSystem{}
+	}
+	if target, err := filesystem.Readlink(path); err == nil {
+		if filepath.Clean(target) != filepath.Clean(path) {
+			return target, true
+		}
+	}
+	if target, err := os.Readlink(path); err == nil {
+		return target, true
+	}
+	return "", false
+}
+
+// linkTarget is the OS-filesystem flavour of linkTargetOf.
+func linkTarget(path string) (string, bool) {
+	return linkTargetOf(nil, path)
+}
+
 func copyTree(source, target string) error {
+	if link, ok := linkTarget(source); ok {
+		return os.Symlink(link, target)
+	}
 	info, err := os.Lstat(source)
 	if err != nil {
 		return err
-	}
-	if info.Mode()&fs.ModeSymlink != 0 {
-		link, err := os.Readlink(source)
-		if err != nil {
-			return err
-		}
-		return os.Symlink(link, target)
 	}
 	if info.IsDir() {
 		if err := os.MkdirAll(target, info.Mode().Perm()); err != nil {
@@ -557,11 +581,10 @@ func RollbackSnapshot(snapshotDir string, filesystem platform.FileSystem, linker
 			}
 			continue
 		}
-		info, err := filesystem.Lstat(target.Target)
-		if err != nil {
+		if _, err := filesystem.Lstat(target.Target); err != nil {
 			continue
 		}
-		if info.Mode()&fs.ModeSymlink == 0 {
+		if _, isLink := linkTargetOf(filesystem, target.Target); !isLink {
 			return fmt.Errorf("refusing to remove non-link %s", target.Target)
 		}
 		if err := linker.Remove(target.Target); err != nil {
@@ -646,12 +669,9 @@ func CreateRestoreSnapshot(sourceSnapshotDir, snapshotRoot string) (string, erro
 			continue
 		}
 		entry := SnapshotTarget{Target: target.Target, Exists: true}
+		link, isLink := linkTarget(target.Target)
 		switch {
-		case info.Mode()&fs.ModeSymlink != 0:
-			link, readErr := os.Readlink(target.Target)
-			if readErr != nil {
-				return "", readErr
-			}
+		case isLink:
 			entry.Action = "replace_link"
 			entry.LinkTarget = link
 		case info.IsDir():
