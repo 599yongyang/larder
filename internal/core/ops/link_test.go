@@ -64,9 +64,9 @@ func TestApplyLinkPlanSnapshotsExecutesAndRollsBack(t *testing.T) {
 	if op.Status != "success" || op.SnapshotPath == "" {
 		t.Fatalf("op = %#v", op)
 	}
-	info, err := os.Lstat(target)
-	if err != nil || info.Mode()&os.ModeSymlink == 0 {
-		t.Fatal("target was not linked")
+	link, err := os.Readlink(target)
+	if err != nil || filepath.Clean(link) != filepath.Clean(source) {
+		t.Fatalf("link = %q err=%v", link, err)
 	}
 	if err := ops.RollbackSnapshot(op.SnapshotPath, platform.OSFileSystem{}, platform.OSLinker{}); err != nil {
 		t.Fatal(err)
@@ -143,9 +143,9 @@ func TestCopyToLinkSnapshotsAndRollsBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	info, err := os.Lstat(target)
-	if err != nil || info.Mode()&os.ModeSymlink == 0 {
-		t.Fatal("copy was not replaced with a link")
+	link, err := os.Readlink(target)
+	if err != nil || filepath.Clean(link) != filepath.Clean(source) {
+		t.Fatalf("link = %q err=%v", link, err)
 	}
 	if err := ops.RollbackSnapshot(op.SnapshotPath, platform.OSFileSystem{}, platform.OSLinker{}); err != nil {
 		t.Fatal(err)

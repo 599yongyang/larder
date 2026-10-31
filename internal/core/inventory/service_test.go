@@ -128,8 +128,9 @@ func TestPlanAndApplyLinkOperationUsesSnapshot(t *testing.T) {
 		t.Fatalf("operation = %#v", op)
 	}
 	target := filepath.Join(agentRoot, "alpha")
-	if info, err := os.Lstat(target); err != nil || info.Mode()&os.ModeSymlink == 0 {
-		t.Fatalf("target not linked: %v", err)
+	link, err := os.Readlink(target)
+	if err != nil || filepath.Clean(link) != filepath.Clean(skillDir) {
+		t.Fatalf("target not linked: link=%q err=%v", link, err)
 	}
 	operations, err := service.Operations(context.Background())
 	if err != nil || len(operations) != 1 {
@@ -191,14 +192,14 @@ func TestPlanCopyToLinkAndRollbackRestoresCopy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	info, err := os.Lstat(copyDir)
-	if err != nil || info.Mode()&os.ModeSymlink == 0 {
-		t.Fatalf("copy not converted to link: %v", err)
+	link, err := os.Readlink(copyDir)
+	if err != nil || filepath.Clean(link) != filepath.Clean(global) {
+		t.Fatalf("copy not converted to link: link=%q err=%v", link, err)
 	}
 	if _, err := service.RollbackOperation(context.Background(), op.ID); err != nil {
 		t.Fatal(err)
 	}
-	info, err = os.Lstat(copyDir)
+	info, err := os.Lstat(copyDir)
 	if err != nil || !info.IsDir() {
 		t.Fatalf("copy not restored: %v", err)
 	}
