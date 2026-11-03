@@ -347,7 +347,10 @@ func linkTarget(path string) (string, bool) {
 
 func copyTree(source, target string) error {
 	if link, ok := linkTarget(source); ok {
-		return os.Symlink(link, target)
+		// Use the platform linker instead of os.Symlink. On Windows,
+		// directory links are junctions and creating a symbolic link
+		// requires a privilege that ordinary users do not have.
+		return platform.OSLinker{}.Symlink(link, target)
 	}
 	info, err := os.Lstat(source)
 	if err != nil {

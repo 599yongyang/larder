@@ -143,3 +143,41 @@ func TestApplyUninstallSkillOnJunctionSucceedsAndKeepsTarget(t *testing.T) {
 		t.Fatalf("hub 实体被连带删除: %v", err)
 	}
 }
+
+func TestCopyTreeRestoresWindowsJunction(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("junction 只存在于 Windows")
+	}
+	base := t.TempDir()
+	real := filepath.Join(base, "real-skill")
+	if err := os.MkdirAll(real, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(real, "SKILL.md"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	junction := filepath.Join(base, "junction-skill")
+	if out, err := exec.Command("cmd", "/d", "/c", "mklink", "/J", junction, real).CombinedOutput(); err != nil {
+		t.Skipf("无法创建 junction: %v %s", err, out)
+	}
+	backup := filepath.Join(base, "backup")
+	if err := copyTree(junction, backup); err != nil {
+		t.Fatalf("备份 junction 失败: %v", err)
+	}
+	if err := os.Remove(junction); err != nil {
+		t.Fatalf("移除原 junction 失败: %v", err)
+	}
+	if err := copyTree(backup, junction); err != nil {
+		t.Fatalf("恢复 junction 失败: %v", err)
+	}
+	link, err := os.Readlink(junction)
+	if err != nil {
+		t.Fatalf("恢复结果不是链接: %v", err)
+	}
+	if filepath.Clean(link) != filepath.Clean(real) {
+		t.Fatalf("恢复目标不符: got %q, want %q", link, real)
+	}
+	if _, err := os.Stat(filepath.Join(real, "SKILL.md")); err != nil {
+		t.Fatalf("真实目录受损: %v", err)
+	}
+}
