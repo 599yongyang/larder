@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { AgentIcon } from './AgentIcon'
 import styles from '../App.module.css'
 import { t } from '../i18n'
+import { isMacPlatform } from '../lib/platform'
 import type { IgnoredAgent, Root } from '../types'
 
 export function AgentManagerDialog({ agents, ignored, onClose, onIgnore, onRestore, onCleanup }: { agents: Root[]; ignored: IgnoredAgent[]; onClose: () => void; onIgnore: (root: Root) => Promise<boolean>; onRestore: (path: string) => Promise<boolean>; onCleanup: (path: string) => Promise<boolean> }) {
@@ -37,7 +38,7 @@ export function AgentManagerDialog({ agents, ignored, onClose, onIgnore, onResto
             <Bot className="size-5 text-muted-foreground" />
             <div className={styles.agentManagerInfo}><strong>{agent.label}</strong><small>{agent.path}</small></div>
             <Button variant="outline" size="xs" disabled={Boolean(busy)} onClick={() => void run(agent.path, () => onRestore(agent.path), () => showNotice(t('app.agentRestored'), agent.label))}><RotateCcw size={13} />{busy === agent.path ? t('common.restoring') : t('common.restore')}</Button>
-            <Button variant="ghost" size="xs" className="text-destructive" disabled={Boolean(busy)} onClick={() => setCleanTarget(agent)}><Trash2 size={13} />{t('common.cleanUp')}</Button>
+            {isMacPlatform() && <Button variant="ghost" size="xs" className="text-destructive" disabled={Boolean(busy)} onClick={() => setCleanTarget(agent)}><Trash2 size={13} />{t('common.cleanUp')}</Button>}
           </div>)}</div>
         </section>}
         {agents.length === 0 && ignored.length === 0 && <div className={styles.emptyState}><strong>{t('common.noAgentDirectoriesFoundYet')}</strong><p>{t('common.theyWillBeListedHereAfterScanning')}</p></div>}

@@ -1,10 +1,10 @@
 {
 	"fixed": {
-		"file_version": "0.0.8"
+		"file_version": "0.0.9"
 	},
 	"info": {
 		"0409": {
-			"ProductVersion": "0.0.8",
+			"ProductVersion": "0.0.9",
 			"CompanyName": "Larder contributors",
 			"FileDescription": "Local Skills, MCP and CLI manager",
 			"LegalCopyright": "© 2026, Larder contributors",

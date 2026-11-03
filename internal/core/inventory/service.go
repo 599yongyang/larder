@@ -683,7 +683,7 @@ func (s *Service) MCPTargets() []model.MCPAgent {
 	return agents
 }
 
-func (s *Service) PlanMCPAdd(ctx context.Context, name, transport, command string, args []string, url string, env map[string]string, agentPaths []string) (model.Plan, error) {
+func (s *Service) PlanMCPAdd(ctx context.Context, name, transport, command string, args []string, url string, env map[string]string, headers map[string]string, agentPaths []string) (model.Plan, error) {
 	if err := ctx.Err(); err != nil {
 		return model.Plan{}, err
 	}
@@ -699,7 +699,7 @@ func (s *Service) PlanMCPAdd(ctx context.Context, name, transport, command strin
 		}
 		agents = append(agents, target)
 	}
-	plan, err := ops.PlanMCPAdd(name, transport, command, args, url, env, agents)
+	plan, err := ops.PlanMCPAdd(name, transport, command, args, url, env, headers, agents)
 	if err != nil {
 		return model.Plan{}, err
 	}
@@ -731,7 +731,7 @@ func (s *Service) AttachMCPAgent(ctx context.Context, detached ops.DetachedMCP) 
 	return op, err
 }
 
-func (s *Service) PlanMCPUpdate(ctx context.Context, serverID, name, command string, args []string, url string, agentPaths []string) (model.Plan, error) {
+func (s *Service) PlanMCPUpdate(ctx context.Context, serverID, name, command string, args []string, url string, env map[string]string, headers map[string]string, agentPaths []string) (model.Plan, error) {
 	if err := ctx.Err(); err != nil {
 		return model.Plan{}, err
 	}
@@ -746,7 +746,26 @@ func (s *Service) PlanMCPUpdate(ctx context.Context, serverID, name, command str
 	if server == nil {
 		return model.Plan{}, errors.New("mcp server not found")
 	}
-	plan, err := ops.PlanMCPUpdate(*server, name, command, args, url, agentPaths)
+	targets := map[string]model.MCPAgent{}
+	for _, target := range s.MCPTargets() {
+		targets[filepath.Clean(target.Path)] = target
+	}
+	known := map[string]bool{}
+	for _, agent := range server.Agents {
+		known[filepath.Clean(agent.Path)] = true
+	}
+	for _, path := range agentPaths {
+		clean := filepath.Clean(path)
+		target, ok := targets[clean]
+		if !ok {
+			return model.Plan{}, fmt.Errorf("unknown MCP config: %s", path)
+		}
+		if !known[clean] {
+			server.Agents = append(server.Agents, target)
+			known[clean] = true
+		}
+	}
+	plan, err := ops.PlanMCPUpdate(*server, name, command, args, url, env, headers, agentPaths)
 	if err != nil {
 		return model.Plan{}, err
 	}

@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -504,7 +505,7 @@ func readDSH(path, projectPath string) (model.Session, bool) {
 	if title == "" {
 		title = session.ID
 	}
-	if projectPath != "" && filepath.Clean(session.CWD) != projectPath {
+	if projectPath != "" && !samePath(session.CWD, projectPath) {
 		return model.Session{}, false
 	}
 	if session.StartedAt.IsZero() {
@@ -520,6 +521,24 @@ func readDSH(path, projectPath string) (model.Session, bool) {
 	return session, true
 }
 
+func claudeProjectSlug(projectPath string) string {
+	return claudeProjectSlugFor(runtime.GOOS, projectPath)
+}
+
+func claudeProjectSlugFor(goos, projectPath string) string {
+	if goos == "windows" {
+		return strings.NewReplacer("\\", "-", "/", "-", ":", "-").Replace(projectPath)
+	}
+	return strings.ReplaceAll(projectPath, "/", "-")
+}
+
+func samePath(left, right string) bool {
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(filepath.Clean(left), filepath.Clean(right))
+	}
+	return filepath.Clean(left) == filepath.Clean(right)
+}
+
 func scanClaudeLike(ctx context.Context, projectPath, agent, projectsRoot string) []model.Session {
 	if projectPath == "" {
 		var paths []string
@@ -533,10 +552,19 @@ func scanClaudeLike(ctx context.Context, projectPath, agent, projectsRoot string
 			return readSessionCached(path+"\x00"+agent, path, func() (model.Session, bool) { return readClaudeAs(path, "", agent) })
 		})
 	}
-	root := filepath.Join(projectsRoot, strings.ReplaceAll(projectPath, "/", "-"))
+	root := filepath.Join(projectsRoot, claudeProjectSlug(projectPath))
 	entries, err := os.ReadDir(root)
 	if err != nil {
-		return nil
+		// The project directory encoding differs between Agent versions and
+		// platforms. Fall back to scanning all projects and filtering by CWD.
+		target := filepath.Clean(projectPath)
+		out := scanClaudeLike(ctx, "", agent, projectsRoot)[:0]
+		for _, session := range scanClaudeLike(ctx, "", agent, projectsRoot) {
+			if filepath.Clean(session.CWD) == target {
+				out = append(out, session)
+			}
+		}
+		return out
 	}
 	sort.Slice(entries, func(i, j int) bool {
 		left, leftErr := entries[i].Info()
@@ -651,7 +679,7 @@ func scanCodex(ctx context.Context, home, projectPath string) []model.Session {
 			return readSessionCached(path, path, func() (model.Session, bool) { return readCodex(path, "") })
 		}
 		cwd, source, ok := readCodexMeta(path)
-		if !ok || codexInternalThread(source) || filepath.Clean(cwd) != projectPath {
+		if !ok || codexInternalThread(source) || !samePath(cwd, projectPath) {
 			return model.Session{}, false
 		}
 		return readSessionCached(path+"\x00"+projectPath, path, func() (model.Session, bool) { return readCodex(path, projectPath) })
@@ -1229,7 +1257,7 @@ func scanOpenCode(ctx context.Context, home, projectPath string) []model.Session
 				ID       string `json:"id"`
 				Worktree string `json:"worktree"`
 			}
-			if json.Unmarshal(raw, &meta) == nil && meta.ID != "" && filepath.Clean(meta.Worktree) == projectPath {
+			if json.Unmarshal(raw, &meta) == nil && meta.ID != "" && samePath(meta.Worktree, projectPath) {
 				projectIDs[meta.ID] = true
 			}
 		}
@@ -1258,7 +1286,7 @@ func scanOpenCode(ctx context.Context, home, projectPath string) []model.Session
 				return nil
 			}
 			var item openCodeSession
-			if json.Unmarshal(raw, &item) != nil || item.Directory == "" || item.ID == "" || (projectPath != "" && filepath.Clean(item.Directory) != projectPath) {
+			if json.Unmarshal(raw, &item) != nil || item.Directory == "" || item.ID == "" || (projectPath != "" && !samePath(item.Directory, projectPath)) {
 				return nil
 			}
 			messages := 0
@@ -1444,7 +1472,7 @@ func scanCline(ctx context.Context, home, projectPath string) []model.Session {
 			} `json:"metadata"`
 		}
 		raw, readErr := os.ReadFile(manifestPath)
-		if readErr != nil || json.Unmarshal(raw, &manifest) != nil || (projectPath != "" && filepath.Clean(manifest.CWD) != projectPath) {
+		if readErr != nil || json.Unmarshal(raw, &manifest) != nil || (projectPath != "" && !samePath(manifest.CWD, projectPath)) {
 			continue
 		}
 		session := model.Session{ID: id, Agent: "Cline", CWD: manifest.CWD, Title: usableTitle(manifest.Metadata.Title), Model: manifest.Model, Path: messagesPath}
@@ -2040,7 +2068,7 @@ func scanGemini(ctx context.Context, home, projectPath string) []model.Session {
 			continue
 		}
 		cwd := strings.TrimSpace(string(root))
-		if projectPath != "" && filepath.Clean(cwd) != projectPath {
+		if projectPath != "" && !samePath(cwd, projectPath) {
 			continue
 		}
 		chats := filepath.Join(dir, "chats")
@@ -2152,7 +2180,7 @@ func geminiText(raw json.RawMessage) string {
 }
 
 func conditionPath(cwd, projectPath string) bool {
-	return cwd != "" && (projectPath == "" || filepath.Clean(cwd) == projectPath)
+	return cwd != "" && (projectPath == "" || samePath(cwd, projectPath))
 }
 
 func firstText(raw json.RawMessage) string {

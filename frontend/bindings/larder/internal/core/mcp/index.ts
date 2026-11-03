@@ -3,5 +3,7 @@
 
 export type {
     RegistryEnv,
+    RegistryHeader,
+    RegistryPage,
     RegistryServer
 } from "./models.js";

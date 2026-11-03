@@ -1,5 +1,5 @@
 import { AppService } from '../bindings/larder/cmd/larder'
-import type { AppUpdateInfo, DataPackageInfo, DataPackageResult, DataPackageSelection, Session, SyncConfig } from './types'
+import type { AppUpdateInfo, DataPackageInfo, DataPackageResult, DataPackageSelection, MCPInspection, MCPInspectTarget, MCPAuthStatus, MCPCapabilitySummary, MCPToolCallRecord, MCPToolCallResult, MCPValueResult, Session, SyncConfig } from './types'
 
 // Errors are intentionally propagated. The UI must show a real failure state
 // instead of silently rendering an empty ledger.
@@ -102,13 +102,30 @@ export const backend = {
   planInstallCatalogSkill: async (repo: string, skillID: string, name: string) => (await AppService.PlanInstallCatalogSkill(repo, skillID, name)) as any,
   planUninstallSkill: async (skillID: string) => (await AppService.PlanUninstallSkill(skillID)) as any,
   planMCPRemove: async (serverID: string, agentPaths: string[]) => (await AppService.PlanMCPRemove(serverID, agentPaths)) as any,
+  mcpAuthStatus: async (serverID: string) => ((await AppService.MCPAuthStatus(serverID)) as any) as MCPAuthStatus,
+  clearMCPAuth: async (serverID: string) => { await AppService.ClearMCPAuth(serverID) },
+  mcpRuntimeLogs: async (serverID: string) => ((await AppService.MCPRuntimeLogs(serverID)) as any) ?? [],
+  invalidateMCPCapability: async (serverID: string) => { await AppService.InvalidateMCPCapability(serverID) },
+  mcpCapabilityCache: async () => ((await AppService.MCPCapabilityCache()) as any) as MCPCapabilitySummary[],
+  mcpToolHistory: async (serverID: string) => ((await AppService.MCPToolHistory(serverID)) as any) as MCPToolCallRecord[],
+  clearMCPToolHistory: async (serverID: string) => { await AppService.ClearMCPToolHistory(serverID) },
+  readMCPResource: async (serverID: string, uri: string) => ((await AppService.ReadMCPResource(serverID, uri)) as any) as MCPValueResult,
+  getMCPPrompt: async (serverID: string, name: string, argumentsJSON: string) => ((await AppService.GetMCPPrompt(serverID, name, argumentsJSON)) as any) as MCPValueResult,
+  closeMCPSession: async (serverID: string) => { await AppService.CloseMCPSession(serverID) },
+  callMCPTool: async (serverID: string, toolName: string, argumentsJSON: string) => ((await AppService.CallMCPTool(serverID, toolName, argumentsJSON)) as any) as MCPToolCallResult,
+  cancelMCPTool: async (serverID: string) => { await AppService.CancelMCPTool(serverID) },
+  mcpInspectTarget: async (serverID: string) => ((await AppService.MCPInspectTarget(serverID)) as any) as MCPInspectTarget,
+  cancelInspectMCP: async (serverID: string) => { await AppService.CancelInspectMCP(serverID) },
+  inspectMCP: async (serverID: string) => ((await AppService.InspectMCP(serverID)) as any) as MCPInspection,
   testMCP: async (serverID: string) => (await AppService.TestMCP(serverID)) as any,
   disableMCPAgent: async (serverID: string, agentPath: string) => { await AppService.DisableMCPAgent(serverID, agentPath) },
   enableMCPAgent: async (name: string, agentPath: string) => { await AppService.EnableMCPAgent(name, agentPath) },
-  planMCPUpdate: async (serverID: string, name: string, command: string, args: string[], url: string, agentPaths: string[]) => (await AppService.PlanMCPUpdate(serverID, name, command, args, url, agentPaths)) as any,
+  planMCPUpdate: async (serverID: string, name: string, command: string, args: string[], url: string, env: Record<string, string>, headers: Record<string, string>, agentPaths: string[]) => (await AppService.PlanMCPUpdate(serverID, name, command, args, url, env, headers, agentPaths)) as any,
   mcpTargets: async () => ((await AppService.MCPTargets()) as any) ?? [],
+  discoverMCPRegistry: async () => ((await AppService.DiscoverMCPRegistry()) as any) ?? [],
+  searchMCPRegistryPage: async (query: string, cursor: string) => ((await AppService.SearchMCPRegistryPage(query, cursor)) as any) ?? { servers: [], nextCursor: '' },
   searchMCPRegistry: async (query: string) => ((await AppService.SearchMCPRegistry(query)) as any) ?? [],
-  planMCPAdd: async (name: string, transport: string, command: string, args: string[], url: string, env: Record<string, string>, agentPaths: string[]) => (await AppService.PlanMCPAdd(name, transport, command, args, url, env, agentPaths)) as any,
+  planMCPAdd: async (name: string, transport: string, command: string, args: string[], url: string, env: Record<string, string>, headers: Record<string, string>, agentPaths: string[]) => (await AppService.PlanMCPAdd(name, transport, command, args, url, env, headers, agentPaths)) as any,
   operations: async () => ((await AppService.Operations()) as any) ?? [],
   timeline: async () => ((await AppService.Timeline()) as any) ?? [],
   exportReport: async () => String(await AppService.ExportReport()),

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -18,7 +19,7 @@ import (
 // PlanMCPUpdate edits command/URL/name of an existing MCP server in selected
 // agent configs. Environment values are preserved on disk and never read by
 // the UI.
-func PlanMCPUpdate(server model.MCPServer, newName, command string, args []string, url string, agentPaths []string) (model.Plan, error) {
+func PlanMCPUpdate(server model.MCPServer, newName, command string, args []string, url string, env map[string]string, headers map[string]string, agentPaths []string) (model.Plan, error) {
 	newName = strings.TrimSpace(newName)
 	if !mcpNamePattern.MatchString(newName) {
 		return model.Plan{}, errors.New("invalid MCP server name")
@@ -44,6 +45,8 @@ func PlanMCPUpdate(server model.MCPServer, newName, command string, args []strin
 		Command:          command,
 		Args:             args,
 		MCPURL:           url,
+		MCPEnv:           env,
+		MCPHeaders:       headers,
 		RequiresSnapshot: true,
 		Executable:       true,
 		CreatedAt:        time.Now(),
@@ -74,10 +77,16 @@ func ApplyMCPUpdate(ctx context.Context, plan model.Plan, snapshotRoot string, _
 	manifest := SnapshotManifest{ID: filepath.Base(snapshotDir), PlanID: plan.ID, CreatedAt: now}
 	for i, change := range plan.Changes {
 		backup := filepath.Join(snapshotDir, fmt.Sprintf("config-%d.bak", i))
-		if err := copyFile(change.Target, backup); err != nil {
-			return op, err
+		exists := true
+		if _, statErr := os.Stat(change.Target); os.IsNotExist(statErr) {
+			exists = false
 		}
-		manifest.Targets = append(manifest.Targets, SnapshotTarget{RootID: change.RootID, Target: change.Target, Action: "update_mcp_entry", Exists: true, BackupPath: backup})
+		if exists {
+			if err := copyFile(change.Target, backup); err != nil {
+				return op, err
+			}
+		}
+		manifest.Targets = append(manifest.Targets, SnapshotTarget{RootID: change.RootID, Target: change.Target, Action: "update_mcp_entry", Exists: exists, BackupPath: backup})
 	}
 	raw, _ := json.MarshalIndent(manifest, "", "  ")
 	if err := os.WriteFile(filepath.Join(snapshotDir, "manifest.json"), raw, 0o600); err != nil {
@@ -117,8 +126,11 @@ func updateMCPEntry(path string, plan model.Plan) error {
 func updateMCPJSON(path string, plan model.Plan, fixedKey string) error {
 	var root map[string]any
 	raw, err := os.ReadFile(path)
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
 		return err
+	}
+	if len(strings.TrimSpace(string(raw))) == 0 {
+		raw = []byte("{}")
 	}
 	if err := json.Unmarshal(raw, &root); err != nil {
 		return fmt.Errorf("parse %s: %w", path, err)
@@ -132,10 +144,16 @@ func updateMCPJSON(path string, plan model.Plan, fixedKey string) error {
 			}
 		}
 	}
+	if key == "" {
+		key = "mcpServers"
+	}
 	servers, _ := root[key].(map[string]any)
+	if servers == nil {
+		servers = map[string]any{}
+	}
 	entry, _ := servers[plan.MCPName].(map[string]any)
 	if entry == nil {
-		return fmt.Errorf("MCP server %s not found in %s", plan.MCPName, path)
+		entry = map[string]any{}
 	}
 	delete(servers, plan.MCPName)
 	if plan.MCPURL != "" {
@@ -153,6 +171,20 @@ func updateMCPJSON(path string, plan model.Plan, fixedKey string) error {
 		delete(entry, "url")
 		entry["type"] = "stdio"
 	}
+	if plan.MCPEnv != nil {
+		if len(plan.MCPEnv) > 0 {
+			entry["env"] = plan.MCPEnv
+		} else {
+			delete(entry, "env")
+		}
+	}
+	if plan.MCPHeaders != nil {
+		if len(plan.MCPHeaders) > 0 {
+			entry["headers"] = plan.MCPHeaders
+		} else {
+			delete(entry, "headers")
+		}
+	}
 	servers[plan.MCPNewName] = entry
 	root[key] = servers
 	output, err := json.MarshalIndent(root, "", "  ")
@@ -165,16 +197,22 @@ func updateMCPJSON(path string, plan model.Plan, fixedKey string) error {
 func updateMCPOpenCode(path string, plan model.Plan) error {
 	var root map[string]any
 	raw, err := os.ReadFile(path)
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
 		return err
+	}
+	if len(strings.TrimSpace(string(raw))) == 0 {
+		raw = []byte("{}")
 	}
 	if err := json.Unmarshal(raw, &root); err != nil {
 		return fmt.Errorf("parse %s: %w", path, err)
 	}
 	servers, _ := root["mcp"].(map[string]any)
+	if servers == nil {
+		servers = map[string]any{}
+	}
 	entry, _ := servers[plan.MCPName].(map[string]any)
 	if entry == nil {
-		return fmt.Errorf("MCP server %s not found in %s", plan.MCPName, path)
+		entry = map[string]any{}
 	}
 	delete(servers, plan.MCPName)
 	if plan.MCPURL != "" {
@@ -187,6 +225,20 @@ func updateMCPOpenCode(path string, plan model.Plan) error {
 		entry["command"] = append([]string{plan.Command}, plan.Args...)
 		delete(entry, "url")
 	}
+	if plan.MCPEnv != nil {
+		if len(plan.MCPEnv) > 0 {
+			entry["environment"] = plan.MCPEnv
+		} else {
+			delete(entry, "environment")
+		}
+	}
+	if plan.MCPHeaders != nil {
+		if len(plan.MCPHeaders) > 0 {
+			entry["headers"] = plan.MCPHeaders
+		} else {
+			delete(entry, "headers")
+		}
+	}
 	servers[plan.MCPNewName] = entry
 	root["mcp"] = servers
 	output, err := json.MarshalIndent(root, "", "  ")
@@ -198,7 +250,7 @@ func updateMCPOpenCode(path string, plan model.Plan) error {
 
 func updateMCPTOML(path string, plan model.Plan) error {
 	raw, err := os.ReadFile(path)
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	lines := strings.Split(string(raw), "\n")
@@ -249,7 +301,72 @@ func updateMCPTOML(path string, plan model.Plan) error {
 		out = append(out, line)
 	}
 	if !found {
-		return fmt.Errorf("MCP server %s not found in %s", plan.MCPName, path)
+		content := strings.Join(out, "\n")
+		if content != "" && !strings.HasSuffix(content, "\n") {
+			content += "\n"
+		}
+		content += "\n[mcp_servers." + newKey + "]\n"
+		if plan.MCPURL != "" {
+			content += "url = " + strconv.Quote(plan.MCPURL) + "\n"
+		} else {
+			content += "command = " + strconv.Quote(plan.Command) + "\n"
+			if len(plan.Args) > 0 {
+				quoted := make([]string, 0, len(plan.Args))
+				for _, arg := range plan.Args {
+					quoted = append(quoted, strconv.Quote(arg))
+				}
+				content += "args = [" + strings.Join(quoted, ", ") + "]\n"
+			}
+		}
+		if plan.MCPEnv != nil {
+			content = replaceTOMLSection(content, "mcp_servers."+newKey+".env", plan.MCPEnv)
+		}
+		if plan.MCPHeaders != nil {
+			content = replaceTOMLSection(content, "mcp_servers."+newKey+".http_headers", plan.MCPHeaders)
+		}
+		return writeMCPConfig(path, []byte(content))
 	}
-	return writeMCPConfig(path, []byte(strings.Join(out, "\n")))
+	content := strings.Join(out, "\n")
+	if plan.MCPEnv != nil {
+		content = replaceTOMLSection(content, "mcp_servers."+newKey+".env", plan.MCPEnv)
+	}
+	if plan.MCPHeaders != nil {
+		content = replaceTOMLSection(content, "mcp_servers."+newKey+".http_headers", plan.MCPHeaders)
+	}
+	return writeMCPConfig(path, []byte(content))
+}
+
+func replaceTOMLSection(content, section string, values map[string]string) string {
+	lines := strings.Split(content, "\n")
+	out := make([]string, 0, len(lines)+len(values)+2)
+	skipping := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+			if strings.Trim(trimmed, "[]") == section {
+				skipping = true
+				continue
+			}
+			skipping = false
+		}
+		if !skipping {
+			out = append(out, line)
+		}
+	}
+	if len(values) == 0 {
+		return strings.Join(out, "\n")
+	}
+	if len(out) > 0 && strings.TrimSpace(out[len(out)-1]) != "" {
+		out = append(out, "")
+	}
+	out = append(out, "["+section+"]")
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		out = append(out, key+" = "+strconv.Quote(values[key]))
+	}
+	return strings.Join(out, "\n")
 }

@@ -16,7 +16,7 @@ import (
 func TestScanClaudeAndCodexSessions(t *testing.T) {
 	home := t.TempDir()
 	project := filepath.Join(home, "work", "demo")
-	claudeDir := filepath.Join(home, ".claude", "projects", strings.ReplaceAll(filepath.ToSlash(project), "/", "-"))
+	claudeDir := filepath.Join(home, ".claude", "projects", claudeProjectSlug(project))
 	if err := os.MkdirAll(claudeDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func TestScanOMPAndWorkBuddySessions(t *testing.T) {
 func TestScanQoderSessions(t *testing.T) {
 	home := t.TempDir()
 	project := filepath.Join(home, "work", "qoder-demo")
-	dir := filepath.Join(home, ".qoder", "projects", strings.ReplaceAll(filepath.ToSlash(project), "/", "-"))
+	dir := filepath.Join(home, ".qoder", "projects", claudeProjectSlug(project))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func TestScanGeminiSessions(t *testing.T) {
 func TestScanAgentReturnsOnlyThatAgent(t *testing.T) {
 	home := t.TempDir()
 	project := filepath.Join(home, "work", "agent-filter")
-	claudeDir := filepath.Join(home, ".claude", "projects", strings.ReplaceAll(filepath.ToSlash(project), "/", "-"))
+	claudeDir := filepath.Join(home, ".claude", "projects", claudeProjectSlug(project))
 	codexDir := filepath.Join(home, ".codex", "sessions", "2026", "01", "02")
 	for _, dir := range []string{claudeDir, codexDir} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -394,5 +394,14 @@ func TestReadToolUsage(t *testing.T) {
 	}
 	if usage.LastAt.IsZero() {
 		t.Fatal("expected last activity")
+	}
+}
+
+func TestClaudeProjectSlugForWindows(t *testing.T) {
+	if got := claudeProjectSlugFor("windows", `C:\Users\a\project`); got != "C--Users-a-project" {
+		t.Fatalf("got %q", got)
+	}
+	if got := claudeProjectSlugFor("darwin", "/Users/a/project"); got != "-Users-a-project" {
+		t.Fatalf("got %q", got)
 	}
 }

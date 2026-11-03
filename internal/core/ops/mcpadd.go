@@ -21,7 +21,7 @@ var mcpNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$`)
 var envKeyPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // PlanMCPAdd writes a server definition into the selected agent config files.
-func PlanMCPAdd(name, transport, command string, args []string, url string, env map[string]string, agents []model.MCPAgent) (model.Plan, error) {
+func PlanMCPAdd(name, transport, command string, args []string, url string, env map[string]string, headers map[string]string, agents []model.MCPAgent) (model.Plan, error) {
 	if !mcpNamePattern.MatchString(name) {
 		return model.Plan{}, errors.New("invalid MCP server name")
 	}
@@ -36,6 +36,11 @@ func PlanMCPAdd(name, transport, command string, args []string, url string, env 
 	}
 	if len(agents) == 0 {
 		return model.Plan{}, errors.New("select at least one agent config")
+	}
+	for key := range headers {
+		if strings.TrimSpace(key) == "" {
+			return model.Plan{}, errors.New("header name is required")
+		}
 	}
 	for key := range env {
 		if !envKeyPattern.MatchString(key) {
@@ -53,6 +58,7 @@ func PlanMCPAdd(name, transport, command string, args []string, url string, env 
 		Args:             args,
 		MCPURL:           url,
 		MCPEnv:           env,
+		MCPHeaders:       headers,
 		RequiresSnapshot: true,
 		Executable:       true,
 		CreatedAt:        time.Now(),
@@ -141,10 +147,15 @@ func addMCPEntry(path string, plan model.Plan) error {
 }
 
 func isVSCodeMCPConfig(path string) bool {
-	normalized := filepath.ToSlash(path)
-	return (strings.Contains(normalized, "/Application Support/Code/") ||
-		strings.Contains(normalized, "/Application Support/Code - Insiders/") ||
-		strings.Contains(normalized, "/.vscode/")) && strings.HasSuffix(normalized, "/mcp.json")
+	normalized := strings.ToLower(strings.ReplaceAll(filepath.ToSlash(path), "\\", "/"))
+	if !strings.HasSuffix(normalized, "/mcp.json") {
+		return false
+	}
+	return strings.Contains(normalized, "/application support/code/") ||
+		strings.Contains(normalized, "/application support/code - insiders/") ||
+		strings.Contains(normalized, "/appdata/roaming/code/") ||
+		strings.Contains(normalized, "/appdata/roaming/code - insiders/") ||
+		strings.Contains(normalized, "/.vscode/")
 }
 
 func addMCPToVSCode(path string, plan model.Plan) error {
@@ -169,6 +180,9 @@ func addMCPToVSCode(path string, plan model.Plan) error {
 	}
 	if plan.MCPURL != "" {
 		entry["url"] = plan.MCPURL
+		if len(plan.MCPHeaders) > 0 {
+			entry["headers"] = plan.MCPHeaders
+		}
 	} else {
 		entry["command"] = plan.Command
 		if len(plan.Args) > 0 {
@@ -214,6 +228,9 @@ func addMCPToJSON(path string, plan model.Plan) error {
 	if plan.MCPURL != "" {
 		entry["type"] = "http"
 		entry["url"] = plan.MCPURL
+		if len(plan.MCPHeaders) > 0 {
+			entry["headers"] = plan.MCPHeaders
+		}
 	} else {
 		entry["command"] = plan.Command
 		if len(plan.Args) > 0 {
@@ -252,6 +269,9 @@ func addMCPToOpenCode(path string, plan model.Plan) error {
 	if plan.MCPURL != "" {
 		entry["type"] = "remote"
 		entry["url"] = plan.MCPURL
+		if len(plan.MCPHeaders) > 0 {
+			entry["headers"] = plan.MCPHeaders
+		}
 	} else {
 		entry["type"] = "local"
 		entry["command"] = append([]string{plan.Command}, plan.Args...)
@@ -301,6 +321,17 @@ func addMCPToTOML(path string, plan model.Plan) error {
 	block.WriteString("\n" + section + "\n")
 	if plan.MCPURL != "" {
 		block.WriteString("url = " + strconv.Quote(plan.MCPURL) + "\n")
+		if len(plan.MCPHeaders) > 0 {
+			block.WriteString("\n[mcp_servers." + key + ".http_headers]\n")
+			keys := make([]string, 0, len(plan.MCPHeaders))
+			for k := range plan.MCPHeaders {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				block.WriteString(k + " = " + strconv.Quote(plan.MCPHeaders[k]) + "\n")
+			}
+		}
 	} else {
 		block.WriteString("command = " + strconv.Quote(plan.Command) + "\n")
 		if len(plan.Args) > 0 {

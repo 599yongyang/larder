@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { backend } from '../backend'
 import { copyText } from '../lib/clipboard'
 import { t } from '../i18n'
+import { isMacPlatform, isWindowsPlatform } from '../lib/platform'
 import { toastError, toastSuccess } from '../lib/toast'
 import type { Session } from '../types'
 
@@ -26,7 +27,7 @@ export function SessionQuickActions({ session }: { session: Session }) {
     } catch (error) { toastError(error, t('common.failedToCopy', { label: t('common.path') })) }
   }
   return <span className="flex items-center gap-0.5">
-    {canResumeSession(session.agent) && <Button type="button" size="xs" variant="ghost" disabled={opening} title={t('sessions.openInTerminal')} aria-label={t('sessions.openInTerminal')} onClick={(event) => void openTerminal(event)}><Terminal size={13} /></Button>}
+    {canResumeSession(session.agent) && (isMacPlatform() || isWindowsPlatform()) && <Button type="button" size="xs" variant="ghost" disabled={opening} title={t('sessions.openInTerminal')} aria-label={t('sessions.openInTerminal')} onClick={(event) => void openTerminal(event)}><Terminal size={13} /></Button>}
     <Button type="button" size="xs" variant="ghost" title={t('common.copyPath')} aria-label={t('common.copyPath')} onClick={(event) => void copyPath(event)}><Copy size={13} /></Button>
   </span>
 }

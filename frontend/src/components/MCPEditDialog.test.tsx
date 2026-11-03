@@ -22,6 +22,6 @@ test('edits command and keeps the existing agents', async () => {
   await userEvent.click(screen.getByRole('button', { name: '保存' }))
   await waitFor(() => expect(planMCPUpdate).toHaveBeenCalledTimes(1))
   expect(planMCPUpdate.mock.calls[0][1]).toBe('demo')
-  expect(planMCPUpdate.mock.calls[0][5]).toEqual(['/tmp/mcp.json'])
+  expect(planMCPUpdate.mock.calls[0][7]).toEqual(['/tmp/mcp.json'])
   expect(onSaved).toHaveBeenCalled()
 })

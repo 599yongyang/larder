@@ -11,7 +11,7 @@ export type BackupResult = { restored: number; skipped: number; snapshotDir: str
 export type AppInfo = { version: string; schemaVersion: string; goVersion: string; platform: string; dataDir: string; homeDir: string }
 export type InstructionFile = { id: string; name: string; path: string; agent: string; scope: 'global' | 'project' | string; project?: string; size: number; modifiedAt: string; hash: string; excerpt?: string; duplicate: boolean }
 export type MCPAgent = { label: string; path: string; scope?: string; enabled: boolean }
-export type MCPServer = { id: string; name: string; transport: string; command?: string; args?: string[]; url?: string; envKeys?: string[]; headerKeys?: string[]; status: string; agents: MCPAgent[] }
+export type MCPServer = { id: string; name: string; transport: string; command?: string; args?: string[]; url?: string; envKeys?: string[]; headerKeys?: string[]; envValues?: Record<string, string>; headerValues?: Record<string, string>; status: string; agents: MCPAgent[] }
 export type CLIPath = { path: string; owner: string; ownerDetail?: string; broken: boolean; effective: boolean }
 export type CLIInfo = { id: string; name: string; path: string; owner: string; ownerDetail?: string; version?: string; status: string; duplicateCount: number; paths?: CLIPath[]; scannedAt: string }
 export type TimelineEvent = { id: number; scanId: number; kind: 'added' | 'changed' | 'removed' | string; skillName: string; path?: string; oldHash?: string; newHash?: string; at: string }
@@ -61,3 +61,22 @@ export type DataPackageInfo = { createdAt: string; selection: DataPackageSelecti
 export type DataPackageResult = { restored: number; skipped: number; snapshotDir: string }
 
 export type SyncConfig = { provider: string; url: string; username: string; endpoint: string; region: string; bucket: string; prefix: string; accessKey: string; filename: string; passwordSet: boolean; lastSyncAt: string; lastSyncKind: string; encryptionEnabled: boolean; encryptionPassphraseSet: boolean }
+
+export type MCPTool = { name: string; title?: string; description?: string; inputSchema?: unknown; outputSchema?: unknown; annotations?: unknown }
+export type MCPResource = { uri: string; name?: string; description?: string; mimeType?: string }
+export type MCPPrompt = { name: string; title?: string; description?: string; arguments?: Array<{ name: string; description?: string; required?: boolean }> }
+export type MCPResourceTemplate = { uriTemplate: string; name?: string; title?: string; description?: string; mimeType?: string }
+export type MCPLogEntry = { at: string; method: string; request?: string; response?: string; durationMs: number; error?: string }
+export type MCPInspection = { serverId: string; name: string; transport: string; protocolVersion?: string; capabilities?: string[]; serverName?: string; serverVersion?: string; agentLabel?: string; agentPath?: string; disabled?: boolean; tools?: MCPTool[]; resources?: MCPResource[]; resourceTemplates?: MCPResourceTemplate[]; prompts?: MCPPrompt[]; logs?: MCPLogEntry[]; toolTokens?: number; toolError?: string; resourceError?: string; promptError?: string }
+
+export type MCPInspectTarget = { serverId: string; name: string; transport: string; command?: string; args?: string[]; url?: string; envKeys?: string[]; headerKeys?: string[]; agentLabel?: string; agentPath?: string; scope?: string; project?: boolean; disabled?: boolean }
+
+export type MCPToolCallResult = { content?: string; structuredContent?: string; isError?: boolean }
+
+export type MCPValueResult = { content: string }
+
+export type MCPToolCallRecord = { id: string; serverId: string; serverName: string; tool: string; arguments: string; content?: string; isError?: boolean; createdAt: string }
+
+export type MCPCapabilitySummary = { serverId: string; name: string; tools: number; resources: number; prompts: number; protocolVersion?: string; serverName?: string; serverVersion?: string; checkedAt: string }
+
+export type MCPAuthStatus = { configured: boolean; expiresAt?: string; hasRefresh?: boolean }

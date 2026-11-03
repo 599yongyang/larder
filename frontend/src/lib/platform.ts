@@ -3,6 +3,11 @@ export function isMacPlatform() {
   return /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
 }
 
+export function isWindowsPlatform() {
+  if (typeof navigator === 'undefined') return false
+  return /Win/i.test(navigator.platform || navigator.userAgent)
+}
+
 export function modifierLabel() {
   return isMacPlatform() ? '⌘' : 'Ctrl'
 }

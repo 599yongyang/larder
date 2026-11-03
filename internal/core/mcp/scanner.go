@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -32,9 +33,32 @@ func home() string {
 	return ""
 }
 
+// platformConfigDir returns the per-user config root used by desktop agents.
+// macOS uses Application Support, Windows uses APPDATA, Linux follows XDG.
+func platformConfigDir(home string) string {
+	return configDirFor(runtime.GOOS, home, os.Getenv("APPDATA"), os.Getenv("XDG_CONFIG_HOME"))
+}
+
+func configDirFor(goos, home, appData, xdgConfig string) string {
+	switch goos {
+	case "windows":
+		if appData != "" {
+			return appData
+		}
+		return filepath.Join(home, "AppData", "Roaming")
+	case "darwin":
+		return filepath.Join(home, "Library", "Application Support")
+	default:
+		if xdgConfig != "" {
+			return xdgConfig
+		}
+		return filepath.Join(home, ".config")
+	}
+}
+
 func configs() []configSpec {
 	h := home()
-	appSupport := filepath.Join(h, "Library", "Application Support")
+	appSupport := platformConfigDir(h)
 	return []configSpec{
 		{label: "Claude Code", path: filepath.Join(h, ".claude.json"), format: "claude-json"},
 		{label: "Claude Desktop", path: filepath.Join(appSupport, "Claude", "claude_desktop_config.json"), format: "json"},
@@ -60,6 +84,8 @@ type client struct {
 	url        string
 	envKeys    []string
 	headerKeys []string
+	env        map[string]string
+	headers    map[string]string
 	enabled    bool
 	envSection bool
 	agent      model.MCPAgent
@@ -136,6 +162,7 @@ func scanConfigs(ctx context.Context, specs []configSpec) []model.MCPServer {
 					ID: hashedID(key), Name: entry.name, Transport: entry.transport,
 					Command: entry.command, Args: entry.args, URL: entry.url,
 					EnvKeys: entry.envKeys, HeaderKeys: entry.headerKeys,
+					EnvValues: entry.env, HeaderValues: entry.headers,
 				}
 				byKey[key] = server
 				order = append(order, key)
@@ -219,7 +246,7 @@ func commandExists(command string) bool {
 	if command == "" {
 		return false
 	}
-	if strings.Contains(command, "/") {
+	if hasPathSeparator(command) {
 		info, err := os.Stat(command)
 		return err == nil && !info.IsDir()
 	}
@@ -252,6 +279,20 @@ func mapKeys(value any) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+func mapValues(value any) map[string]string {
+	raw, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+	values := make(map[string]string, len(raw))
+	for key, item := range raw {
+		if text, ok := item.(string); ok {
+			values[key] = text
+		}
+	}
+	return values
 }
 
 func firstString(values ...any) string {
@@ -316,6 +357,8 @@ func entryClients(name string, entry map[string]any, spec configSpec, scope stri
 		url:        url,
 		envKeys:    mapKeys(env),
 		headerKeys: mapKeys(entry["headers"]),
+		env:        mapValues(env),
+		headers:    mapValues(entry["headers"]),
 		enabled:    enabled,
 		agent:      model.MCPAgent{Label: spec.label, Path: spec.path, Scope: scope, Enabled: enabled},
 	}
@@ -455,6 +498,10 @@ func parseCodexTOML(raw []byte, spec configSpec) []client {
 		default:
 			if current.envSection {
 				current.envKeys = append(current.envKeys, key)
+				if current.env == nil {
+					current.env = map[string]string{}
+				}
+				current.env[key] = parseTOMLString(value)
 			}
 		}
 	}

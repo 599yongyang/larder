@@ -7,6 +7,8 @@ const planMCPAdd = vi.fn()
 const applyPlan = vi.fn()
 const mcpTargets = vi.fn()
 const searchMCPRegistry = vi.fn()
+const searchMCPRegistryPage = vi.fn()
+const discoverMCPRegistry = vi.fn()
 
 vi.mock('../backend', () => ({
   backend: {
@@ -14,6 +16,8 @@ vi.mock('../backend', () => ({
     applyPlan: (...args: unknown[]) => applyPlan(...args),
     mcpTargets: () => mcpTargets(),
     searchMCPRegistry: (...args: unknown[]) => searchMCPRegistry(...args),
+    searchMCPRegistryPage: (...args: unknown[]) => searchMCPRegistryPage(...args),
+    discoverMCPRegistry: () => discoverMCPRegistry(),
   },
 }))
 
@@ -22,14 +26,19 @@ beforeEach(() => {
   applyPlan.mockReset().mockResolvedValue({})
   mcpTargets.mockReset().mockResolvedValue([{ label: 'Cursor', path: '/tmp/mcp.json', enabled: true }])
   searchMCPRegistry.mockReset().mockResolvedValue([])
+  discoverMCPRegistry.mockReset().mockResolvedValue([])
+  searchMCPRegistryPage.mockReset().mockResolvedValue({ servers: [], nextCursor: '' })
 })
 
 test('filters featured servers and installs with an agent target', async () => {
+  searchMCPRegistryPage.mockResolvedValue({ servers: [
+    { id: 'io.github.figma/figma', name: 'figma', title: 'Figma', description: 'Read designs', transport: 'http', command: '', args: [], url: 'https://mcp.figma.com/mcp', env: [] },
+  ], nextCursor: '' })
   const onAdded = vi.fn()
   render(<MCPAddSheet open existingNames={[]} onClose={() => {}} onAdded={onAdded} />)
   const search = await screen.findByLabelText('搜索 MCP Server')
   await userEvent.type(search, 'figma')
-  expect(screen.getAllByText('Figma').length).toBeGreaterThan(0)
+  expect(await screen.findByText('Figma')).toBeTruthy()
   expect(screen.queryByText('Playwright')).toBeNull()
   await userEvent.click(screen.getByRole('button', { name: /添加/ }))
   await userEvent.click(await screen.findByText('Cursor'))
@@ -40,10 +49,10 @@ test('filters featured servers and installs with an agent target', async () => {
 })
 
 test('shows online registry results and marks unsupported entries', async () => {
-  searchMCPRegistry.mockResolvedValue([
+  searchMCPRegistryPage.mockResolvedValue({ servers: [
     { id: 'io.github.demo/demo', name: 'demo', title: 'Demo Registry', description: 'From registry', transport: 'http', command: '', args: [], url: 'https://example.com/mcp', env: [] },
     { id: 'io.github.auth/auth', name: 'auth', title: 'Needs Auth', description: 'Needs a header', transport: 'http', command: '', args: [], url: '', env: [], unsupported: '需要 HTTP Header' },
-  ])
+  ], nextCursor: '' })
   render(<MCPAddSheet open existingNames={[]} onClose={() => {}} onAdded={() => {}} />)
   const search = await screen.findByLabelText('搜索 MCP Server')
   await userEvent.type(search, 'brave')

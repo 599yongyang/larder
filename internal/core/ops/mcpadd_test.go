@@ -18,7 +18,7 @@ func TestMCPAddJSONAndTOML(t *testing.T) {
 	if err := os.WriteFile(jsonPath, []byte("{\n  \"mcpServers\": {}\n}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	plan, err := PlanMCPAdd("playwright", "stdio", "npx", []string{"-y", "@playwright/mcp@latest"}, "", nil, []model.MCPAgent{{Label: "Cursor", Path: jsonPath}, {Label: "Codex", Path: tomlPath}})
+	plan, err := PlanMCPAdd("playwright", "stdio", "npx", []string{"-y", "@playwright/mcp@latest"}, "", nil, nil, []model.MCPAgent{{Label: "Cursor", Path: jsonPath}, {Label: "Codex", Path: tomlPath}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestMCPAddEnvironment(t *testing.T) {
 	dir := t.TempDir()
 	jsonPath := filepath.Join(dir, "mcp.json")
 	tomlPath := filepath.Join(dir, "config.toml")
-	plan, err := PlanMCPAdd("custom", "stdio", "node", []string{"server.js"}, "", map[string]string{"API_KEY": "secret"}, []model.MCPAgent{{Label: "Cursor", Path: jsonPath}, {Label: "Codex", Path: tomlPath}})
+	plan, err := PlanMCPAdd("custom", "stdio", "node", []string{"server.js"}, "", map[string]string{"API_KEY": "secret"}, nil, []model.MCPAgent{{Label: "Cursor", Path: jsonPath}, {Label: "Codex", Path: tomlPath}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestMCPAddEnvironment(t *testing.T) {
 func TestMCPAddTOMLDottedName(t *testing.T) {
 	dir := t.TempDir()
 	tomlPath := filepath.Join(dir, "config.toml")
-	plan, err := PlanMCPAdd("io.github.demo", "stdio", "node", nil, "", nil, []model.MCPAgent{{Label: "Codex", Path: tomlPath}})
+	plan, err := PlanMCPAdd("io.github.demo", "stdio", "node", nil, "", nil, nil, []model.MCPAgent{{Label: "Codex", Path: tomlPath}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestMCPAddTOMLDottedName(t *testing.T) {
 func TestMCPAddVSCodeFormat(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "Library", "Application Support", "Code", "User", "mcp.json")
-	plan, err := PlanMCPAdd("demo", "http", "", nil, "https://example.com/mcp", nil, []model.MCPAgent{{Label: "VS Code", Path: path}})
+	plan, err := PlanMCPAdd("demo", "http", "", nil, "https://example.com/mcp", nil, nil, []model.MCPAgent{{Label: "VS Code", Path: path}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,5 +89,23 @@ func TestMCPAddVSCodeFormat(t *testing.T) {
 	body, _ := os.ReadFile(path)
 	if !strings.Contains(string(body), `"servers"`) || !strings.Contains(string(body), `"type": "http"`) {
 		t.Fatalf("vscode = %s", body)
+	}
+}
+
+func TestVSCodeMCPConfigPaths(t *testing.T) {
+	paths := []string{
+		"/Users/a/Library/Application Support/Code/User/mcp.json",
+		"/Users/a/Library/Application Support/Code - Insiders/User/mcp.json",
+		`C:\Users\a\AppData\Roaming\Code\User\mcp.json`,
+		`C:\Users\a\AppData\Roaming\Code - Insiders\User\mcp.json`,
+		"/work/demo/.vscode/mcp.json",
+	}
+	for _, path := range paths {
+		if !isVSCodeMCPConfig(path) {
+			t.Fatalf("expected VS Code config: %s", path)
+		}
+	}
+	if isVSCodeMCPConfig("/Users/a/.cursor/mcp.json") {
+		t.Fatal("cursor config must not be VS Code format")
 	}
 }

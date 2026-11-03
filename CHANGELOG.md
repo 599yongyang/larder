@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.0.9
+
+### MCP
+
+- Add SDK-backed MCP inspection for tools, resources, resource templates and prompts.
+- Keep live MCP sessions for tool calls, resource reads and prompt rendering, with capability caching and protocol fallback.
+- Add tool argument forms, JSON mode for structured arguments, execution history, cancellation and JSON-RPC logs.
+- Render prompt messages, resource text, images, binary downloads and resource links.
+- Add remote MCP header authentication, OAuth status and authorization cleanup.
+- Add official MCP Registry discovery, vendor search, pagination and runtime/auth badges.
+- Add inline editing for launch settings, configuration fields, headers and agent targets, with snapshot and rollback support.
+- Add support for adding an MCP server to a new agent configuration, including missing config files.
+
+### Windows
+
+- Support Windows directory junctions for link creation, unmounting, snapshots and rollback.
+- Resolve MCP config paths from APPDATA and recognize Windows VS Code configuration files.
+- Support Windows environment expansion, path separators and Claude session folder encoding.
+- Compare Windows session paths case-insensitively.
+- Add PowerShell resume commands and terminal launch support.
+- Hide console windows for MCP child processes.
+
+### UI
+
+- Restore shared styles that were lost during the MCP iteration.
+- Add missing common translation labels.
+
 ## 0.0.8
 
 ### Data and sync

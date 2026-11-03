@@ -47,3 +47,14 @@ func TestSessionResumeCommand(t *testing.T) {
 		t.Fatal("expected unsupported agent error")
 	}
 }
+
+func TestSessionResumeCommandWindows(t *testing.T) {
+	command, err := sessionResumeCommand(model.Session{ID: "abc", Agent: "Claude Code", CWD: `C:\work\demo`}, "windows")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `Set-Location -LiteralPath 'C:\work\demo'; claude --resume 'abc'`
+	if command != want {
+		t.Fatalf("got %q, want %q", command, want)
+	}
+}
