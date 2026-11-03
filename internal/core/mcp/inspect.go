@@ -650,6 +650,12 @@ func explainConnectionError(err error) error {
 	return err
 }
 
+// ResolveCommand resolves an MCP command using the desktop PATH fallbacks.
+func ResolveCommand(name, cwd string) string {
+	home, _ := os.UserHomeDir()
+	return resolveCommand(name, home, cwd)
+}
+
 func resolveCommand(name, home, cwd string) string {
 	name = expandArg(name, home)
 	if filepath.IsAbs(name) {

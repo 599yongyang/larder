@@ -2669,16 +2669,12 @@ func (s *AppService) TestMCP(serverID string) (MCPTestResult, error) {
 	if server.Command == "" {
 		return MCPTestResult{OK: false, Message: "配置缺少启动命令"}, nil
 	}
-	command := server.Command
-	if !filepath.IsAbs(command) {
-		found, err := exec.LookPath(command)
-		if err != nil {
-			return MCPTestResult{OK: false, Message: "命令不存在：" + command}, nil
-		}
-		command = found
-	}
+	command := coremcp.ResolveCommand(server.Command, "")
 	info, err := os.Stat(command)
-	if err != nil || info.IsDir() || info.Mode()&0o111 == 0 {
+	if err != nil || info.IsDir() {
+		return MCPTestResult{OK: false, Message: "命令不存在：" + server.Command}, nil
+	}
+	if runtime.GOOS != "windows" && info.Mode()&0o111 == 0 {
 		return MCPTestResult{OK: false, Message: "命令不可执行：" + server.Command}, nil
 	}
 	return MCPTestResult{OK: true, Message: "命令可执行"}, nil
