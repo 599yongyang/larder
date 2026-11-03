@@ -570,7 +570,7 @@ func newStdioTransport(target *client) (sdk.Transport, func(), error) {
 		args = append(args, expandArg(arg, home))
 	}
 	command := exec.Command(commandPath, args...)
-	command.Env = os.Environ()
+	command.Env = mcpEnv(os.Environ(), filepath.Dir(commandPath), platform.LocalPaths{}.PathDirs(home))
 	for key, value := range target.env {
 		command.Env = append(command.Env, key+"="+value)
 	}
@@ -586,6 +586,43 @@ func newStdioTransport(target *client) (sdk.Transport, func(), error) {
 		stderr:    stderr,
 	}
 	return transport, func() { killProcess(command) }, nil
+}
+
+func mcpEnv(base []string, commandDir string, extraDirs []string) []string {
+	pathDirs := []string{}
+	if commandDir != "" && commandDir != "." {
+		pathDirs = append(pathDirs, commandDir)
+	}
+	pathDirs = append(pathDirs, extraDirs...)
+	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+		if strings.TrimSpace(dir) != "" {
+			pathDirs = append(pathDirs, dir)
+		}
+	}
+	seen := map[string]bool{}
+	unique := pathDirs[:0]
+	for _, dir := range pathDirs {
+		dir = filepath.Clean(dir)
+		if dir == "." || seen[dir] {
+			continue
+		}
+		seen[dir] = true
+		unique = append(unique, dir)
+	}
+	env := make([]string, 0, len(base)+1)
+	for _, entry := range base {
+		if equalFoldKey(entry, "PATH") {
+			continue
+		}
+		env = append(env, entry)
+	}
+	env = append(env, "PATH="+strings.Join(unique, string(os.PathListSeparator)))
+	return env
+}
+
+func equalFoldKey(entry, key string) bool {
+	index := strings.IndexByte(entry, '=')
+	return index >= 0 && strings.EqualFold(entry[:index], key)
 }
 
 func explainConnectionError(err error) error {

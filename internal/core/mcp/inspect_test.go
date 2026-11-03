@@ -162,6 +162,26 @@ func TestInspectTransportNormalizesRemote(t *testing.T) {
 
 func TestExpandPercentEnv(t *testing.T) {
 	t.Setenv("LARDER_PERCENT_TEST", "ok")
-	if got := expandPercentEnv("a%LARDER_PERCENT_TEST%b"); got != "aokb" { t.Fatalf("got %q", got) }
-	if got := expandPercentEnv("no-vars"); got != "no-vars" { t.Fatalf("got %q", got) }
+	if got := expandPercentEnv("a%LARDER_PERCENT_TEST%b"); got != "aokb" {
+		t.Fatalf("got %q", got)
+	}
+	if got := expandPercentEnv("no-vars"); got != "no-vars" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestMCPEnvIncludesCommandAndNodeDirs(t *testing.T) {
+	env := mcpEnv([]string{"HOME=/tmp", "PATH=/usr/bin"}, "/opt/node/bin", []string{"/Users/test/.nvm/versions/node/v22/bin"})
+	var path string
+	for _, entry := range env {
+		if strings.HasPrefix(entry, "PATH=") {
+			path = strings.TrimPrefix(entry, "PATH=")
+		}
+	}
+	if !strings.Contains(path, "/opt/node/bin") || !strings.Contains(path, "/Users/test/.nvm/versions/node/v22/bin") || !strings.Contains(path, "/usr/bin") {
+		t.Fatalf("PATH = %q", path)
+	}
+	if strings.Count(strings.Join(env, "\n"), "PATH=") != 1 {
+		t.Fatalf("env = %v", env)
+	}
 }
