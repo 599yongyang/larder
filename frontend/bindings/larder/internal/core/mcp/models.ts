@@ -11,6 +11,18 @@ export interface RegistryEnv {
     "secret"?: boolean;
 }
 
+export interface RegistryHeader {
+    "name": string;
+    "description"?: string;
+    "required"?: boolean;
+    "secret"?: boolean;
+}
+
+export interface RegistryPage {
+    "servers": RegistryServer[] | null;
+    "nextCursor"?: string;
+}
+
 /**
  * RegistryServer is a registry entry mapped to a config the installer can
  * write. Package and remote entries that cannot be represented are skipped.
@@ -24,6 +36,10 @@ export interface RegistryServer {
     "command"?: string;
     "args"?: string[] | null;
     "url"?: string;
+    "runtime"?: string;
+    "requiresAuth"?: boolean;
+    "publisher"?: string;
     "env"?: RegistryEnv[] | null;
+    "headers"?: RegistryHeader[] | null;
     "unsupported"?: string;
 }

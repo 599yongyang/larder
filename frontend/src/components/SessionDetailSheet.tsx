@@ -8,7 +8,7 @@ import { formatCompactNumber, formatRelativeTime } from '../lib/format'
 import { toastError, toastSuccess } from '../lib/toast'
 import { backend } from '../backend'
 import { t } from '../i18n'
-import { isMacPlatform } from '../lib/platform'
+import { isMacPlatform, isWindowsPlatform } from '../lib/platform'
 import styles from '../App.module.css'
 import type { Session, SessionMessage } from '../types'
 
@@ -102,7 +102,7 @@ export function SessionDetailSheet({ session, onClose, onOpenProject }: { sessio
         </section>
         {resumeCommand && <section className={styles.detailSection}>
           <h3>{t('sessions.resume')}</h3>
-          <div className={styles.resumeCommand}><code>{resumeCommand}</code>{isMacPlatform() && <Button size="xs" variant="outline" disabled={openingTerminal} onClick={() => void openInTerminal()}><Terminal size={12} />{openingTerminal ? t('sessions.openingTerminal') : t('sessions.openInTerminal')}</Button>}<Button size="xs" variant="ghost" onClick={() => void copyResumeCommand()}><Copy size={12} />{t('sessions.copyResumeCommand')}</Button></div>
+          <div className={styles.resumeCommand}><code>{resumeCommand}</code>{(isMacPlatform() || isWindowsPlatform()) && <Button size="xs" variant="outline" disabled={openingTerminal} onClick={() => void openInTerminal()}><Terminal size={12} />{openingTerminal ? t('sessions.openingTerminal') : t('sessions.openInTerminal')}</Button>}<Button size="xs" variant="ghost" onClick={() => void copyResumeCommand()}><Copy size={12} />{t('sessions.copyResumeCommand')}</Button></div>
           <p className={styles.assetDescription}>{t('sessions.resumeHint')}</p>
         </section>}
         <section className={styles.detailSection}>

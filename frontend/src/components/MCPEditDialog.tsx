@@ -18,6 +18,8 @@ export function MCPEditDialog({ server, onClose, onSaved }: { server: MCPServer;
   const [args, setArgs] = useState((server.args ?? []).join(' '))
   const [url, setURL] = useState(server.url ?? '')
   const [paths, setPaths] = useState<string[]>(server.agents.map((agent) => agent.path))
+  const [envValues, setEnvValues] = useState<Record<string, string>>(server.envValues ?? {})
+  const [headerValues, setHeaderValues] = useState<Record<string, string>>(server.headerValues ?? {})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const valid = Boolean(name.trim()) && paths.length > 0 && Boolean(transport === 'stdio' ? command.trim() : url.trim())
@@ -25,7 +27,7 @@ export function MCPEditDialog({ server, onClose, onSaved }: { server: MCPServer;
     if (!valid) return
     setBusy(true); setError('')
     try {
-      const plan = await backend.planMCPUpdate(server.id, name.trim(), transport === 'stdio' ? command.trim() : '', transport === 'stdio' && args.trim() ? args.trim().split(/\s+/) : [], transport === 'http' ? url.trim() : '', paths)
+      const plan = await backend.planMCPUpdate(server.id, name.trim(), transport === 'stdio' ? command.trim() : '', transport === 'stdio' && args.trim() ? args.trim().split(/\s+/) : [], transport === 'http' ? url.trim() : '', envValues, headerValues, paths)
       await backend.applyPlan(plan.id)
       toastSuccess(t('mcp.mcpConfigurationUpdated'), name.trim())
       onSaved(); onClose()
@@ -40,6 +42,8 @@ export function MCPEditDialog({ server, onClose, onSaved }: { server: MCPServer;
         <div className={styles.mcpCustomRow}><span>{t('common.name')}</span><Input value={name} onChange={(event) => setName(event.target.value)} /></div>
         <div className={styles.mcpCustomRow}><span>{t('common.type')}</span><div className={styles.mcpTransport}><button type="button" className={transport === 'stdio' ? styles.mcpTransportActive : styles.mcpTransportButton} onClick={() => setTransport('stdio')}>stdio</button><button type="button" className={transport === 'http' ? styles.mcpTransportActive : styles.mcpTransportButton} onClick={() => setTransport('http')}>http</button></div></div>
         {transport === 'stdio' ? <><div className={styles.mcpCustomRow}><span>{t('common.commandLabel')}</span><Input value={command} onChange={(event) => setCommand(event.target.value)} /></div><div className={styles.mcpCustomRow}><span>{t('common.arguments')}</span><Input value={args} onChange={(event) => setArgs(event.target.value)} /></div></> : <div className={styles.mcpCustomRow}><span>URL</span><Input value={url} onChange={(event) => setURL(event.target.value)} /></div>}
+        {Object.keys(envValues).length > 0 && <div className={styles.mcpCustomColumn}><span>{t('mcp.environmentVariables')}</span>{Object.entries(envValues).map(([key, value]) => <div key={key} className={styles.mcpCustomRow}><span className={styles.mcpConfigKey}>{key}</span><Input value={value} onChange={(event) => setEnvValues((current) => ({ ...current, [key]: event.target.value }))} /></div>)}</div>}
+        {Object.keys(headerValues).length > 0 && <div className={styles.mcpCustomColumn}><span>{t('mcp.requestHeaders')}</span>{Object.entries(headerValues).map(([key, value]) => <div key={key} className={styles.mcpCustomRow}><span className={styles.mcpConfigKey}>{key}</span><Input type={/(authorization|key|token|secret|password)/i.test(key) ? 'password' : 'text'} value={value} onChange={(event) => setHeaderValues((current) => ({ ...current, [key]: event.target.value }))} /></div>)}</div>}
         <div className={styles.mcpCustomColumn}><span>{t('common.writeToAgentConfig')}</span><div className={styles.mcpAddTargets}>{server.agents.filter((agent) => agent.enabled).map((agent) => <label key={`${agent.label}:${agent.path}`} className={styles.discoverAgent}><Checkbox checked={paths.includes(agent.path)} onCheckedChange={(checked) => setPaths((current) => checked ? [...new Set([...current, agent.path])] : current.filter((path) => path !== agent.path))} /><AgentIcon name={agent.label} className="size-4" /><span>{agent.label}</span></label>)}</div></div>
         {error && <p className={styles.planError} role="alert">{error}</p>}
       </div>

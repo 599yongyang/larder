@@ -182,6 +182,102 @@ export interface MCPAgent {
     "enabled": boolean;
 }
 
+export interface MCPAuthStatus {
+    "configured": boolean;
+    "expiresAt"?: string;
+    "hasRefresh"?: boolean;
+}
+
+export interface MCPCapabilitySummary {
+    "serverId": string;
+    "name": string;
+    "tools": number;
+    "resources": number;
+    "prompts": number;
+    "protocolVersion"?: string;
+    "serverName"?: string;
+    "serverVersion"?: string;
+    "checkedAt": string;
+}
+
+export interface MCPInspectTarget {
+    "serverId": string;
+    "name": string;
+    "transport": string;
+    "command"?: string;
+    "args"?: string[] | null;
+    "url"?: string;
+    "envKeys"?: string[] | null;
+    "headerKeys"?: string[] | null;
+    "envValues"?: { [_ in string]?: string } | null;
+    "headerValues"?: { [_ in string]?: string } | null;
+    "agentLabel"?: string;
+    "agentPath"?: string;
+    "scope"?: string;
+    "project"?: boolean;
+    "disabled"?: boolean;
+}
+
+export interface MCPInspection {
+    "serverId": string;
+    "name": string;
+    "transport": string;
+    "protocolVersion"?: string;
+    "capabilities"?: string[] | null;
+    "serverName"?: string;
+    "serverVersion"?: string;
+    "agentLabel"?: string;
+    "agentPath"?: string;
+    "disabled"?: boolean;
+    "tools"?: MCPTool[] | null;
+    "resources"?: MCPResource[] | null;
+    "resourceTemplates"?: MCPResourceTemplate[] | null;
+    "prompts"?: MCPPrompt[] | null;
+    "toolTokens"?: number;
+    "toolError"?: string;
+    "resourceError"?: string;
+    "promptError"?: string;
+    "logs"?: MCPLogEntry[] | null;
+}
+
+export interface MCPLogEntry {
+    "at": string;
+    "method": string;
+    "request"?: string;
+    "response"?: string;
+    "durationMs": number;
+    "error"?: string;
+}
+
+export interface MCPPrompt {
+    "name": string;
+    "title"?: string;
+    "description"?: string;
+    "arguments"?: MCPPromptArgument[] | null;
+}
+
+export interface MCPPromptArgument {
+    "name": string;
+    "description"?: string;
+    "required"?: boolean;
+}
+
+export interface MCPResource {
+    "uri": string;
+    "name"?: string;
+    "title"?: string;
+    "description"?: string;
+    "mimeType"?: string;
+}
+
+export interface MCPResourceTemplate {
+    "uriTemplate": string;
+    "name"?: string;
+    "title"?: string;
+    "description"?: string;
+    "mimeType"?: string;
+}
+
 export interface MCPServer {
     "id": string;
     "name": string;
@@ -191,8 +287,40 @@ export interface MCPServer {
     "url"?: string;
     "envKeys"?: string[] | null;
     "headerKeys"?: string[] | null;
+    "envValues"?: { [_ in string]?: string } | null;
+    "headerValues"?: { [_ in string]?: string } | null;
     "status": string;
     "agents": MCPAgent[] | null;
+}
+
+export interface MCPTool {
+    "name": string;
+    "title"?: string;
+    "description"?: string;
+    "inputSchema"?: any;
+    "outputSchema"?: any;
+    "annotations"?: any;
+}
+
+export interface MCPToolCallRecord {
+    "id": string;
+    "serverId": string;
+    "serverName": string;
+    "tool": string;
+    "arguments": string;
+    "content"?: string;
+    "isError"?: boolean;
+    "createdAt": string;
+}
+
+export interface MCPToolCallResult {
+    "content"?: string;
+    "structuredContent"?: string;
+    "isError"?: boolean;
+}
+
+export interface MCPValueResult {
+    "content": string;
 }
 
 export interface Message {
@@ -247,6 +375,7 @@ export interface Plan {
     "args"?: string[] | null;
     "mcpUrl"?: string;
     "mcpEnv"?: { [_ in string]?: string } | null;
+    "mcpHeaders"?: { [_ in string]?: string } | null;
     "sourceUrl"?: string;
     "sourcePath"?: string;
     "targetPath"?: string;

@@ -312,6 +312,7 @@ type Plan struct {
 	Args             []string          `json:"args,omitempty"`
 	MCPURL           string            `json:"mcpUrl,omitempty"`
 	MCPEnv           map[string]string `json:"mcpEnv,omitempty"`
+	MCPHeaders       map[string]string `json:"mcpHeaders,omitempty"`
 	SourceURL        string            `json:"sourceUrl,omitempty"`
 	SourcePath       string            `json:"sourcePath,omitempty"`
 	TargetPath       string            `json:"targetPath,omitempty"`
@@ -351,17 +352,145 @@ type MCPAgent struct {
 	Enabled bool   `json:"enabled"`
 }
 
+type MCPTool struct {
+	Name         string `json:"name"`
+	Title        string `json:"title,omitempty"`
+	Description  string `json:"description,omitempty"`
+	InputSchema  any    `json:"inputSchema,omitempty"`
+	OutputSchema any    `json:"outputSchema,omitempty"`
+	Annotations  any    `json:"annotations,omitempty"`
+}
+
+type MCPResource struct {
+	URI         string `json:"uri"`
+	Name        string `json:"name,omitempty"`
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
+	MimeType    string `json:"mimeType,omitempty"`
+}
+
+type MCPResourceTemplate struct {
+	URITemplate string `json:"uriTemplate"`
+	Name        string `json:"name,omitempty"`
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
+	MimeType    string `json:"mimeType,omitempty"`
+}
+
+type MCPPromptArgument struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Required    bool   `json:"required,omitempty"`
+}
+
+type MCPPrompt struct {
+	Name        string              `json:"name"`
+	Title       string              `json:"title,omitempty"`
+	Description string              `json:"description,omitempty"`
+	Arguments   []MCPPromptArgument `json:"arguments,omitempty"`
+}
+
+type MCPToolCallRecord struct {
+	ID         string `json:"id"`
+	ServerID   string `json:"serverId"`
+	ServerName string `json:"serverName"`
+	Tool       string `json:"tool"`
+	Arguments  string `json:"arguments"`
+	Content    string `json:"content,omitempty"`
+	IsError    bool   `json:"isError,omitempty"`
+	CreatedAt  string `json:"createdAt"`
+}
+
+type MCPValueResult struct {
+	Content string `json:"content"`
+}
+
+type MCPToolCallResult struct {
+	Content           string `json:"content,omitempty"`
+	StructuredContent string `json:"structuredContent,omitempty"`
+	IsError           bool   `json:"isError,omitempty"`
+}
+
+type MCPInspectTarget struct {
+	ServerID     string            `json:"serverId"`
+	Name         string            `json:"name"`
+	Transport    string            `json:"transport"`
+	Command      string            `json:"command,omitempty"`
+	Args         []string          `json:"args,omitempty"`
+	URL          string            `json:"url,omitempty"`
+	EnvKeys      []string          `json:"envKeys,omitempty"`
+	HeaderKeys   []string          `json:"headerKeys,omitempty"`
+	EnvValues    map[string]string `json:"envValues,omitempty"`
+	HeaderValues map[string]string `json:"headerValues,omitempty"`
+	AgentLabel   string            `json:"agentLabel,omitempty"`
+	AgentPath    string            `json:"agentPath,omitempty"`
+	Scope        string            `json:"scope,omitempty"`
+	Project      bool              `json:"project,omitempty"`
+	Disabled     bool              `json:"disabled,omitempty"`
+}
+
+type MCPAuthStatus struct {
+	Configured bool   `json:"configured"`
+	ExpiresAt  string `json:"expiresAt,omitempty"`
+	HasRefresh bool   `json:"hasRefresh,omitempty"`
+}
+
+type MCPCapabilitySummary struct {
+	ServerID        string `json:"serverId"`
+	Name            string `json:"name"`
+	Tools           int    `json:"tools"`
+	Resources       int    `json:"resources"`
+	Prompts         int    `json:"prompts"`
+	ProtocolVersion string `json:"protocolVersion,omitempty"`
+	ServerName      string `json:"serverName,omitempty"`
+	ServerVersion   string `json:"serverVersion,omitempty"`
+	CheckedAt       string `json:"checkedAt"`
+}
+
+type MCPLogEntry struct {
+	At         string `json:"at"`
+	Method     string `json:"method"`
+	Request    string `json:"request,omitempty"`
+	Response   string `json:"response,omitempty"`
+	DurationMs int64  `json:"durationMs"`
+	Error      string `json:"error,omitempty"`
+}
+
+type MCPInspection struct {
+	ServerID          string                `json:"serverId"`
+	Name              string                `json:"name"`
+	Transport         string                `json:"transport"`
+	ProtocolVersion   string                `json:"protocolVersion,omitempty"`
+	Capabilities      []string              `json:"capabilities,omitempty"`
+	ServerName        string                `json:"serverName,omitempty"`
+	ServerVersion     string                `json:"serverVersion,omitempty"`
+	AgentLabel        string                `json:"agentLabel,omitempty"`
+	AgentPath         string                `json:"agentPath,omitempty"`
+	Disabled          bool                  `json:"disabled,omitempty"`
+	Tools             []MCPTool             `json:"tools,omitempty"`
+	Resources         []MCPResource         `json:"resources,omitempty"`
+	ResourceTemplates []MCPResourceTemplate `json:"resourceTemplates,omitempty"`
+	Prompts           []MCPPrompt           `json:"prompts,omitempty"`
+	ToolTokens        int                   `json:"toolTokens,omitempty"`
+	ToolError         string                `json:"toolError,omitempty"`
+	ResourceError     string                `json:"resourceError,omitempty"`
+	PromptError       string                `json:"promptError,omitempty"`
+	Logs              []MCPLogEntry         `json:"logs,omitempty"`
+}
+
 type MCPServer struct {
-	ID         string     `json:"id"`
-	Name       string     `json:"name"`
-	Transport  string     `json:"transport"`
-	Command    string     `json:"command,omitempty"`
-	Args       []string   `json:"args,omitempty"`
-	URL        string     `json:"url,omitempty"`
-	EnvKeys    []string   `json:"envKeys,omitempty"`
-	HeaderKeys []string   `json:"headerKeys,omitempty"`
-	Status     string     `json:"status"`
-	Agents     []MCPAgent `json:"agents"`
+	ID           string            `json:"id"`
+	Name         string            `json:"name"`
+	Transport    string            `json:"transport"`
+	Command      string            `json:"command,omitempty"`
+	Args         []string          `json:"args,omitempty"`
+	URL          string            `json:"url,omitempty"`
+	EnvKeys      []string          `json:"envKeys,omitempty"`
+	HeaderKeys   []string          `json:"headerKeys,omitempty"`
+	EnvValues    map[string]string `json:"envValues,omitempty"`
+	HeaderValues map[string]string `json:"headerValues,omitempty"`
+	Status       string            `json:"status"`
+	Agents       []MCPAgent        `json:"agents"`
 }
 
 type InstructionFile struct {

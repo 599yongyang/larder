@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Events, Updater } from '@wailsio/runtime'
 import { Monitor, Moon, RefreshCw, Search, Sun } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -17,7 +17,6 @@ import { LarderState } from '../bindings/events'
 import { AppSidebar } from './components/AppSidebar'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { CLIView } from './features/cli/CLIView'
-import { MCPView } from './features/mcp/MCPView'
 import { ProjectManagerDialog } from './components/ProjectManagerDialog'
 import { HistoryView } from './features/history/HistoryView'
 import { SkillsView } from './features/ledger/LedgerView'
@@ -28,6 +27,8 @@ import { CommandsView } from './features/commands/CommandsView'
 import { ProjectView } from './features/project/ProjectView'
 import { formatRelativeTime, skillSourceLabel } from './lib/format'
 import { emptySnapshot } from './types'
+
+const MCPView = lazy(() => import('./features/mcp/MCPView').then((module) => ({ default: module.MCPView })))
 import type { AppInfo, Command, InstructionFile, Issue, Operation, Session, TimelineEvent, UpdateReport, UsageStat, View } from './types'
 import styles from './App.module.css'
 import { backend } from './backend'
@@ -437,7 +438,7 @@ function App() {
         {view === 'skills' && <SkillsView skills={visibleSkills} allSkills={scopedSkills} roots={agentRoots} scopeKind={scope?.kind} links={snapshot.agentLinks} operations={operations} selected={selectedSkill} onSelect={setSelectedId} onCloseDetail={() => setSelectedId(undefined)} source={source} sources={sources} onSource={setSource} onRefresh={refresh} issues={snapshot.issues} updates={updates} updatesLoading={updatesLoading} onCheckUpdates={() => void checkUpdates(true)} clis={clis} onOpenCLI={(id) => pageTransition(() => { setScope(undefined); setCliFocus(id); setView('cli') })} />}
         {view === 'agent-sessions' && activeAgentRoot && <AgentSessionsView sessions={agentSessions} loading={agentSessionsLoading} error={agentSessionsError} onRetry={() => setSessionRefreshKey((value) => value + 1)} onOpenProject={(path) => goScope({ kind: 'project', path, label: path.split('/').filter(Boolean).pop() || path })} />}
         {view === 'xray' && activeAgentRoot && <XrayView root={activeAgentRoot} projects={settings.projectWorkspaces} compareOptions={agentRoots.map((root) => ({ id: root.id, label: root.label, logicalAgent: root.logicalAgent }))} refreshKey={state.updatedAt} onOpenSkill={(id, project) => pageTransition(() => { if (project) setScope({ kind: 'project', path: project, label: project.split('/').filter(Boolean).pop() || project }); setSource('all'); setView('skills'); setSelectedId(id) })} onReveal={(id) => void backend.revealSkill(id).catch((error) => toastError(error, t('app.unableToRevealSkill')))} />}
-        {view === 'mcp' && <MCPView servers={mcps} clis={clis} onRefresh={refresh} focusMCP={mcpFocus} onFocusConsumed={() => setMcpFocus(undefined)} onOpenCLI={(id) => pageTransition(() => { setScope(undefined); setCliFocus(id); setView('cli') })} />}
+        {view === 'mcp' && <Suspense fallback={<InitialSkeleton />}><MCPView servers={mcps} clis={clis} onRefresh={refresh} focusMCP={mcpFocus} onFocusConsumed={() => setMcpFocus(undefined)} onOpenCLI={(id) => pageTransition(() => { setScope(undefined); setCliFocus(id); setView('cli') })} /></Suspense>}
         {view === 'instructions' && <InstructionsView files={instructions} projects={settings.projectWorkspaces} onRefresh={refresh} />}
         {view === 'commands' && <CommandsView commands={commands} onRefresh={refresh} />}
         {view === 'project' && scope?.kind === 'project' && <ProjectView path={scope.path} skills={snapshot.skills} servers={mcps} instructions={instructions} projects={settings.projectWorkspaces} issues={snapshot.issues} commands={commands} operations={operations} sessions={sessions} sessionsLoading={sessionsLoading} sessionsError={sessionsError} onRetrySessions={() => setSessionRefreshKey((value) => value + 1)} onRefresh={refresh} onOpenCommands={() => pageTransition(() => { setScope(undefined); setView('commands') })} />}

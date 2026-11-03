@@ -88,12 +88,31 @@ export function CLIVersion(cliID: string): $CancellablePromise<string> {
     return $Call.ByID(2803279295, cliID);
 }
 
+/**
+ * CallMCPTool invokes one MCP tool after an explicit UI action. No tool is
+ * ever called automatically by scanning or inspection.
+ */
+export function CallMCPTool(serverID: string, toolName: string, argumentsJSON: string): $CancellablePromise<model$0.MCPToolCallResult> {
+    return $Call.ByID(974947621, serverID, toolName, argumentsJSON);
+}
+
 export function CancelCommandDelete(planID: string): $CancellablePromise<void> {
     return $Call.ByID(1627701631, planID);
 }
 
 export function CancelCommandWrite(planID: string): $CancellablePromise<void> {
     return $Call.ByID(997356579, planID);
+}
+
+export function CancelInspectMCP(serverID: string): $CancellablePromise<void> {
+    return $Call.ByID(1395515487, serverID);
+}
+
+/**
+ * CancelMCPTool cancels an in-flight tool call for a server.
+ */
+export function CancelMCPTool(serverID: string): $CancellablePromise<void> {
+    return $Call.ByID(3707345751, serverID);
 }
 
 export function CancelScan(): $CancellablePromise<boolean> {
@@ -135,8 +154,26 @@ export function CheckUpdates(): $CancellablePromise<model$0.UpdateReport> {
     return $Call.ByID(3271042347);
 }
 
+export function ClearMCPAuth(serverID: string): $CancellablePromise<void> {
+    return $Call.ByID(3562062848, serverID);
+}
+
+/**
+ * ClearMCPToolHistory removes call history for one server.
+ */
+export function ClearMCPToolHistory(serverID: string): $CancellablePromise<void> {
+    return $Call.ByID(3327531396, serverID);
+}
+
 export function ClearSkillSource(path: string): $CancellablePromise<void> {
     return $Call.ByID(1233306162, path);
+}
+
+/**
+ * CloseMCPSession releases a cached MCP process when the UI closes its Sheet.
+ */
+export function CloseMCPSession(serverID: string): $CancellablePromise<void> {
+    return $Call.ByID(3148475271, serverID);
 }
 
 export function CommandContent(path: string): $CancellablePromise<string> {
@@ -157,6 +194,10 @@ export function CreateInstruction(projectPath: string, name: string, content: st
 
 export function DisableMCPAgent(serverID: string, agentPath: string): $CancellablePromise<void> {
     return $Call.ByID(2468852006, serverID, agentPath);
+}
+
+export function DiscoverMCPRegistry(): $CancellablePromise<mcp$0.RegistryServer[] | null> {
+    return $Call.ByID(2715577165);
 }
 
 export function Doctor(): $CancellablePromise<model$0.Finding[] | null> {
@@ -191,6 +232,13 @@ export function ExportSession(session: model$0.Session): $CancellablePromise<str
     return $Call.ByID(4221037065, session);
 }
 
+/**
+ * GetMCPPrompt renders one prompt from the configured MCP server.
+ */
+export function GetMCPPrompt(serverID: string, name: string, argumentsJSON: string): $CancellablePromise<model$0.MCPValueResult> {
+    return $Call.ByID(874316919, serverID, name, argumentsJSON);
+}
+
 export function IgnoreAgent(path: string, label: string, rootID: string): $CancellablePromise<model$0.Settings> {
     return $Call.ByID(2209234508, path, label, rootID);
 }
@@ -205,6 +253,10 @@ export function InspectBackup(path: string): $CancellablePromise<backup$0.Info> 
 
 export function InspectDataPackage(path: string): $CancellablePromise<transfer$0.Info> {
     return $Call.ByID(2932308897, path);
+}
+
+export function InspectMCP(serverID: string): $CancellablePromise<model$0.MCPInspection> {
+    return $Call.ByID(1523266617, serverID);
 }
 
 /**
@@ -228,12 +280,48 @@ export function Instructions(): $CancellablePromise<model$0.InstructionFile[] | 
     return $Call.ByID(1770282696);
 }
 
+export function InvalidateMCPCapability(serverID: string): $CancellablePromise<void> {
+    return $Call.ByID(1979848886, serverID);
+}
+
 export function MCP(): $CancellablePromise<model$0.MCPServer[] | null> {
     return $Call.ByID(3537853559);
 }
 
+export function MCPAuthStatus(serverID: string): $CancellablePromise<model$0.MCPAuthStatus> {
+    return $Call.ByID(172103267, serverID);
+}
+
+/**
+ * MCPCapabilityCache returns the last known capability counts per server.
+ */
+export function MCPCapabilityCache(): $CancellablePromise<model$0.MCPCapabilitySummary[] | null> {
+    return $Call.ByID(1119995761);
+}
+
+/**
+ * MCPInspectTarget returns the exact launch config without executing it.
+ */
+export function MCPInspectTarget(serverID: string): $CancellablePromise<model$0.MCPInspectTarget> {
+    return $Call.ByID(956175156, serverID);
+}
+
+/**
+ * MCPRuntimeLogs returns JSON-RPC messages recorded on the live session.
+ */
+export function MCPRuntimeLogs(serverID: string): $CancellablePromise<model$0.MCPLogEntry[] | null> {
+    return $Call.ByID(3768996178, serverID);
+}
+
 export function MCPTargets(): $CancellablePromise<model$0.MCPAgent[] | null> {
     return $Call.ByID(1436709707);
+}
+
+/**
+ * MCPToolHistory returns recent tool calls for one server, newest first.
+ */
+export function MCPToolHistory(serverID: string): $CancellablePromise<model$0.MCPToolCallRecord[] | null> {
+    return $Call.ByID(2001268451, serverID);
 }
 
 export function NativeCLIUpdate(cliID: string): $CancellablePromise<string> {
@@ -300,16 +388,16 @@ export function PlanLink(skillID: string, rootIDs: string[] | null): $Cancellabl
     return $Call.ByID(661059854, skillID, rootIDs);
 }
 
-export function PlanMCPAdd(name: string, transport: string, command: string, args: string[] | null, url: string, env: { [_ in string]?: string } | null, agentPaths: string[] | null): $CancellablePromise<model$0.Plan> {
-    return $Call.ByID(260180569, name, transport, command, args, url, env, agentPaths);
+export function PlanMCPAdd(name: string, transport: string, command: string, args: string[] | null, url: string, env: { [_ in string]?: string } | null, headers: { [_ in string]?: string } | null, agentPaths: string[] | null): $CancellablePromise<model$0.Plan> {
+    return $Call.ByID(260180569, name, transport, command, args, url, env, headers, agentPaths);
 }
 
 export function PlanMCPRemove(serverID: string, agentPaths: string[] | null): $CancellablePromise<model$0.Plan> {
     return $Call.ByID(2522611686, serverID, agentPaths);
 }
 
-export function PlanMCPUpdate(serverID: string, name: string, command: string, args: string[] | null, url: string, agentPaths: string[] | null): $CancellablePromise<model$0.Plan> {
-    return $Call.ByID(2976330587, serverID, name, command, args, url, agentPaths);
+export function PlanMCPUpdate(serverID: string, name: string, command: string, args: string[] | null, url: string, env: { [_ in string]?: string } | null, headers: { [_ in string]?: string } | null, agentPaths: string[] | null): $CancellablePromise<model$0.Plan> {
+    return $Call.ByID(2976330587, serverID, name, command, args, url, env, headers, agentPaths);
 }
 
 export function PlanSkillCreate(name: string, content: string): $CancellablePromise<model$0.SkillCreatePlan> {
@@ -354,6 +442,13 @@ export function ProjectUsage(projectPath: string): $CancellablePromise<model$0.R
 
 export function PurgeTrash(operationID: string): $CancellablePromise<void> {
     return $Call.ByID(2778568018, operationID);
+}
+
+/**
+ * ReadMCPResource reads one resource from the configured MCP server.
+ */
+export function ReadMCPResource(serverID: string, uri: string): $CancellablePromise<model$0.MCPValueResult> {
+    return $Call.ByID(1905756931, serverID, uri);
 }
 
 export function RecentSessions(limit: number): $CancellablePromise<model$0.Session[] | null> {
@@ -422,6 +517,10 @@ export function SearchCatalogSkills(query: string): $CancellablePromise<catalog$
 
 export function SearchMCPRegistry(query: string): $CancellablePromise<mcp$0.RegistryServer[] | null> {
     return $Call.ByID(700383348, query);
+}
+
+export function SearchMCPRegistryPage(query: string, cursor: string): $CancellablePromise<mcp$0.RegistryPage> {
+    return $Call.ByID(2212651023, query, cursor);
 }
 
 export function SessionMessages(path: string, limit: number): $CancellablePromise<model$0.SessionMessage[] | null> {

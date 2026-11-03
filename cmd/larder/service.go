@@ -101,6 +101,17 @@ type AppService struct {
 	usageCache         map[string]usageCacheEntry
 	disabledPath       string
 	disabled           []ops.DetachedMCP
+	inspectMu          sync.Mutex
+	inspectCancels     map[string]context.CancelFunc
+	mcpHistoryMu       sync.Mutex
+	mcpHistorySaveMu   sync.Mutex
+	mcpHistory         []model.MCPToolCallRecord
+	mcpHistoryPath     string
+	mcpCacheMu         sync.Mutex
+	mcpCache           map[string]model.MCPCapabilitySummary
+	mcpCachePath       string
+	mcpSessionMu       sync.Mutex
+	mcpSessions        map[string]*coremcp.Session
 	skillSourcesPath   string
 	skillSources       map[string]skills.SourceOverride
 	dataDir            string
@@ -133,9 +144,11 @@ func NewAppService() (*AppService, error) {
 	for _, item := range catalog.LocalPopular() {
 		catalogByName[strings.ToLower(item.Name)] = item
 	}
-	service := &AppService{core: core, catalog: catalogClient, catalogByName: catalogByName, installsPath: filepath.Join(dataDir, "catalog-installs.json"), installs: map[string]CatalogInstall{}, commandPlans: map[string]model.CommandWritePlan{}, commandDeletePlans: map[string]model.CommandDeletePlan{}, skillEditPlans: map[string]model.SkillEditPlan{}, skillCreatePlans: map[string]model.SkillCreatePlan{}, skillRenamePlans: map[string]model.SkillRenamePlan{}, trust: trust.New(), sessionCache: map[string]sessionCacheEntry{}, usageCache: map[string]usageCacheEntry{}, disabledPath: filepath.Join(dataDir, "disabled-mcp.json"), skillSourcesPath: filepath.Join(dataDir, "skill-sources.json"), dataDir: dataDir, homeDir: homeDir}
+	service := &AppService{core: core, catalog: catalogClient, catalogByName: catalogByName, installsPath: filepath.Join(dataDir, "catalog-installs.json"), installs: map[string]CatalogInstall{}, commandPlans: map[string]model.CommandWritePlan{}, commandDeletePlans: map[string]model.CommandDeletePlan{}, skillEditPlans: map[string]model.SkillEditPlan{}, skillCreatePlans: map[string]model.SkillCreatePlan{}, skillRenamePlans: map[string]model.SkillRenamePlan{}, trust: trust.New(), sessionCache: map[string]sessionCacheEntry{}, usageCache: map[string]usageCacheEntry{}, disabledPath: filepath.Join(dataDir, "disabled-mcp.json"), skillSourcesPath: filepath.Join(dataDir, "skill-sources.json"), dataDir: dataDir, homeDir: homeDir, mcpHistoryPath: filepath.Join(dataDir, "mcp-history.json"), mcpSessions: map[string]*coremcp.Session{}, mcpCache: map[string]model.MCPCapabilitySummary{}, mcpCachePath: filepath.Join(dataDir, "mcp-capabilities.json")}
 	service.loadCatalogInstalls()
 	service.loadDisabledMCPs()
+	service.loadMCPHistory()
+	service.loadMCPCache()
 	service.loadSkillSources()
 	service.state = AppState{SchemaVersion: model.SchemaVersion, Snapshot: model.ScanResult{SchemaVersion: model.SchemaVersion}, UpdatedAt: time.Now()}
 	return service, nil
@@ -886,11 +899,29 @@ func (s *AppService) SetAutostart(enabled bool) error {
 }
 
 func (s *AppService) SessionResumeCommand(session model.Session) (string, error) {
+	return sessionResumeCommand(session, runtime.GOOS)
+}
+
+func sessionResumeCommand(session model.Session, goos string) (string, error) {
 	id := strings.TrimSpace(session.ID)
 	if id == "" {
 		return "", errors.New("session id is missing")
 	}
 	var command string
+	if goos == "windows" {
+		switch session.Agent {
+		case "Claude Code":
+			command = "claude --resume " + powerShellQuote(id)
+		case "Codex":
+			command = "codex resume " + powerShellQuote(id)
+		default:
+			return "", errors.New("resume is not supported for this agent yet")
+		}
+		if cwd := strings.TrimSpace(session.CWD); cwd != "" {
+			command = "Set-Location -LiteralPath " + powerShellQuote(cwd) + "; " + command
+		}
+		return command, nil
+	}
 	switch session.Agent {
 	case "Claude Code":
 		command = "claude --resume " + shellQuote(id)
@@ -910,8 +941,11 @@ func (s *AppService) OpenSessionInTerminal(session model.Session) error {
 	if err != nil {
 		return err
 	}
+	if runtime.GOOS == "windows" {
+		return exec.Command("powershell.exe", "-NoExit", "-Command", command).Start()
+	}
 	if runtime.GOOS != "darwin" {
-		return errors.New("opening a terminal is only supported on macOS")
+		return errors.New("opening a terminal is only supported on macOS and Windows")
 	}
 	script := "tell application \"Terminal\"\nactivate\ndo script " + appleScriptString(command) + "\nend tell"
 	return exec.Command("osascript", "-e", script).Run()
@@ -925,6 +959,10 @@ func appleScriptString(value string) string {
 
 func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+}
+
+func powerShellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }
 
 func (s *AppService) ExportSession(session model.Session) (string, error) {
@@ -2199,6 +2237,399 @@ func (s *AppService) Instructions() []model.InstructionFile {
 	return instructions.Scan(s.context(), home, settings.ProjectWorkspaces)
 }
 
+// MCPInspectTarget returns the exact launch config without executing it.
+func (s *AppService) MCPInspectTarget(serverID string) (model.MCPInspectTarget, error) {
+	target, _, err := s.mcpTarget(serverID)
+	return target, err
+}
+
+func (s *AppService) mcpTarget(serverID string) (model.MCPInspectTarget, bool, error) {
+	settings, _ := s.core.Settings(s.context())
+	target, err := coremcp.InspectTarget(serverID, settings.ProjectWorkspaces)
+	if err == nil {
+		return target, false, nil
+	}
+	if detached, ok := s.detachedMCP(serverID); ok {
+		return detached, true, nil
+	}
+	return model.MCPInspectTarget{}, false, err
+}
+
+func (s *AppService) detachedMCP(serverID string) (model.MCPInspectTarget, bool) {
+	for _, entry := range s.disabled {
+		if "disabled:"+entry.AgentPath+":"+entry.Name != serverID {
+			continue
+		}
+		return model.MCPInspectTarget{
+			ServerID: serverID, Name: entry.Name, Transport: entry.Transport,
+			Command: entry.Command, Args: entry.Args, URL: entry.URL,
+			AgentLabel: entry.AgentLabel, AgentPath: entry.AgentPath,
+			Disabled: true,
+		}, true
+	}
+	return model.MCPInspectTarget{}, false
+}
+
+func (s *AppService) InspectMCP(serverID string) (model.MCPInspection, error) {
+	settings, _ := s.core.Settings(s.context())
+	target, detached, targetErr := s.mcpTarget(serverID)
+	if targetErr != nil {
+		return model.MCPInspection{}, targetErr
+	}
+	ctx, cancel := context.WithTimeout(s.context(), 2*time.Minute)
+	s.inspectMu.Lock()
+	if s.inspectCancels == nil {
+		s.inspectCancels = map[string]context.CancelFunc{}
+	}
+	s.inspectCancels[serverID] = cancel
+	s.inspectMu.Unlock()
+	defer func() {
+		s.inspectMu.Lock()
+		delete(s.inspectCancels, serverID)
+		s.inspectMu.Unlock()
+		cancel()
+	}()
+	s.closeMCPSession(serverID)
+	var session *coremcp.Session
+	var err error
+	if detached {
+		session, err = coremcp.OpenSessionLaunch(ctx, target, Version)
+	} else {
+		session, err = coremcp.OpenSession(ctx, serverID, settings.ProjectWorkspaces, Version)
+	}
+	if err != nil {
+		return model.MCPInspection{}, err
+	}
+	result, err := session.Inspect(ctx)
+	if err != nil {
+		session.Close()
+		return result, err
+	}
+	s.mcpSessionMu.Lock()
+	s.mcpSessions[serverID] = session
+	s.mcpSessionMu.Unlock()
+	s.recordMCPCapabilities(result)
+	return result, nil
+}
+
+func (s *AppService) ensureMCPSession(ctx context.Context, serverID string) (*coremcp.Session, error) {
+	s.mcpSessionMu.Lock()
+	if session := s.mcpSessions[serverID]; session != nil {
+		s.mcpSessionMu.Unlock()
+		return session, nil
+	}
+	s.mcpSessionMu.Unlock()
+	settings, _ := s.core.Settings(s.context())
+	target, detached, err := s.mcpTarget(serverID)
+	if err != nil {
+		return nil, err
+	}
+	var session *coremcp.Session
+	if detached {
+		session, err = coremcp.OpenSessionLaunch(ctx, target, Version)
+	} else {
+		session, err = coremcp.OpenSession(ctx, serverID, settings.ProjectWorkspaces, Version)
+	}
+	if err != nil {
+		return nil, err
+	}
+	s.mcpSessionMu.Lock()
+	if existing := s.mcpSessions[serverID]; existing != nil {
+		s.mcpSessionMu.Unlock()
+		session.Close()
+		return existing, nil
+	}
+	s.mcpSessions[serverID] = session
+	s.mcpSessionMu.Unlock()
+	return session, nil
+}
+
+func (s *AppService) closeMCPSession(serverID string) {
+	s.mcpSessionMu.Lock()
+	session := s.mcpSessions[serverID]
+	delete(s.mcpSessions, serverID)
+	s.mcpSessionMu.Unlock()
+	if session != nil {
+		session.Close()
+	}
+}
+
+func (s *AppService) MCPAuthStatus(serverID string) (model.MCPAuthStatus, error) {
+	target, _, err := s.mcpTarget(serverID)
+	if err != nil {
+		return model.MCPAuthStatus{}, err
+	}
+	if target.URL == "" {
+		return model.MCPAuthStatus{}, nil
+	}
+	return coremcp.OAuthStatus(target.URL), nil
+}
+
+func (s *AppService) ClearMCPAuth(serverID string) error {
+	target, _, err := s.mcpTarget(serverID)
+	if err != nil {
+		return err
+	}
+	if target.URL == "" {
+		return nil
+	}
+	s.closeMCPSession(serverID)
+	return coremcp.ClearOAuth(target.URL)
+}
+
+// MCPRuntimeLogs returns JSON-RPC messages recorded on the live session.
+func (s *AppService) MCPRuntimeLogs(serverID string) []model.MCPLogEntry {
+	s.mcpSessionMu.Lock()
+	session := s.mcpSessions[serverID]
+	s.mcpSessionMu.Unlock()
+	if session == nil {
+		return nil
+	}
+	return session.Logs()
+}
+
+// CloseMCPSession releases a cached MCP process when the UI closes its Sheet.
+func (s *AppService) CloseMCPSession(serverID string) { s.closeMCPSession(serverID) }
+
+// ReadMCPResource reads one resource from the configured MCP server.
+func (s *AppService) ReadMCPResource(serverID, uri string) (model.MCPValueResult, error) {
+	settings, _ := s.core.Settings(s.context())
+	target, detached, err := s.mcpTarget(serverID)
+	if err != nil {
+		return model.MCPValueResult{}, err
+	}
+	ctx, cancel := context.WithTimeout(s.context(), 90*time.Second)
+	defer cancel()
+	if detached {
+		return coremcp.ReadResourceLaunch(ctx, target, uri, Version)
+	}
+	if session, sessionErr := s.ensureMCPSession(ctx, serverID); sessionErr == nil {
+		return session.ReadResource(ctx, uri)
+	}
+	return coremcp.ReadResource(ctx, serverID, settings.ProjectWorkspaces, uri, Version)
+}
+
+// GetMCPPrompt renders one prompt from the configured MCP server.
+func (s *AppService) GetMCPPrompt(serverID, name, argumentsJSON string) (model.MCPValueResult, error) {
+	var arguments map[string]string
+	if strings.TrimSpace(argumentsJSON) != "" {
+		if err := json.Unmarshal([]byte(argumentsJSON), &arguments); err != nil {
+			return model.MCPValueResult{}, messageError("mcp.invalidArguments", "invalid prompt arguments JSON", nil)
+		}
+	}
+	settings, _ := s.core.Settings(s.context())
+	target, detached, err := s.mcpTarget(serverID)
+	if err != nil {
+		return model.MCPValueResult{}, err
+	}
+	ctx, cancel := context.WithTimeout(s.context(), 90*time.Second)
+	defer cancel()
+	if detached {
+		return coremcp.GetPromptLaunch(ctx, target, name, arguments, Version)
+	}
+	if session, sessionErr := s.ensureMCPSession(ctx, serverID); sessionErr == nil {
+		return session.GetPrompt(ctx, name, arguments)
+	}
+	return coremcp.GetPrompt(ctx, serverID, settings.ProjectWorkspaces, name, arguments, Version)
+}
+
+func isClosedSessionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "connection closed") || strings.Contains(message, "client is closing") || strings.Contains(message, "broken pipe") || strings.Contains(message, "eof") || strings.Contains(message, "session") || strings.Contains(message, "closed")
+}
+
+// CallMCPTool invokes one MCP tool after an explicit UI action. No tool is
+// ever called automatically by scanning or inspection.
+func (s *AppService) CallMCPTool(serverID, toolName, argumentsJSON string) (model.MCPToolCallResult, error) {
+	var arguments map[string]any
+	if strings.TrimSpace(argumentsJSON) == "" {
+		arguments = map[string]any{}
+	} else if err := json.Unmarshal([]byte(argumentsJSON), &arguments); err != nil {
+		return model.MCPToolCallResult{}, messageError("mcp.invalidArguments", "invalid JSON arguments", nil)
+	}
+	settings, _ := s.core.Settings(s.context())
+	target, detached, err := s.mcpTarget(serverID)
+	if err != nil {
+		return model.MCPToolCallResult{}, err
+	}
+	ctx, cancel := context.WithTimeout(s.context(), 2*time.Minute)
+	s.inspectMu.Lock()
+	if s.inspectCancels == nil {
+		s.inspectCancels = map[string]context.CancelFunc{}
+	}
+	s.inspectCancels["call:"+serverID] = cancel
+	s.inspectMu.Unlock()
+	defer func() { s.inspectMu.Lock(); delete(s.inspectCancels, "call:"+serverID); s.inspectMu.Unlock(); cancel() }()
+	var result model.MCPToolCallResult
+	var callErr error
+	if detached {
+		result, callErr = coremcp.CallToolLaunch(ctx, target, toolName, arguments, Version)
+	} else if session, sessionErr := s.ensureMCPSession(ctx, serverID); sessionErr == nil {
+		result, callErr = session.CallTool(ctx, toolName, arguments)
+		if callErr != nil && isClosedSessionError(callErr) {
+			s.closeMCPSession(serverID)
+			if retry, retryErr := s.ensureMCPSession(ctx, serverID); retryErr == nil {
+				result, callErr = retry.CallTool(ctx, toolName, arguments)
+			}
+		}
+	} else {
+		result, callErr = coremcp.CallTool(ctx, serverID, settings.ProjectWorkspaces, toolName, arguments, Version)
+	}
+	if callErr == nil {
+		s.recordMCPCall(serverID, target.Name, toolName, argumentsJSON, result)
+	}
+	return result, callErr
+}
+
+// CancelMCPTool cancels an in-flight tool call for a server.
+func (s *AppService) CancelMCPTool(serverID string) {
+	s.inspectMu.Lock()
+	defer s.inspectMu.Unlock()
+	if cancel, ok := s.inspectCancels["call:"+serverID]; ok {
+		cancel()
+	}
+}
+
+func (s *AppService) loadMCPHistory() {
+	raw, err := os.ReadFile(s.mcpHistoryPath)
+	if err != nil {
+		return
+	}
+	_ = json.Unmarshal(raw, &s.mcpHistory)
+}
+
+func (s *AppService) saveMCPHistory() {
+	s.mcpHistorySaveMu.Lock()
+	defer s.mcpHistorySaveMu.Unlock()
+	s.mcpHistoryMu.Lock()
+	raw, err := json.MarshalIndent(s.mcpHistory, "", "  ")
+	s.mcpHistoryMu.Unlock()
+	if err != nil {
+		return
+	}
+	tmp := s.mcpHistoryPath + ".tmp"
+	if os.WriteFile(tmp, raw, 0o600) == nil {
+		_ = os.Rename(tmp, s.mcpHistoryPath)
+	}
+}
+
+func (s *AppService) loadMCPCache() {
+	raw, err := os.ReadFile(s.mcpCachePath)
+	if err != nil {
+		return
+	}
+	_ = json.Unmarshal(raw, &s.mcpCache)
+}
+
+func (s *AppService) saveMCPCache() {
+	raw, err := json.MarshalIndent(s.mcpCache, "", "  ")
+	if err != nil {
+		return
+	}
+	tmp := s.mcpCachePath + ".tmp"
+	if os.WriteFile(tmp, raw, 0o600) == nil {
+		_ = os.Rename(tmp, s.mcpCachePath)
+	}
+}
+
+func (s *AppService) InvalidateMCPCapability(serverID string) {
+	s.mcpCacheMu.Lock()
+	defer s.mcpCacheMu.Unlock()
+	if _, ok := s.mcpCache[serverID]; !ok {
+		return
+	}
+	delete(s.mcpCache, serverID)
+	s.saveMCPCache()
+}
+
+// MCPCapabilityCache returns the last known capability counts per server.
+func (s *AppService) MCPCapabilityCache() []model.MCPCapabilitySummary {
+	s.mcpCacheMu.Lock()
+	defer s.mcpCacheMu.Unlock()
+	items := make([]model.MCPCapabilitySummary, 0, len(s.mcpCache))
+	for _, item := range s.mcpCache {
+		items = append(items, item)
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
+	return items
+}
+
+func (s *AppService) recordMCPCapabilities(result model.MCPInspection) {
+	s.mcpCacheMu.Lock()
+	defer s.mcpCacheMu.Unlock()
+	checked := time.Now().UTC().Format(time.RFC3339)
+	summary := model.MCPCapabilitySummary{ServerID: result.ServerID, Name: result.Name, Tools: len(result.Tools), Resources: len(result.Resources) + len(result.ResourceTemplates), Prompts: len(result.Prompts), ProtocolVersion: result.ProtocolVersion, ServerName: result.ServerName, ServerVersion: result.ServerVersion, CheckedAt: checked}
+	if result.ServerName != "" {
+		summary.Name = result.ServerName
+	}
+	s.mcpCache[result.ServerID] = summary
+	s.saveMCPCache()
+}
+
+// MCPToolHistory returns recent tool calls for one server, newest first.
+func (s *AppService) MCPToolHistory(serverID string) []model.MCPToolCallRecord {
+	s.mcpHistoryMu.Lock()
+	defer s.mcpHistoryMu.Unlock()
+	items := []model.MCPToolCallRecord{}
+	for index := len(s.mcpHistory) - 1; index >= 0 && len(items) < 50; index-- {
+		if s.mcpHistory[index].ServerID == serverID {
+			items = append(items, s.mcpHistory[index])
+		}
+	}
+	return items
+}
+
+// ClearMCPToolHistory removes call history for one server.
+func (s *AppService) ClearMCPToolHistory(serverID string) {
+	s.mcpHistoryMu.Lock()
+	filtered := s.mcpHistory[:0]
+	for _, item := range s.mcpHistory {
+		if item.ServerID != serverID {
+			filtered = append(filtered, item)
+		}
+	}
+	s.mcpHistory = filtered
+	s.mcpHistoryMu.Unlock()
+	s.saveMCPHistory()
+}
+
+func (s *AppService) recordMCPCall(serverID, serverName, tool, arguments string, result model.MCPToolCallResult) {
+	content := firstNonEmpty(result.StructuredContent, result.Content)
+	if len(content) > 32<<10 {
+		content = content[:32<<10] + "…"
+	}
+	if len(arguments) > 8<<10 {
+		arguments = arguments[:8<<10] + "…"
+	}
+	s.mcpHistoryMu.Lock()
+	s.mcpHistory = append(s.mcpHistory, model.MCPToolCallRecord{ID: fmt.Sprintf("mcp-call-%d", time.Now().UnixNano()), ServerID: serverID, ServerName: serverName, Tool: tool, Arguments: arguments, Content: content, IsError: result.IsError, CreatedAt: time.Now().UTC().Format(time.RFC3339)})
+	if len(s.mcpHistory) > 100 {
+		s.mcpHistory = s.mcpHistory[len(s.mcpHistory)-100:]
+	}
+	s.mcpHistoryMu.Unlock()
+	go s.saveMCPHistory()
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" && value != "null" {
+			return value
+		}
+	}
+	return ""
+}
+
+func (s *AppService) CancelInspectMCP(serverID string) {
+	s.inspectMu.Lock()
+	defer s.inspectMu.Unlock()
+	if cancel, ok := s.inspectCancels[serverID]; ok {
+		cancel()
+	}
+}
+
 func (s *AppService) TestMCP(serverID string) (MCPTestResult, error) {
 	var server *model.MCPServer
 	for _, item := range s.MCP() {
@@ -2255,16 +2686,28 @@ func (s *AppService) MCPTargets() []model.MCPAgent {
 	return s.core.MCPTargets()
 }
 
+func (s *AppService) SearchMCPRegistryPage(query, cursor string) (coremcp.RegistryPage, error) {
+	ctx, cancel := context.WithTimeout(s.context(), 20*time.Second)
+	defer cancel()
+	return coremcp.SearchRegistryPage(ctx, query, cursor)
+}
+
+func (s *AppService) DiscoverMCPRegistry() ([]coremcp.RegistryServer, error) {
+	ctx, cancel := context.WithTimeout(s.context(), 20*time.Second)
+	defer cancel()
+	return coremcp.DiscoverRegistry(ctx)
+}
+
 func (s *AppService) SearchMCPRegistry(query string) ([]coremcp.RegistryServer, error) {
 	return coremcp.SearchRegistry(s.context(), query)
 }
 
-func (s *AppService) PlanMCPAdd(name, transport, command string, args []string, url string, env map[string]string, agentPaths []string) (model.Plan, error) {
-	return s.core.PlanMCPAdd(s.context(), name, transport, command, args, url, env, agentPaths)
+func (s *AppService) PlanMCPAdd(name, transport, command string, args []string, url string, env map[string]string, headers map[string]string, agentPaths []string) (model.Plan, error) {
+	return s.core.PlanMCPAdd(s.context(), name, transport, command, args, url, env, headers, agentPaths)
 }
 
-func (s *AppService) PlanMCPUpdate(serverID, name, command string, args []string, url string, agentPaths []string) (model.Plan, error) {
-	return s.core.PlanMCPUpdate(s.context(), serverID, name, command, args, url, agentPaths)
+func (s *AppService) PlanMCPUpdate(serverID, name, command string, args []string, url string, env map[string]string, headers map[string]string, agentPaths []string) (model.Plan, error) {
+	return s.core.PlanMCPUpdate(s.context(), serverID, name, command, args, url, env, headers, agentPaths)
 }
 
 func (s *AppService) PlanMCPRemove(serverID string, agentPaths []string) (model.Plan, error) {
