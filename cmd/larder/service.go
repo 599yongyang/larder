@@ -792,7 +792,7 @@ func (s *AppService) NativeCLIUpdate(cliID string) (string, error) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, cli.Path, args...)
 	cmd.Stdin = nil
-	cmd.Env = append(os.Environ(), "NO_COLOR=1")
+	cmd.Env = append(platform.ExecutableEnv(os.Environ(), cli.Path), "NO_COLOR=1")
 	out, err := cmd.CombinedOutput()
 	output := strings.TrimSpace(string(out))
 	if len(output) > 16<<10 {
@@ -942,7 +942,9 @@ func (s *AppService) OpenSessionInTerminal(session model.Session) error {
 		return err
 	}
 	if runtime.GOOS == "windows" {
-		return exec.Command("powershell.exe", "-NoExit", "-Command", command).Start()
+		cmd := exec.Command("powershell.exe", "-NoExit", "-Command", command)
+		cmd.Env = platform.ExecutableEnv(os.Environ(), cmd.Path)
+		return cmd.Start()
 	}
 	if runtime.GOOS != "darwin" {
 		return errors.New("opening a terminal is only supported on macOS and Windows")

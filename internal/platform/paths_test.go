@@ -3,6 +3,7 @@ package platform
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -39,5 +40,18 @@ func TestPathDirsIncludesNVMNodeBins(t *testing.T) {
 func TestNodeVersionOrdering(t *testing.T) {
 	if nodeVersionAt("/home/u/.nvm/versions/node/v22.1.0/bin") <= nodeVersionAt("/home/u/.nvm/versions/node/v22.0.1/bin") {
 		t.Fatal("major/minor/patch ordering is wrong")
+	}
+}
+
+func TestExecutableEnvPrependsExecutableDir(t *testing.T) {
+	env := ExecutableEnv([]string{"HOME=/tmp", "PATH=/usr/bin"}, "/opt/node/bin/node")
+	var path string
+	for _, entry := range env {
+		if len(entry) >= 5 && entry[:5] == "PATH=" {
+			path = entry[5:]
+		}
+	}
+	if !strings.Contains(path, "/opt/node/bin") || !strings.Contains(path, "/usr/bin") {
+		t.Fatalf("PATH = %q", path)
 	}
 }
