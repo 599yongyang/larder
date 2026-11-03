@@ -569,8 +569,8 @@ func newStdioTransport(target *client) (sdk.Transport, func(), error) {
 	for _, arg := range target.args {
 		args = append(args, expandArg(arg, home))
 	}
-	command := exec.Command(commandPath, args...)
-	command.Env = os.Environ()
+	command := platform.NewCommand(commandPath, args...)
+	command.Env = mcpEnv(os.Environ(), filepath.Dir(commandPath), platform.LocalPaths{}.PathDirs(home))
 	for key, value := range target.env {
 		command.Env = append(command.Env, key+"="+value)
 	}
@@ -586,6 +586,43 @@ func newStdioTransport(target *client) (sdk.Transport, func(), error) {
 		stderr:    stderr,
 	}
 	return transport, func() { killProcess(command) }, nil
+}
+
+func mcpEnv(base []string, commandDir string, extraDirs []string) []string {
+	pathDirs := []string{}
+	if commandDir != "" && commandDir != "." {
+		pathDirs = append(pathDirs, commandDir)
+	}
+	pathDirs = append(pathDirs, extraDirs...)
+	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+		if strings.TrimSpace(dir) != "" {
+			pathDirs = append(pathDirs, dir)
+		}
+	}
+	seen := map[string]bool{}
+	unique := pathDirs[:0]
+	for _, dir := range pathDirs {
+		dir = filepath.Clean(dir)
+		if dir == "." || seen[dir] {
+			continue
+		}
+		seen[dir] = true
+		unique = append(unique, dir)
+	}
+	env := make([]string, 0, len(base)+1)
+	for _, entry := range base {
+		if equalFoldKey(entry, "PATH") {
+			continue
+		}
+		env = append(env, entry)
+	}
+	env = append(env, "PATH="+strings.Join(unique, string(os.PathListSeparator)))
+	return env
+}
+
+func equalFoldKey(entry, key string) bool {
+	index := strings.IndexByte(entry, '=')
+	return index >= 0 && strings.EqualFold(entry[:index], key)
 }
 
 func explainConnectionError(err error) error {
@@ -613,6 +650,12 @@ func explainConnectionError(err error) error {
 	return err
 }
 
+// ResolveCommand resolves an MCP command using the desktop PATH fallbacks.
+func ResolveCommand(name, cwd string) string {
+	home, _ := os.UserHomeDir()
+	return resolveCommand(name, home, cwd)
+}
+
 func resolveCommand(name, home, cwd string) string {
 	name = expandArg(name, home)
 	if filepath.IsAbs(name) {
@@ -625,12 +668,26 @@ func resolveCommand(name, home, cwd string) string {
 		return found
 	}
 	for _, dir := range (platform.LocalPaths{}).PathDirs(home) {
-		candidate := filepath.Join(dir, name)
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+		if candidate := findCommandInDir(dir, name); candidate != "" {
 			return candidate
 		}
 	}
 	return name
+}
+
+func findCommandInDir(dir, name string) string {
+	candidates := []string{filepath.Join(dir, name)}
+	if runtime.GOOS == "windows" && filepath.Ext(name) == "" {
+		for _, ext := range []string{".exe", ".cmd", ".bat", ".ps1", ".com"} {
+			candidates = append(candidates, filepath.Join(dir, name+ext))
+		}
+	}
+	for _, candidate := range candidates {
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate
+		}
+	}
+	return ""
 }
 
 func hasPathSeparator(value string) bool {

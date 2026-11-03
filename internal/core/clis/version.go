@@ -2,9 +2,10 @@ package clis
 
 import (
 	"context"
-	"os/exec"
 	"regexp"
 	"time"
+
+	"larder/internal/platform"
 )
 
 var versionOutputPattern = regexp.MustCompile(`(?:^|[^0-9])v?([0-9]+\.[0-9]+\.[0-9]+)(?:[^0-9]|$)`)
@@ -23,9 +24,9 @@ func ParseVersionOutput(output string) string {
 func ProbeVersion(ctx context.Context, path string) (string, error) {
 	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(probeCtx, path, "--version")
+	cmd := platform.NewCommandContext(probeCtx, path, "--version")
 	cmd.Stdin = nil
-	cmd.Env = append(cmd.Environ(), "NO_COLOR=1", "CLINE_NO_AUTO_UPDATE=1")
+	cmd.Env = append(platform.ExecutableEnv(cmd.Environ(), path), "NO_COLOR=1", "CLINE_NO_AUTO_UPDATE=1")
 	out, err := cmd.CombinedOutput()
 	version := ParseVersionOutput(string(out))
 	if version != "" {

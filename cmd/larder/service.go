@@ -56,7 +56,7 @@ type AppState struct {
 	UpdatedAt     time.Time          `json:"updatedAt"`
 }
 
-var Version = "0.0.9"
+var Version = "0.0.10"
 
 type MCPTestResult struct {
 	OK      bool   `json:"ok"`
@@ -790,9 +790,9 @@ func (s *AppService) NativeCLIUpdate(cliID string) (string, error) {
 	}
 	ctx, cancel := context.WithTimeout(s.context(), 10*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, cli.Path, args...)
+	cmd := platform.NewCommandContext(ctx, cli.Path, args...)
 	cmd.Stdin = nil
-	cmd.Env = append(os.Environ(), "NO_COLOR=1")
+	cmd.Env = append(platform.ExecutableEnv(os.Environ(), cli.Path), "NO_COLOR=1")
 	out, err := cmd.CombinedOutput()
 	output := strings.TrimSpace(string(out))
 	if len(output) > 16<<10 {
@@ -942,7 +942,9 @@ func (s *AppService) OpenSessionInTerminal(session model.Session) error {
 		return err
 	}
 	if runtime.GOOS == "windows" {
-		return exec.Command("powershell.exe", "-NoExit", "-Command", command).Start()
+		cmd := exec.Command("powershell.exe", "-NoExit", "-Command", command)
+		cmd.Env = platform.ExecutableEnv(os.Environ(), cmd.Path)
+		return cmd.Start()
 	}
 	if runtime.GOOS != "darwin" {
 		return errors.New("opening a terminal is only supported on macOS and Windows")
@@ -2667,16 +2669,12 @@ func (s *AppService) TestMCP(serverID string) (MCPTestResult, error) {
 	if server.Command == "" {
 		return MCPTestResult{OK: false, Message: "配置缺少启动命令"}, nil
 	}
-	command := server.Command
-	if !filepath.IsAbs(command) {
-		found, err := exec.LookPath(command)
-		if err != nil {
-			return MCPTestResult{OK: false, Message: "命令不存在：" + command}, nil
-		}
-		command = found
-	}
+	command := coremcp.ResolveCommand(server.Command, "")
 	info, err := os.Stat(command)
-	if err != nil || info.IsDir() || info.Mode()&0o111 == 0 {
+	if err != nil || info.IsDir() {
+		return MCPTestResult{OK: false, Message: "命令不存在：" + server.Command}, nil
+	}
+	if runtime.GOOS != "windows" && info.Mode()&0o111 == 0 {
 		return MCPTestResult{OK: false, Message: "命令不可执行：" + server.Command}, nil
 	}
 	return MCPTestResult{OK: true, Message: "命令可执行"}, nil

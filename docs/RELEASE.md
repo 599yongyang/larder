@@ -27,15 +27,15 @@ The updater archive is `bin/Larder-darwin-arm64.zip`. It must contain exactly on
 After copying the artifacts for a version, regenerate the static update manifest and verify it matches the archive:
 
 ```sh
-mkdir -p bin/0.0.9
-cp bin/Larder-darwin-arm64.zip bin/Larder.dmg bin/larder-amd64-installer.exe bin/checksums.txt bin/0.0.9/
-./scripts/write-update-manifest.sh 0.0.9 bin/0.0.9/Larder-darwin-arm64.zip
+mkdir -p bin/0.0.10
+cp bin/Larder-darwin-arm64.zip bin/Larder.dmg bin/larder-amd64-installer.exe bin/checksums.txt bin/0.0.10/
+./scripts/write-update-manifest.sh 0.0.10 bin/0.0.10/Larder-darwin-arm64.zip
 ```
 
 Set `UPDATE_NOTES="..."` when running the script if the in-app update dialog should show a custom summary. Commit `updates/macos-arm64.json` with the release snapshot. Verify it against the archive before publishing:
 
 ```sh
-./scripts/check-update-manifest.sh 0.0.9 bin/0.0.9/Larder-darwin-arm64.zip
+./scripts/check-update-manifest.sh 0.0.10 bin/0.0.10/Larder-darwin-arm64.zip
 ```
 
 Build a Windows installer from macOS (requires NSIS):
@@ -61,7 +61,7 @@ The build must run on a machine with the platform toolchain available:
 The app version lives in `cmd/larder/service.go`:
 
 ```go
-var Version = "0.0.9"
+var Version = "0.0.10"
 ```
 
 The public release tag and the in-app version must match.

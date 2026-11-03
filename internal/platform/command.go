@@ -5,7 +5,6 @@ import (
 	"context"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 )
@@ -48,9 +47,10 @@ func (OSCommandRunner) Find(name string, dirs []string) (string, bool) {
 }
 
 func (OSCommandRunner) Run(ctx context.Context, path string, args []string, env []string) ([]byte, []byte, error) {
-	cmd := exec.CommandContext(ctx, path, args...)
+	cmd := NewCommandContext(ctx, path, args...)
+	cmd.Env = ExecutableEnv(os.Environ(), path)
 	if len(env) > 0 {
-		cmd.Env = append(os.Environ(), env...)
+		cmd.Env = append(cmd.Env, env...)
 	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

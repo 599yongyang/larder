@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.10
+
+### Hotfix
+
+- Fix MCP servers launched from Finder failing with `env: node: No such file or directory` by giving child processes a usable PATH.
+- Fix MCP status checks, CLI version probes, native CLI updates and package-manager checks in the same GUI environment.
+- Wrap Windows `.cmd` / `.bat` shims through `cmd.exe`.
+
 ## 0.0.9
 
 ### MCP

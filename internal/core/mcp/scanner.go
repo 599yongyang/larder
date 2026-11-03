@@ -9,7 +9,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -246,12 +245,9 @@ func commandExists(command string) bool {
 	if command == "" {
 		return false
 	}
-	if hasPathSeparator(command) {
-		info, err := os.Stat(command)
-		return err == nil && !info.IsDir()
-	}
-	_, err := exec.LookPath(command)
-	return err == nil
+	resolved := resolveCommand(command, home(), "")
+	info, err := os.Stat(resolved)
+	return err == nil && !info.IsDir()
 }
 
 func readStrings(value any) []string {
