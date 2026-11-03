@@ -89,14 +89,14 @@ Windows builds are unsigned for now. Mention SmartScreen in release notes instea
 
 ## Release notes
 
-Include:
+Keep them short:
 
-- what changed
-- version
-- supported platforms
-- known limitations
-- whether the build is signed
-- rollback/snapshot behavior if write operations changed
+- 2–3 user-facing changes
+- 1–2 fixes
+- downloads
+- known limitations and signing status
+
+Do not list internal implementation, tests, or investigation details.
 
 ## Do not
 
