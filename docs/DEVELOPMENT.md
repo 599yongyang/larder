@@ -65,7 +65,7 @@ t.Setenv("LARDER_HOME", home)
 公开仓库的 `main` 使用干净快照：
 
 ```sh
-./scripts/publish.sh "Larder 0.0.9"
+./scripts/publish.sh "Larder 0.0.10"
 ```
 
 脚本会：
