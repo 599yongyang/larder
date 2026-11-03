@@ -57,6 +57,20 @@ frontend/src/           React UI、feature 组件、样式
 - 所有文件写入必须可解释、可回滚。
 - 生成文件（bindings、dist）不手工编辑。
 
+## 发布流程（强制）
+
+公开 Release 走 **PR 合并到 `origin/main`** 的正常流程，不使用
+`scripts/publish.sh` 的 clean-snapshot 流程。
+
+- 发布 PR 标题使用 `chore(release): Larder x.y.z`；hotfix 使用
+  `chore(release): Larder x.y.z hotfix`。
+- 不要把 `Larder x.y.z` 作为公开 `main` 的提交信息。
+- 不要在已经发布后为了修改提交信息而 force push 或移动 tag。
+- 本地 `main` 保留开发历史；公开历史由 PR 合并产生。
+- `scripts/publish.sh` 只用于用户明确要求的紧急快照，普通发布不要使用。
+
+例外：`v0.0.11` 已经用快照提交发布，不重写历史。
+
 ## 研发规则
 
 1. 先读现有实现，再改代码。

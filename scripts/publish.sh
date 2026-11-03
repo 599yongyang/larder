@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Publish a clean snapshot of local main to the public remote.
+# Emergency-only clean snapshot publisher.
+# Normal releases go through a release PR; do not use this script for them.
 # Local main keeps development history; the public main gets one clean commit.
 
 cd "$(dirname "$0")/.."

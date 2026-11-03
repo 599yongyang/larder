@@ -66,7 +66,7 @@ var Version = "0.0.11"
 
 The public release tag and the in-app version must match.
 
-Upload `checksums.txt` alongside `Larder.dmg`, `Larder-darwin-arm64.zip` and the Windows installer.
+Create the release PR with title `chore(release): Larder x.y.z` and upload `checksums.txt` alongside `Larder.dmg`, `Larder-darwin-arm64.zip` and the Windows installer.
 
 The macOS app checks GitHub Releases first and falls back to `updates/macos-arm64.json` when the API is unavailable or rate limited. Keep that static manifest in sync with every release: version, artifact URL, size, archive digest (base64 SHA-256) and published time. DMG remains the first-install/manual installer. Windows still uses the NSIS installer and does not self-update yet.
 
@@ -101,5 +101,5 @@ Include:
 ## Do not
 
 - Do not attach local `bin/`, `dist/`, `preview/`, `.tools/`, or node_modules contents.
-- Do not publish a release from the development `main` history. Publish a clean snapshot.
+- Do not use `scripts/publish.sh` clean snapshots for normal releases. Publish through a release PR and its merged commit.
 - Do not claim Windows or another desktop platform is fully supported until its acceptance workflow is green.

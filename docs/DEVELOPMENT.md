@@ -62,20 +62,23 @@ t.Setenv("LARDER_HOME", home)
 
 `main` 是本地开发分支，保留完整开发历史。
 
-公开仓库的 `main` 使用干净快照：
+公开 Release 使用 **PR 合并** 到公开仓库的 `main`，不要用
+`scripts/publish.sh` 创建 clean-snapshot 提交。发布 PR 标题使用：
 
-```sh
-./scripts/publish.sh "Larder 0.0.11"
+```text
+chore(release): Larder x.y.z
 ```
 
-脚本会：
+hotfix：
 
-- 检查工作区是否干净
-- 以 `origin/main` 为父提交
-- 用当前 `main` 的 tree 创建一个新 commit
-- 推送到公开 `main`
+```text
+chore(release): Larder x.y.z hotfix
+```
 
-公开历史不会包含本地开发过程。
+合并 PR 后，在合并提交上打 `vX.Y.Z` tag 并上传构建产物。不要把
+`Larder x.y.z` 作为公开 `main` 的提交信息。
+
+`v0.0.11` 曾用快照流程发布，作为例外保留，不重写历史。
 
 ## 提交前
 
