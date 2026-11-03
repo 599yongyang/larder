@@ -1,20 +1,20 @@
 {
   "schemaVersion": 1,
-  "version": "0.0.8",
+  "version": "0.0.9",
   "channel": "stable",
-  "name": "Larder 0.0.8",
-  "notes": "Selectable data packages, WebDAV/S3 backup, encrypted packages, safer imports, skill source discovery, plugin icons, and a rebuilt settings surface.",
-  "publishedAt": "2026-10-28T06:02:36Z",
+  "name": "Larder 0.0.9",
+  "notes": "Larder 0.0.9",
+  "publishedAt": "2026-11-03T01:57:22Z",
   "artifacts": [
     {
-      "url": "https://github.com/599yongyang/larder/releases/download/v0.0.8/Larder-darwin-arm64.zip",
+      "url": "https://github.com/599yongyang/larder/releases/download/v0.0.9/Larder-darwin-arm64.zip",
       "filename": "Larder-darwin-arm64.zip",
       "filetype": "zip",
-      "size": 6907434,
+      "size": 7859776,
       "platform": "darwin",
       "arch": "arm64",
       "digestAlgo": "sha256",
-      "digest": "XbZqB6+d0+etrz3C5mH60pivGyjMM6/7/pO9SvgzW0s="
+      "digest": "/JK69wznwaCR6iOwjpHgBR47X8/Mqfr8KBlXAQzw4+Y="
     }
   ]
 }
