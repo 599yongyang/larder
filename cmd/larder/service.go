@@ -790,7 +790,7 @@ func (s *AppService) NativeCLIUpdate(cliID string) (string, error) {
 	}
 	ctx, cancel := context.WithTimeout(s.context(), 10*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, cli.Path, args...)
+	cmd := platform.NewCommandContext(ctx, cli.Path, args...)
 	cmd.Stdin = nil
 	cmd.Env = append(platform.ExecutableEnv(os.Environ(), cli.Path), "NO_COLOR=1")
 	out, err := cmd.CombinedOutput()

@@ -569,7 +569,7 @@ func newStdioTransport(target *client) (sdk.Transport, func(), error) {
 	for _, arg := range target.args {
 		args = append(args, expandArg(arg, home))
 	}
-	command := exec.Command(commandPath, args...)
+	command := platform.NewCommand(commandPath, args...)
 	command.Env = mcpEnv(os.Environ(), filepath.Dir(commandPath), platform.LocalPaths{}.PathDirs(home))
 	for key, value := range target.env {
 		command.Env = append(command.Env, key+"="+value)
