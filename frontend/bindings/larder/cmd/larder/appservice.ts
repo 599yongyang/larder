@@ -131,12 +131,20 @@ export function CancelSkillRename(planID: string): $CancellablePromise<void> {
     return $Call.ByID(4167536046, planID);
 }
 
+export function CatalogAllSkills(view: string): $CancellablePromise<catalog$0.Skill[] | null> {
+    return $Call.ByID(1663469189, view);
+}
+
 export function CatalogDescription(source: string, skillID: string): $CancellablePromise<string> {
     return $Call.ByID(2187494030, source, skillID);
 }
 
 export function CatalogInstalls(): $CancellablePromise<$models.CatalogInstall[] | null> {
     return $Call.ByID(3235836484);
+}
+
+export function CatalogSkillContent(source: string, skillID: string): $CancellablePromise<string> {
+    return $Call.ByID(3661878990, source, skillID);
 }
 
 /**
@@ -380,6 +388,10 @@ export function PlanInstallSkill(repo: string, skillPath: string, name: string):
     return $Call.ByID(778799086, repo, skillPath, name);
 }
 
+export function PlanInstallSkillHub(slug: string, version: string, name: string): $CancellablePromise<model$0.Plan> {
+    return $Call.ByID(470985733, slug, version, name);
+}
+
 /**
  * CheckUpdates is explicit: it runs only the fixed brew/npm read commands and
  * returns a report; it never installs, upgrades or removes anything.
@@ -424,6 +436,10 @@ export function PlanUninstallSkill(skillID: string): $CancellablePromise<model$0
     return $Call.ByID(1745518445, skillID);
 }
 
+export function PlanUpdateSkillHub(path: string, slug: string, version: string): $CancellablePromise<model$0.Plan> {
+    return $Call.ByID(126268003, path, slug, version);
+}
+
 export function PreviewSkillFileDiff(skillID: string, path: string): $CancellablePromise<model$0.SkillUpdateFile> {
     return $Call.ByID(1552718341, skillID, path);
 }
@@ -455,8 +471,8 @@ export function RecentSessions(limit: number): $CancellablePromise<model$0.Sessi
     return $Call.ByID(3993457471, limit);
 }
 
-export function RecordCatalogInstall(path: string, source: string, skillID: string): $CancellablePromise<void> {
-    return $Call.ByID(2382907166, path, source, skillID);
+export function RecordCatalogInstall(path: string, source: string, skillID: string, provider: string, version: string, homepage: string): $CancellablePromise<void> {
+    return $Call.ByID(2382907166, path, source, skillID, provider, version, homepage);
 }
 
 export function RefreshSessions(): $CancellablePromise<void> {
@@ -511,6 +527,10 @@ export function Scan(): $CancellablePromise<$models.AppState> {
     return $Call.ByID(2634895460);
 }
 
+export function SearchCatalogAll(query: string): $CancellablePromise<catalog$0.Skill[] | null> {
+    return $Call.ByID(310876075, query);
+}
+
 export function SearchCatalogSkills(query: string): $CancellablePromise<catalog$0.Skill[] | null> {
     return $Call.ByID(3375512018, query);
 }
@@ -521,6 +541,14 @@ export function SearchMCPRegistry(query: string): $CancellablePromise<mcp$0.Regi
 
 export function SearchMCPRegistryPage(query: string, cursor: string): $CancellablePromise<mcp$0.RegistryPage> {
     return $Call.ByID(2212651023, query, cursor);
+}
+
+export function SearchSkillHub(query: string): $CancellablePromise<catalog$0.Skill[] | null> {
+    return $Call.ByID(2777267549, query);
+}
+
+export function SearchSkillHubPage(query: string, page: number, category: string): $CancellablePromise<$models.SkillHubPage> {
+    return $Call.ByID(701832462, query, page, category);
 }
 
 export function SessionMessages(path: string, limit: number): $CancellablePromise<model$0.SessionMessage[] | null> {
@@ -566,6 +594,26 @@ export function SkillAudit(skillID: string): $CancellablePromise<model$0.SkillAu
 
 export function SkillContent(skillID: string): $CancellablePromise<string> {
     return $Call.ByID(2234014507, skillID);
+}
+
+export function SkillHubCategories(): $CancellablePromise<catalog$0.SkillHubCategory[] | null> {
+    return $Call.ByID(3718762409);
+}
+
+export function SkillHubDetail(slug: string, version: string): $CancellablePromise<catalog$0.SkillHubDetail> {
+    return $Call.ByID(2982961704, slug, version);
+}
+
+export function SkillHubFileContent(slug: string, version: string, path: string): $CancellablePromise<string> {
+    return $Call.ByID(2329278568, slug, version, path);
+}
+
+export function SkillHubSkills(view: string): $CancellablePromise<catalog$0.Skill[] | null> {
+    return $Call.ByID(80445635, view);
+}
+
+export function SkillHubSkillsPage(view: string, page: number, category: string): $CancellablePromise<$models.SkillHubPage> {
+    return $Call.ByID(2147510424, view, page, category);
 }
 
 export function SkillIcon(skillID: string): $CancellablePromise<string> {

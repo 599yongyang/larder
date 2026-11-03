@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"larder/internal/core/catalog"
 	"larder/internal/core/clis"
 	"larder/internal/core/doctor"
 	"larder/internal/core/mcp"
@@ -507,7 +508,7 @@ func (s *Service) PlanInstallSkill(ctx context.Context, repo, skillPath, name st
 	if repo == "" || skillPath == "" || name == "" {
 		return model.Plan{}, errors.New("repo, skill path and name are required")
 	}
-	if strings.ContainsAny(name, "/\\") || name == "." || name == ".." {
+	if !validSkillFolderName(name) {
 		return model.Plan{}, errors.New("invalid skill name")
 	}
 	home, err := s.paths.HomeDir()
@@ -612,9 +613,61 @@ func (s *Service) InstallUpstreamSkills(ctx context.Context, repo string, items 
 	return results, nil
 }
 
+func validSkillFolderName(name string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" || name == "." || name == ".." || len(name) > 180 {
+		return false
+	}
+	if strings.ContainsAny(name, "/\\<>:\"|?*") || strings.HasSuffix(name, ".") || strings.HasSuffix(name, " ") {
+		return false
+	}
+	reserved := map[string]bool{"CON": true, "PRN": true, "AUX": true, "NUL": true, "COM1": true, "COM2": true, "COM3": true, "COM4": true, "COM5": true, "COM6": true, "COM7": true, "COM8": true, "COM9": true, "LPT1": true, "LPT2": true, "LPT3": true, "LPT4": true, "LPT5": true, "LPT6": true, "LPT7": true, "LPT8": true, "LPT9": true}
+	return !reserved[strings.ToUpper(name)]
+}
+
 func (s *Service) PlanInstallCatalogSkill(ctx context.Context, repo, skillID, name string) (model.Plan, error) {
 	if repo == "" || skillID == "" || name == "" {
 		return model.Plan{}, errors.New("repo, skill and name are required")
+	}
+	if !validSkillFolderName(name) {
+		return model.Plan{}, errors.New("invalid skill name")
+	}
+	home, err := s.paths.HomeDir()
+	if err != nil {
+		return model.Plan{}, err
+	}
+	var globalPath string
+	for _, root := range s.paths.DefaultRoots(home) {
+		if root.ID == "global" {
+			globalPath = root.Path
+		}
+	}
+	if globalPath == "" {
+		return model.Plan{}, errors.New("global skill root not found")
+	}
+	target := filepath.Join(globalPath, name)
+	if _, err := s.fs.Lstat(target); err == nil {
+		return model.Plan{}, errors.New("target already exists")
+	}
+	plan, err := ops.PlanInstallCatalogSkill(repo, skillID, target)
+	if err != nil {
+		return model.Plan{}, err
+	}
+	s.mu.Lock()
+	s.pendingPlans[plan.ID] = plan
+	s.mu.Unlock()
+	return plan, nil
+}
+
+func (s *Service) PlanInstallSkillHub(ctx context.Context, slug, version, name string) (model.Plan, error) {
+	if err := ctx.Err(); err != nil {
+		return model.Plan{}, err
+	}
+	slug = strings.TrimSpace(slug)
+	name = strings.TrimSpace(name)
+	version = strings.TrimSpace(version)
+	if slug == "" || name == "" {
+		return model.Plan{}, errors.New("slug and name are required")
 	}
 	if strings.ContainsAny(name, "/\\") || name == "." || name == ".." {
 		return model.Plan{}, errors.New("invalid skill name")
@@ -636,7 +689,44 @@ func (s *Service) PlanInstallCatalogSkill(ctx context.Context, repo, skillID, na
 	if _, err := s.fs.Lstat(target); err == nil {
 		return model.Plan{}, errors.New("target already exists")
 	}
-	plan, err := ops.PlanInstallCatalogSkill(repo, skillID, target)
+	plan, err := ops.PlanInstallSkillArchive(catalog.SkillHubDownloadURL(slug, version), slug, target)
+	if err != nil {
+		return model.Plan{}, err
+	}
+	s.mu.Lock()
+	s.pendingPlans[plan.ID] = plan
+	s.mu.Unlock()
+	return plan, nil
+}
+
+func (s *Service) PlanUpdateSkillHub(ctx context.Context, target, slug, version string) (model.Plan, error) {
+	if err := ctx.Err(); err != nil {
+		return model.Plan{}, err
+	}
+	target = filepath.Clean(strings.TrimSpace(target))
+	slug = strings.TrimSpace(slug)
+	if target == "" || slug == "" {
+		return model.Plan{}, errors.New("target and slug are required")
+	}
+	home, err := s.paths.HomeDir()
+	if err != nil {
+		return model.Plan{}, err
+	}
+	info, err := s.fs.Stat(target)
+	if err != nil || !info.IsDir() {
+		return model.Plan{}, errors.New("installed skill folder is missing")
+	}
+	global := ""
+	for _, root := range s.paths.DefaultRoots(home) {
+		if root.ID == "global" {
+			global = root.Path
+		}
+	}
+	rel, err := filepath.Rel(global, target)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return model.Plan{}, errors.New("target is outside the shared skill library")
+	}
+	plan, err := ops.PlanUpdateSkillArchive(catalog.SkillHubDownloadURL(slug, version), slug, target)
 	if err != nil {
 		return model.Plan{}, err
 	}
@@ -1343,7 +1433,7 @@ func (s *Service) RollbackOperation(ctx context.Context, operationID string) (mo
 	if !ok {
 		return model.Operation{}, errors.New("operation not found")
 	}
-	if (original.Operation != "link_skill" && original.Operation != "replace_copy" && original.Operation != "sync_copy" && original.Operation != "disable_link" && original.Operation != "skill_update" && original.Operation != "install_skill" && original.Operation != "uninstall_skill" && original.Operation != "mcp_remove" && original.Operation != "rollback" && original.Operation != "command_create" && original.Operation != "command_update" && original.Operation != "command_convert" && original.Operation != "skill_edit" && original.Operation != "skill_create" && original.Operation != "skill_rename" && original.Operation != "command_delete") || original.Status != "success" {
+	if (original.Operation != "link_skill" && original.Operation != "replace_copy" && original.Operation != "sync_copy" && original.Operation != "disable_link" && original.Operation != "skill_update" && original.Operation != "install_skill" && original.Operation != "update_skill" && original.Operation != "uninstall_skill" && original.Operation != "mcp_remove" && original.Operation != "rollback" && original.Operation != "command_create" && original.Operation != "command_update" && original.Operation != "command_convert" && original.Operation != "skill_edit" && original.Operation != "skill_create" && original.Operation != "skill_rename" && original.Operation != "command_delete") || original.Status != "success" {
 		return model.Operation{}, errors.New("operation is not rollback-able")
 	}
 	safetySnapshot, err := ops.CreateRestoreSnapshot(original.SnapshotPath, s.snapshotRoot)

@@ -518,6 +518,8 @@ export interface Settings {
     "trashRetentionDays": number;
     "globalShortcutEnabled"?: boolean | null;
     "globalShortcut"?: string;
+    "skillSources"?: string[] | null;
+    "skillHubBaseUrl"?: string;
 }
 
 export enum Severity {

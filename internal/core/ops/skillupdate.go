@@ -90,7 +90,11 @@ func ApplySkillUpdateWithResolutions(ctx context.Context, plan model.Plan, snaps
 	if err != nil {
 		return op, fmt.Errorf("download source: %w", err)
 	}
-	if err := extractSkillFolder(tarball, plan.SourcePath, staging); err != nil {
+	if isZipArchive(tarball) {
+		if err := extractZipSkill(tarball, plan.SkillSlug, staging); err != nil {
+			return op, err
+		}
+	} else if err := extractSkillFolder(tarball, plan.SourcePath, staging); err != nil {
 		return op, err
 	}
 	_ = WriteBaselineManifest(snapshotDir, staging)

@@ -5,15 +5,23 @@ import type { Root, Skill } from '../types'
 
 const catalogSkills = vi.fn()
 const searchCatalogSkills = vi.fn()
+const catalogAllSkills = vi.fn()
+const searchCatalogAll = vi.fn()
 const catalogInstalls = vi.fn()
 const catalogDescription = vi.fn()
+const catalogSkillContent = vi.fn()
+const skillSourceSettings = vi.fn()
 
 vi.mock('../backend', () => ({
   backend: {
     catalogSkills: (...args: unknown[]) => catalogSkills(...args),
     searchCatalogSkills: (...args: unknown[]) => searchCatalogSkills(...args),
+    catalogAllSkills: (...args: unknown[]) => catalogAllSkills(...args),
+    searchCatalogAll: (...args: unknown[]) => searchCatalogAll(...args),
     catalogInstalls: () => catalogInstalls(),
     catalogDescription: (...args: unknown[]) => catalogDescription(...args),
+    catalogSkillContent: (...args: unknown[]) => catalogSkillContent(...args),
+    skillSourceSettings: () => skillSourceSettings(),
   },
 }))
 
@@ -36,9 +44,13 @@ const installedSkill: Skill = { id: 's1', name: 'pdf', path: '/tmp/skills/pdf', 
 
 beforeEach(() => {
   catalogSkills.mockReset().mockResolvedValue([card('pdf')])
+  catalogAllSkills.mockReset().mockResolvedValue([card('pdf')])
   searchCatalogSkills.mockReset()
+  searchCatalogAll.mockReset().mockImplementation((query) => searchCatalogSkills(query))
   catalogInstalls.mockReset().mockResolvedValue([])
   catalogDescription.mockReset().mockResolvedValue('PDF helper')
+  catalogSkillContent.mockReset().mockResolvedValue('# PDF detail')
+  skillSourceSettings.mockReset().mockResolvedValue({ enabled: ['skills.sh', 'skillhub'], skillHubBaseUrl: '', skillHubApiKeySet: false })
 })
 
 test('renders popular cards and marks installed skills', async () => {
@@ -49,13 +61,12 @@ test('renders popular cards and marks installed skills', async () => {
   expect(screen.queryByRole('button', { name: '安装' })).toBeNull()
 })
 
-test('opens the local skill from an installed card', async () => {
+test('opens details from an installed card instead of the local skill', async () => {
   catalogInstalls.mockResolvedValue([{ path: '/tmp/skills/pdf', source: 'acme/skills', skillId: 'pdf' }])
-  const onOpenInstalled = vi.fn()
-  render(<DiscoverSheet open roots={roots} installedSkills={[installedSkill]} onClose={() => {}} onInstalled={() => {}} onOpenInstalled={onOpenInstalled} />)
+  render(<DiscoverSheet open roots={roots} installedSkills={[installedSkill]} onClose={() => {}} onInstalled={() => {}} />)
   await screen.findByText('pdf')
   fireEvent.click(screen.getByText('pdf').closest('[role="button"]')!)
-  expect(onOpenInstalled).toHaveBeenCalledWith('s1')
+  expect(await screen.findByText('PDF detail')).toBeTruthy()
 })
 
 test('only accepts the latest search response', async () => {

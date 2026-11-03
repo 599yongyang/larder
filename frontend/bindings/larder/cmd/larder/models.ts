@@ -3,6 +3,9 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as catalog$0 from "../../internal/core/catalog/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as model$0 from "../../internal/core/model/models.js";
 
 export interface AppInfo {
@@ -41,12 +44,20 @@ export interface CatalogInstall {
     "path": string;
     "source": string;
     "skillId": string;
+    "provider"?: string;
+    "version"?: string;
+    "homepage"?: string;
     "installedAt": string;
 }
 
 export interface MCPTestResult {
     "ok": boolean;
     "message": string;
+}
+
+export interface SkillHubPage {
+    "skills": catalog$0.Skill[] | null;
+    "hasMore": boolean;
 }
 
 export interface SyncConfig {

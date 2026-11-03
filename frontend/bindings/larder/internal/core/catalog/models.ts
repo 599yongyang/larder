@@ -10,4 +10,24 @@ export interface Skill {
     "installsYesterday"?: number;
     "change"?: number;
     "isOfficial"?: boolean;
+    "version"?: string;
+    "description"?: string;
+    "homepage"?: string;
+    "iconUrl"?: string;
+    "author"?: string;
+    "provider"?: string;
+    "providers"?: string[] | null;
+}
+
+export interface SkillHubCategory {
+    "key": string;
+    "name": string;
+    "nameEn": string;
+}
+
+export interface SkillHubDetail {
+    "skill": Skill;
+    "version": string;
+    "files": string[] | null;
+    "content"?: string;
 }

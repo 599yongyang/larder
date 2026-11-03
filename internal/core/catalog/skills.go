@@ -30,14 +30,21 @@ const (
 )
 
 type Skill struct {
-	ID                string `json:"id"`
-	Source            string `json:"source"`
-	SkillID           string `json:"skillId"`
-	Name              string `json:"name"`
-	Installs          int    `json:"installs"`
-	InstallsYesterday int    `json:"installsYesterday,omitempty"`
-	Change            int    `json:"change,omitempty"`
-	Official          bool   `json:"isOfficial,omitempty"`
+	ID                string   `json:"id"`
+	Source            string   `json:"source"`
+	SkillID           string   `json:"skillId"`
+	Name              string   `json:"name"`
+	Installs          int      `json:"installs"`
+	InstallsYesterday int      `json:"installsYesterday,omitempty"`
+	Change            int      `json:"change,omitempty"`
+	Official          bool     `json:"isOfficial,omitempty"`
+	Version           string   `json:"version,omitempty"`
+	Description       string   `json:"description,omitempty"`
+	Homepage          string   `json:"homepage,omitempty"`
+	IconURL           string   `json:"iconUrl,omitempty"`
+	Author            string   `json:"author,omitempty"`
+	Provider          string   `json:"provider,omitempty"`
+	Providers         []string `json:"providers,omitempty"`
 }
 
 type cacheEntry struct {
@@ -314,6 +321,22 @@ func candidatePaths(skillID string) []string {
 		"SKILL.md",
 		".agents/skills/" + skillID + "/SKILL.md",
 	}
+}
+
+// Content reads the resolved SKILL.md from the source repository.
+func (c *Client) Content(ctx context.Context, source, skillID string) (string, error) {
+	path, err := c.Resolve(ctx, source, skillID)
+	if err != nil {
+		return "", err
+	}
+	body, err := c.get(ctx, rawBaseURL+"/"+source+"/HEAD/"+path)
+	if err != nil {
+		return "", err
+	}
+	if len(body) > 1<<20 {
+		body = body[:1<<20]
+	}
+	return string(body), nil
 }
 
 func (c *Client) cachePath(key, path string) {

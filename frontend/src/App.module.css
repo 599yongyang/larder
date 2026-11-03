@@ -540,7 +540,7 @@
 .scanProgressActive span{animation:scanSweep 1.1s linear infinite}
 @keyframes scanSweep{to{transform:translateX(380%)}}
 @media(prefers-reduced-motion:reduce){.scanProgressActive span{animation:none;width:100%;transform:none;opacity:.45}::view-transition-old(page-content),::view-transition-new(page-content){animation:none}}
-.discoverSheet{width:760px!important;max-width:94vw!important;display:flex;flex-direction:column;background:var(--panel);border-left:1px solid var(--line);padding:0!important;gap:0!important}
+.discoverSheet{width:760px!important;max-width:96vw!important;display:flex;flex-direction:column;background:var(--panel);border-left:1px solid var(--line);padding:0!important;gap:0!important;overflow:visible!important}
 .discoverHeader{padding:22px 24px 14px;border-bottom:1px solid var(--line)}
 .discoverTitle{font-size:17px;letter-spacing:-.02em}
 .discoverDescription{margin-top:5px;color:var(--text-muted);font-size:10.5px;line-height:1.5}
@@ -556,7 +556,7 @@
 .discoverSearchInput{height:26px!important;flex:1;min-width:0;padding:0!important;border:0!important;box-shadow:none!important;background:transparent!important;font-size:11px}
 .discoverSearch .button{height:26px!important;padding:0 8px!important;font-size:10px}
 .discoverClear{flex:none;border:0;background:transparent;color:var(--brand);font-size:10px;cursor:pointer;padding:2px}
-.discoverResults{flex:1;min-height:0;overflow-y:auto;padding:10px 16px 16px}
+.discoverResults{flex:1;min-width:0;min-height:0;overflow-y:auto;padding:10px 16px 16px}
 .discoverState{display:flex;flex-direction:column;align-items:center;gap:8px;padding:60px 20px;color:var(--text-muted);font-size:11px;text-align:center}
 .discoverError{color:var(--red)}
 .discoverGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:0}
@@ -1129,3 +1129,61 @@
 .cliPackageCommand>button{margin-left:auto}
 .destructiveAction{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 10px;border:1px solid var(--status-danger-line);border-radius:7px;background:var(--status-danger-bg)}
 .destructiveAction small{max-width:420px;color:var(--text-muted);font-size:9px;line-height:1.45;text-align:right}
+
+.discoverSourceTabs{display:inline-flex;align-items:center;gap:2px;padding:2px;border:1px solid var(--line);border-radius:7px;background:var(--paper)}
+.discoverSourceTab,.discoverSourceTabActive{height:24px;padding:0 9px;border:0;border-radius:5px;background:transparent;color:var(--text-muted);font-size:9.5px;cursor:pointer}
+.discoverSourceTabActive{background:var(--panel);color:var(--ink);box-shadow:0 1px 3px color-mix(in srgb,var(--ink) 10%,transparent)}
+
+.discoverIconContain img{object-fit:contain!important;padding:2px}
+.discoverDetailDescription{margin:0;color:var(--ink-soft);font-size:11px;line-height:1.7;white-space:pre-wrap}
+.discoverDetailFooter{display:flex;justify-content:flex-end;flex:none;padding:10px 16px;border-top:1px solid var(--line);background:var(--panel)}
+
+
+@keyframes discoverDetailIn{from{clip-path:inset(0 0 0 100%)}to{clip-path:inset(0 0 0 0)}}
+@media(prefers-reduced-motion:reduce){.discoverDetail{animation:none}}
+
+.discoverDetailDescription{margin:0;color:var(--ink-soft);font-size:11.5px;line-height:1.75;white-space:pre-wrap}
+
+.discoverDetail{position:absolute;top:0;right:100%;bottom:0;z-index:60;display:flex;flex-direction:column;min-width:320px;max-width:620px;overflow:visible;border-right:1px solid var(--line);background:var(--panel);box-shadow:-12px 0 28px color-mix(in srgb,var(--ink) 10%,transparent);animation:discoverDetailIn 240ms cubic-bezier(.2,.8,.2,1);will-change:clip-path}
+.discoverDetailHead{display:flex;align-items:flex-start;gap:9px;padding:16px 16px 10px}
+.discoverDetailTitle{display:grid;gap:3px;min-width:0;flex:1;overflow:hidden}
+.discoverDetailTitle strong{overflow:hidden;font-size:14px;font-weight:600;text-overflow:ellipsis;white-space:nowrap}
+.discoverDetailTitle>span{overflow:hidden;color:var(--text-muted);font-size:10px;text-overflow:ellipsis;white-space:nowrap}
+.discoverDetailSubline{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0}
+.discoverDetailAuthor{min-width:0;overflow:hidden;color:var(--text-muted);font:9.5px var(--font-mono);text-overflow:ellipsis;white-space:nowrap}
+.discoverDetailMetaInline{display:flex;align-items:center;gap:5px;flex:none;color:var(--text-muted);font:9px var(--font-mono);white-space:nowrap}
+.discoverDetailClose{flex:none;width:24px;height:24px;border:0;border-radius:5px;background:transparent;color:var(--text-muted);font-size:17px;line-height:1;cursor:pointer}
+.discoverDetailClose:hover{background:var(--nav-hover);color:var(--ink)}
+.discoverDetailMeta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:0 16px 12px;color:var(--text-muted);font-size:9.5px}
+.discoverDetailScroll{flex:1;min-width:0;min-height:0;overflow-y:auto;overflow-x:hidden;padding:0 16px 16px}
+.discoverDetailFooter{display:flex;justify-content:flex-end;flex:none;padding:10px 16px;border-top:1px solid var(--line);background:var(--panel)}
+@keyframes discoverDetailIn{from{clip-path:inset(0 0 0 100%)}to{clip-path:inset(0 0 0 0)}}
+@media(prefers-reduced-motion:reduce){.discoverDetail{animation:none}}
+
+.discoverCardSelected{border-color:var(--brand);background:var(--brand-soft);box-shadow:inset 0 0 0 1px var(--brand)}
+.discoverDetailHead .discoverIcon{width:34px!important;height:34px!important;flex:none;border-radius:8px}
+
+.discoverDetailResize{position:absolute;top:0;left:-3px;bottom:0;width:6px;cursor:col-resize;touch-action:none}
+.discoverDetailResize:hover{background:color-mix(in srgb,var(--brand) 35%,transparent)}
+
+.discoverDetailClosing{animation:discoverDetailOut 180ms cubic-bezier(.4,0,.2,1) forwards!important;pointer-events:none}
+@keyframes discoverDetailOut{from{clip-path:inset(0 0 0 0)}to{clip-path:inset(0 0 0 100%)}}
+
+.discoverLoadMore{display:flex;justify-content:center;padding:14px 0 4px}
+
+.discoverCategory{height:26px;max-width:150px;padding:0 6px;border:1px solid var(--line);border-radius:5px;background:var(--panel);color:var(--ink-soft);font-size:10px;outline:none}
+
+.discoverUpdateBadge{padding:1px 5px;border-radius:999px;background:var(--status-warn-bg);color:var(--amber);font-size:8.5px}
+.discoverFiles{margin:0 16px 8px;border:1px solid var(--line);border-radius:6px;background:var(--paper);font-size:9.5px}
+.discoverFiles summary{cursor:pointer;padding:6px 8px;color:var(--text-muted)}
+.discoverFiles>div{display:flex;flex-direction:column;max-height:150px;overflow:auto;border-top:1px solid var(--line)}
+.discoverFile,.discoverFileActive{padding:5px 8px;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--ink-soft);font:9px var(--font-mono);text-align:left;cursor:pointer}
+.discoverFile:last-child{border-bottom:0}
+.discoverFileActive{background:var(--brand-soft);color:var(--brand)}
+.installPreview{margin-top:10px;border:1px solid var(--line);border-radius:6px;background:var(--paper)}
+.installPreview summary{cursor:pointer;padding:7px 9px;color:var(--text-muted);font-size:10px}
+.installPreview .markdown{padding:0 9px 9px;max-height:220px;overflow:auto}
+
+.discoverOtherSource{padding:1px 5px;border:1px solid var(--line);border-radius:999px;color:var(--text-muted);font-size:8.5px}
+
+.installDialogWarning{margin:10px 0 0;color:var(--amber);font-size:10px;line-height:1.5}

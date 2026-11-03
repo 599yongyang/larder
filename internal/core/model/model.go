@@ -343,6 +343,14 @@ type Settings struct {
 	TrashRetentionDays    int            `json:"trashRetentionDays"`
 	GlobalShortcutEnabled *bool          `json:"globalShortcutEnabled,omitempty"`
 	GlobalShortcut        string         `json:"globalShortcut,omitempty"`
+	SkillSources          []string       `json:"skillSources,omitempty"`
+	SkillHubBaseURL       string         `json:"skillHubBaseUrl,omitempty"`
+}
+
+type SkillSourceSettings struct {
+	Enabled           []string `json:"enabled"`
+	SkillHubBaseURL   string   `json:"skillHubBaseUrl"`
+	SkillHubAPIKeySet bool     `json:"skillHubApiKeySet"`
 }
 
 type MCPAgent struct {

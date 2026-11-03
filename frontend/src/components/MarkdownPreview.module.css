@@ -12,3 +12,10 @@
 .markdown a{color:var(--brand);text-decoration:none}
 .markdown a:hover{text-decoration:underline}
 .markdown hr{margin:14px 0;border:0;border-top:1px solid var(--line)}
+
+.markdownTable{max-width:100%;margin:0 0 12px;overflow-x:auto;border:1px solid var(--line);border-radius:7px}
+.markdown table{width:100%;border-collapse:collapse;font-size:10px;line-height:1.5}
+.markdown th{padding:6px 8px;border-bottom:1px solid var(--line);background:var(--paper);color:var(--ink);font-weight:600;white-space:nowrap}
+.markdown td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+.markdown tbody tr:last-child td{border-bottom:0}
+.markdown th code,.markdown td code{white-space:nowrap}

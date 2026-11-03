@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -43,6 +44,9 @@ type CatalogInstall struct {
 	Path        string    `json:"path"`
 	Source      string    `json:"source"`
 	SkillID     string    `json:"skillId"`
+	Provider    string    `json:"provider,omitempty"`
+	Version     string    `json:"version,omitempty"`
+	Homepage    string    `json:"homepage,omitempty"`
 	InstalledAt time.Time `json:"installedAt"`
 }
 
@@ -85,6 +89,7 @@ type AppInfo struct {
 type AppService struct {
 	core          *inventory.Service
 	catalog       *catalog.Client
+	skillHub      *catalog.SkillHubClient
 	catalogByName map[string]catalog.Skill
 	app           *application.App
 
@@ -144,7 +149,7 @@ func NewAppService() (*AppService, error) {
 	for _, item := range catalog.LocalPopular() {
 		catalogByName[strings.ToLower(item.Name)] = item
 	}
-	service := &AppService{core: core, catalog: catalogClient, catalogByName: catalogByName, installsPath: filepath.Join(dataDir, "catalog-installs.json"), installs: map[string]CatalogInstall{}, commandPlans: map[string]model.CommandWritePlan{}, commandDeletePlans: map[string]model.CommandDeletePlan{}, skillEditPlans: map[string]model.SkillEditPlan{}, skillCreatePlans: map[string]model.SkillCreatePlan{}, skillRenamePlans: map[string]model.SkillRenamePlan{}, trust: trust.New(), sessionCache: map[string]sessionCacheEntry{}, usageCache: map[string]usageCacheEntry{}, disabledPath: filepath.Join(dataDir, "disabled-mcp.json"), skillSourcesPath: filepath.Join(dataDir, "skill-sources.json"), dataDir: dataDir, homeDir: homeDir, mcpHistoryPath: filepath.Join(dataDir, "mcp-history.json"), mcpSessions: map[string]*coremcp.Session{}, mcpCache: map[string]model.MCPCapabilitySummary{}, mcpCachePath: filepath.Join(dataDir, "mcp-capabilities.json")}
+	service := &AppService{core: core, catalog: catalogClient, skillHub: catalog.NewSkillHubClient(), catalogByName: catalogByName, installsPath: filepath.Join(dataDir, "catalog-installs.json"), installs: map[string]CatalogInstall{}, commandPlans: map[string]model.CommandWritePlan{}, commandDeletePlans: map[string]model.CommandDeletePlan{}, skillEditPlans: map[string]model.SkillEditPlan{}, skillCreatePlans: map[string]model.SkillCreatePlan{}, skillRenamePlans: map[string]model.SkillRenamePlan{}, trust: trust.New(), sessionCache: map[string]sessionCacheEntry{}, usageCache: map[string]usageCacheEntry{}, disabledPath: filepath.Join(dataDir, "disabled-mcp.json"), skillSourcesPath: filepath.Join(dataDir, "skill-sources.json"), dataDir: dataDir, homeDir: homeDir, mcpHistoryPath: filepath.Join(dataDir, "mcp-history.json"), mcpSessions: map[string]*coremcp.Session{}, mcpCache: map[string]model.MCPCapabilitySummary{}, mcpCachePath: filepath.Join(dataDir, "mcp-capabilities.json")}
 	service.loadCatalogInstalls()
 	service.loadDisabledMCPs()
 	service.loadMCPHistory()
@@ -2728,16 +2733,141 @@ func (s *AppService) ResolveCatalogSkill(source, skillID string) (string, error)
 	return s.catalog.Resolve(s.context(), source, skillID)
 }
 
+type SkillHubPage struct {
+	Skills  []catalog.Skill `json:"skills"`
+	HasMore bool            `json:"hasMore"`
+}
+
+func (s *AppService) SkillHubSkillsPage(view string, page int, category string) (SkillHubPage, error) {
+	skills, hasMore, err := s.skillHub.ListPageFiltered(s.context(), view, page, category)
+	return SkillHubPage{Skills: skills, HasMore: hasMore}, err
+}
+
+func (s *AppService) SearchSkillHubPage(query string, page int, category string) (SkillHubPage, error) {
+	skills, hasMore, err := s.skillHub.SearchPageFiltered(s.context(), query, page, category)
+	return SkillHubPage{Skills: skills, HasMore: hasMore}, err
+}
+
+func (s *AppService) SkillHubCategories() ([]catalog.SkillHubCategory, error) {
+	return s.skillHub.Categories(s.context())
+}
+
+type catalogProviderResult struct {
+	skills   []catalog.Skill
+	err      error
+	provider string
+}
+
+func mergeCatalogResults(results []catalogProviderResult) ([]catalog.Skill, error) {
+	out := []catalog.Skill{}
+	seen := map[string]int{}
+	failures := []string{}
+	for _, item := range results {
+		if item.err != nil {
+			failures = append(failures, item.provider+": "+item.err.Error())
+			continue
+		}
+		for _, skill := range item.skills {
+			skill.Provider = item.provider
+			if len(skill.Providers) == 0 {
+				skill.Providers = []string{item.provider}
+			}
+			key := strings.ToLower(strings.TrimSpace(skill.Name))
+			if index, ok := seen[key]; ok {
+				existing := &out[index]
+				if !slices.Contains(existing.Providers, item.provider) {
+					existing.Providers = append(existing.Providers, item.provider)
+				}
+				if skill.Installs > existing.Installs {
+					mergedProviders := existing.Providers
+					skill.Providers = mergedProviders
+					out[index] = skill
+				}
+			} else {
+				seen[key] = len(out)
+				out = append(out, skill)
+			}
+		}
+	}
+	if len(failures) == len(results) {
+		return nil, fmt.Errorf("all skill sources failed: %s", strings.Join(failures, "; "))
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Installs > out[j].Installs })
+	return out, nil
+}
+
+func (s *AppService) CatalogAllSkills(view string) ([]catalog.Skill, error) {
+	ctx := s.context()
+	results := make(chan catalogProviderResult, 2)
+	go func() {
+		skills, err := s.catalog.Top(ctx, view)
+		if view == "popular" {
+			skills, err = s.catalog.Popular(ctx)
+		}
+		results <- catalogProviderResult{skills, err, "skills.sh"}
+	}()
+	go func() {
+		skills, _, err := s.skillHub.ListPageFiltered(ctx, view, 1, "")
+		results <- catalogProviderResult{skills, err, "skillhub"}
+	}()
+	return mergeCatalogResults([]catalogProviderResult{<-results, <-results})
+}
+
+func (s *AppService) SearchCatalogAll(query string) ([]catalog.Skill, error) {
+	ctx := s.context()
+	results := make(chan catalogProviderResult, 2)
+	go func() {
+		skills, err := s.catalog.Search(ctx, query)
+		results <- catalogProviderResult{skills, err, "skills.sh"}
+	}()
+	go func() {
+		skills, _, err := s.skillHub.SearchPageFiltered(ctx, query, 1, "")
+		results <- catalogProviderResult{skills, err, "skillhub"}
+	}()
+	return mergeCatalogResults([]catalogProviderResult{<-results, <-results})
+}
+
+func (s *AppService) SkillHubSkills(view string) ([]catalog.Skill, error) {
+	if view == "trending" {
+		return s.skillHub.Trending(s.context())
+	}
+	return s.skillHub.Popular(s.context())
+}
+
+func (s *AppService) SearchSkillHub(query string) ([]catalog.Skill, error) {
+	return s.skillHub.Search(s.context(), query)
+}
+
+func (s *AppService) SkillHubFileContent(slug, version, path string) (string, error) {
+	return s.skillHub.FileContent(s.context(), slug, version, path)
+}
+
+func (s *AppService) SkillHubDetail(slug, version string) (catalog.SkillHubDetail, error) {
+	return s.skillHub.Detail(s.context(), slug, version)
+}
+
+func (s *AppService) PlanUpdateSkillHub(path, slug, version string) (model.Plan, error) {
+	return s.core.PlanUpdateSkillHub(s.context(), path, slug, version)
+}
+
+func (s *AppService) PlanInstallSkillHub(slug, version, name string) (model.Plan, error) {
+	return s.core.PlanInstallSkillHub(s.context(), slug, version, name)
+}
+
+func (s *AppService) CatalogSkillContent(source, skillID string) (string, error) {
+	return s.catalog.Content(s.context(), source, skillID)
+}
+
 func (s *AppService) CatalogDescription(source, skillID string) (string, error) {
 	return s.catalog.Description(s.context(), source, skillID)
 }
 
-func (s *AppService) RecordCatalogInstall(path, source, skillID string) error {
+func (s *AppService) RecordCatalogInstall(path, source, skillID, provider, version, homepage string) error {
 	if path == "" || source == "" || skillID == "" {
 		return messageError("skills.installFieldsRequired", "path, source and skill are required", nil)
 	}
 	s.mu.Lock()
-	s.installs[path] = CatalogInstall{Path: path, Source: source, SkillID: skillID, InstalledAt: time.Now()}
+	s.installs[path] = CatalogInstall{Path: path, Source: source, SkillID: skillID, Provider: provider, Version: version, Homepage: homepage, InstalledAt: time.Now()}
 	s.mu.Unlock()
 	return s.saveCatalogInstalls()
 }

@@ -47,6 +47,18 @@ export function MarkdownPreview({ source }: { source: string }) {
       nodes.push(<pre key={`code-${index}`}><code>{block.join('\n')}</code></pre>)
       continue
     }
+    const nextLine = lines[index + 1] ?? ''
+    if (line.includes('|') && /^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(nextLine)) {
+      pushParagraph(paragraph); paragraph = []
+      const splitRow = (row: string) => row.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((cell) => cell.trim())
+      const headers = splitRow(line)
+      const aligns = splitRow(nextLine).map((cell) => cell.startsWith(':') && cell.endsWith(':') ? 'center' : cell.endsWith(':') ? 'right' : 'left')
+      index += 2
+      const rows: string[][] = []
+      while (index < lines.length && lines[index].includes('|') && lines[index].trim() !== '') { rows.push(splitRow(lines[index])); index++ }
+      nodes.push(<div key={`table-${index}`} className={styles.markdownTable}><table><thead><tr>{headers.map((cell, cellIndex) => <th key={cellIndex} style={{ textAlign: aligns[cellIndex] || 'left' }}>{inline(cell, `th-${index}-${cellIndex}`)}</th>)}</tr></thead><tbody>{rows.map((row, rowIndex) => <tr key={rowIndex}>{headers.map((_, cellIndex) => <td key={cellIndex} style={{ textAlign: aligns[cellIndex] || 'left' }}>{inline(row[cellIndex] || '', `td-${index}-${rowIndex}-${cellIndex}`)}</td>)}</tr>)}</tbody></table></div>)
+      continue
+    }
     const heading = /^(#{1,6})\s+(.*)$/.exec(line)
     if (heading) {
       pushParagraph(paragraph); paragraph = []

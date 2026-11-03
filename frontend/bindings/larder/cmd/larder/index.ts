@@ -12,5 +12,6 @@ export type {
     AppUpdateInfo,
     CatalogInstall,
     MCPTestResult,
+    SkillHubPage,
     SyncConfig
 } from "./models.js";

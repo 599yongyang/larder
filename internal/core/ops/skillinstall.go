@@ -2,6 +2,7 @@ package ops
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -71,16 +72,22 @@ func ApplyInstallSkill(ctx context.Context, plan model.Plan, snapshotRoot string
 	if err != nil {
 		return op, fmt.Errorf("download source: %w", err)
 	}
-	sourcePath := plan.SourcePath
-	if sourcePath == "" && plan.SkillSlug != "" {
-		dir, err := locateSkillFolder(tarball, plan.SkillSlug)
-		if err != nil {
+	if isZipArchive(tarball) {
+		if err := extractZipSkill(tarball, plan.SkillSlug, staging); err != nil {
 			return op, err
 		}
-		sourcePath = path.Join(dir, "SKILL.md")
-	}
-	if err := extractSkillFolder(tarball, sourcePath, staging); err != nil {
-		return op, err
+	} else {
+		sourcePath := plan.SourcePath
+		if sourcePath == "" && plan.SkillSlug != "" {
+			dir, err := locateSkillFolder(tarball, plan.SkillSlug)
+			if err != nil {
+				return op, err
+			}
+			sourcePath = path.Join(dir, "SKILL.md")
+		}
+		if err := extractSkillFolder(tarball, sourcePath, staging); err != nil {
+			return op, err
+		}
 	}
 	if _, err := os.Stat(filepath.Join(staging, "SKILL.md")); err != nil {
 		return op, errors.New("source has no SKILL.md")
@@ -123,6 +130,97 @@ func PlanInstallCatalogSkill(repo, skillID, target string) (model.Plan, error) {
 	plan.Changes = []model.PlanChange{{Action: "install_skill", Source: repo, Target: target, Reason: "来源 " + repo + " · " + skillID}}
 	addWarning(&plan, "plan.warning.installFromHead", "安装会从来源 HEAD 下载并写入共享库；不会自动链接到 Agent 目录。", nil)
 	return plan, nil
+}
+
+func isZipArchive(data []byte) bool {
+	return len(data) >= 4 && data[0] == 'P' && data[1] == 'K' && data[2] == 3 && data[3] == 4
+}
+
+func extractZipSkill(data []byte, slug, staging string) error {
+	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return fmt.Errorf("source is not a zip archive: %w", err)
+	}
+	folder := ""
+	bestRank := 99
+	for _, file := range reader.File {
+		name := path.Clean(strings.TrimPrefix(file.Name, "./"))
+		if path.Base(name) != "SKILL.md" {
+			continue
+		}
+		dir := path.Dir(name)
+		rank := 99
+		switch {
+		case dir == "skills/"+slug || dir == ".agents/skills/"+slug:
+			rank = 0
+		case dir == slug || path.Base(dir) == slug:
+			rank = 1
+		case dir == ".":
+			rank = 2
+		}
+		if rank < bestRank {
+			folder, bestRank = dir, rank
+		}
+	}
+	if bestRank == 99 {
+		return fmt.Errorf("could not find %s/SKILL.md in source archive", slug)
+	}
+	if err := os.MkdirAll(staging, 0o700); err != nil {
+		return err
+	}
+	for _, file := range reader.File {
+		name := path.Clean(strings.TrimPrefix(file.Name, "./"))
+		if folder != "" && folder != "." {
+			prefix := folder + "/"
+			if !strings.HasPrefix(name, prefix) {
+				continue
+			}
+			name = strings.TrimPrefix(name, prefix)
+		}
+		if name == "." || name == "" || strings.HasPrefix(name, "../") || strings.Contains(name, "/../") {
+			continue
+		}
+		target := filepath.Join(staging, filepath.FromSlash(name))
+		rel, err := filepath.Rel(staging, target)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue
+		}
+		if file.FileInfo().IsDir() {
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				return err
+			}
+			continue
+		}
+		if file.Mode()&os.ModeSymlink != 0 {
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		src, err := file.Open()
+		if err != nil {
+			return err
+		}
+		mode := file.Mode().Perm()
+		if mode == 0 {
+			mode = 0o644
+		}
+		out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
+		if err != nil {
+			src.Close()
+			return err
+		}
+		_, copyErr := io.Copy(out, src)
+		closeErr := out.Close()
+		src.Close()
+		if copyErr != nil {
+			return copyErr
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+	}
+	return nil
 }
 
 func locateSkillFolder(tarball []byte, skillID string) (string, error) {
@@ -179,6 +277,41 @@ func locateSkillFolder(tarball []byte, skillID string) (string, error) {
 		return "", nil
 	}
 	return best, nil
+}
+
+// PlanInstallSkillArchive plans an install from a direct tar.gz or zip URL.
+// The archive layout is inspected during apply so catalog providers can point
+// at a versioned artifact without exposing its internal folder structure.
+func PlanInstallSkillArchive(sourceURL, slug, target string) (model.Plan, error) {
+	if sourceURL == "" || slug == "" || target == "" {
+		return model.Plan{}, errors.New("source, skill and target are required")
+	}
+	plan := model.Plan{
+		ID: "plan:install:" + slug + ":" + fmt.Sprint(time.Now().UnixNano()), Operation: "install_skill",
+		Title: "安装 Skill", TitleMessage: planTitle("plan.installSkill.title", "安装 Skill"),
+		SummaryMessage: planMessage("plan.summary.install", "从 {repo} 安装 {name} 到共享库；会先确认目标不存在。", map[string]string{"repo": slug, "name": slug}),
+		SourceURL:      sourceURL, TargetPath: target, SkillSlug: slug, RequiresSnapshot: true, Executable: true, CreatedAt: time.Now(),
+	}
+	plan.Changes = []model.PlanChange{{Action: "install_skill", Source: sourceURL, Target: target, Reason: "来源 " + slug}}
+	addWarning(&plan, "plan.warning.installFromHead", "安装会从来源下载并写入共享库；不会自动链接到 Agent 目录。", nil)
+	return plan, nil
+}
+
+// PlanUpdateSkillArchive replaces an existing skill directory from a direct
+// archive URL. The previous directory is snapshotted before replacement.
+func PlanUpdateSkillArchive(sourceURL, slug, target string) (model.Plan, error) {
+	if sourceURL == "" || slug == "" || target == "" {
+		return model.Plan{}, errors.New("source, skill and target are required")
+	}
+	plan := model.Plan{
+		ID: "plan:update-skill:" + slug + ":" + fmt.Sprint(time.Now().UnixNano()), Operation: "skill_update",
+		Title: "更新 Skill", TitleMessage: planTitle("plan.updateSkill.title", "更新 Skill"),
+		SummaryMessage: planMessage("plan.summary.update", "更新 {name}；会先快照旧目录并保留本地修改。", map[string]string{"name": slug}),
+		SourceURL:      sourceURL, TargetPath: target, SkillSlug: slug, SkillName: slug, RequiresSnapshot: true, Executable: true, CreatedAt: time.Now(),
+	}
+	plan.Changes = []model.PlanChange{{Action: "update_skill", Source: sourceURL, Target: target, Reason: "更新 " + slug}}
+	addWarning(&plan, "plan.warning.updateSkill", "更新前会快照旧目录，失败时自动恢复。", nil)
+	return plan, nil
 }
 
 func PlanUninstallSkill(skill model.Skill) (model.Plan, error) {
