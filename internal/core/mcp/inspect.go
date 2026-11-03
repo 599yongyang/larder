@@ -662,12 +662,26 @@ func resolveCommand(name, home, cwd string) string {
 		return found
 	}
 	for _, dir := range (platform.LocalPaths{}).PathDirs(home) {
-		candidate := filepath.Join(dir, name)
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+		if candidate := findCommandInDir(dir, name); candidate != "" {
 			return candidate
 		}
 	}
 	return name
+}
+
+func findCommandInDir(dir, name string) string {
+	candidates := []string{filepath.Join(dir, name)}
+	if runtime.GOOS == "windows" && filepath.Ext(name) == "" {
+		for _, ext := range []string{".exe", ".cmd", ".bat", ".ps1", ".com"} {
+			candidates = append(candidates, filepath.Join(dir, name+ext))
+		}
+	}
+	for _, candidate := range candidates {
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate
+		}
+	}
+	return ""
 }
 
 func hasPathSeparator(value string) bool {

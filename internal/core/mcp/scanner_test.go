@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -75,5 +76,33 @@ func TestProjectConfigsAreScoped(t *testing.T) {
 	}
 	if servers[0].Name != "project-only" || servers[0].Agents[0].Scope != project {
 		t.Fatalf("server = %+v", servers[0])
+	}
+}
+
+func TestCommandExistsUsesResolvedPath(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "fake-mcp")
+	if err := os.WriteFile(path, []byte("x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if !commandExists(path) {
+		t.Fatal("expected absolute command to exist")
+	}
+	if commandExists(filepath.Join(dir, "missing-mcp")) {
+		t.Fatal("missing command reported as present")
+	}
+}
+
+func TestFindCommandInDirFindsExtensions(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("PATHEXT is Windows-only")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "npx.cmd")
+	if err := os.WriteFile(path, []byte("x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := findCommandInDir(dir, "npx"); got != path {
+		t.Fatalf("got %q", got)
 	}
 }
