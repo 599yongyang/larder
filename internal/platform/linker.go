@@ -12,8 +12,8 @@ type Linker interface {
 
 type OSLinker struct{}
 
-func (OSLinker) Symlink(source, target string) error { return os.Symlink(source, target) }
-
+// Remove deletes a link without touching whatever it points at. A real
+// directory is refused: only links may be removed.
 func (OSLinker) Remove(path string) error {
 	info, err := os.Lstat(path)
 	if err != nil {

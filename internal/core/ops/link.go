@@ -59,7 +59,7 @@ func PlanLink(req LinkRequest, filesystem platform.FileSystem) (model.Plan, erro
 			Action: "create_symlink", RootID: target.RootID, RootLabel: target.RootLabel,
 			Source: req.SourcePath, Target: target.Path,
 		}
-		existing, statErr := filesystem.Lstat(target.Path)
+		_, statErr := filesystem.Lstat(target.Path)
 		switch {
 		case errors.Is(statErr, iofs.ErrNotExist):
 			change.Reason = "目标不存在，可创建链接"
@@ -69,28 +69,21 @@ func PlanLink(req LinkRequest, filesystem platform.FileSystem) (model.Plan, erro
 			addWarning(&plan, "plan.warning.targetUnreadable", fmt.Sprintf("%s：无法读取目标 %s", target.RootLabel, statErr), map[string]string{"root": target.RootLabel})
 		default:
 			change.Exists = true
-			if existing.Mode()&iofs.ModeSymlink != 0 {
-				link, linkErr := filesystem.Readlink(target.Path)
-				if linkErr == nil {
-					if !filepath.IsAbs(link) {
-						link = filepath.Join(filepath.Dir(target.Path), link)
-					}
-					if filepath.Clean(link) == filepath.Clean(req.SourcePath) {
-						change.Action = "already_linked"
-						change.Reason = "已经指向该 Skill"
-					} else if _, statErr := filesystem.Stat(filepath.Clean(link)); statErr != nil {
-						change.Action = "replace_link"
-						change.Reason = "现有链接已失效，可以修复"
-						addWarning(&plan, "plan.warning.existingLinkBroken", fmt.Sprintf("%s：现有链接已失效，修复时会替换它", target.RootLabel), map[string]string{"root": target.RootLabel})
-					} else {
-						change.Action = "conflict"
-						change.Reason = "已有有效链接指向其他位置，不自动替换"
-						addWarning(&plan, "plan.warning.validLinkKept", fmt.Sprintf("%s：目标已有有效链接，不会覆盖", target.RootLabel), map[string]string{"root": target.RootLabel})
-					}
+			if link, isLink := linkTargetOf(filesystem, target.Path); isLink {
+				if !filepath.IsAbs(link) {
+					link = filepath.Join(filepath.Dir(target.Path), link)
+				}
+				if filepath.Clean(link) == filepath.Clean(req.SourcePath) {
+					change.Action = "already_linked"
+					change.Reason = "已经指向该 Skill"
+				} else if _, statErr := filesystem.Stat(filepath.Clean(link)); statErr != nil {
+					change.Action = "replace_link"
+					change.Reason = "现有链接已失效，可以修复"
+					addWarning(&plan, "plan.warning.existingLinkBroken", fmt.Sprintf("%s：现有链接已失效，修复时会替换它", target.RootLabel), map[string]string{"root": target.RootLabel})
 				} else {
-					change.Action = "error"
-					change.Reason = linkErr.Error()
-					addWarning(&plan, "plan.warning.existingLinkUnreadable", fmt.Sprintf("%s：无法读取现有链接", target.RootLabel), map[string]string{"root": target.RootLabel})
+					change.Action = "conflict"
+					change.Reason = "已有有效链接指向其他位置，不自动替换"
+					addWarning(&plan, "plan.warning.validLinkKept", fmt.Sprintf("%s：目标已有有效链接，不会覆盖", target.RootLabel), map[string]string{"root": target.RootLabel})
 				}
 			} else {
 				change.Action = "conflict"
@@ -152,13 +145,12 @@ func PlanDisableLink(req LinkRequest, filesystem platform.FileSystem) (model.Pla
 		CreatedAt:        time.Now(),
 	}
 	for _, target := range req.Targets {
-		info, err := filesystem.Lstat(target.Path)
-		if err != nil || info.Mode()&iofs.ModeSymlink == 0 {
-			return model.Plan{}, fmt.Errorf("target is not a symlink: %s", target.Path)
+		if _, err := filesystem.Lstat(target.Path); err != nil {
+			return model.Plan{}, fmt.Errorf("target is missing: %s", target.Path)
 		}
-		link, err := filesystem.Readlink(target.Path)
-		if err != nil {
-			return model.Plan{}, err
+		link, isLink := linkTargetOf(filesystem, target.Path)
+		if !isLink {
+			return model.Plan{}, fmt.Errorf("target is not a link: %s", target.Path)
 		}
 		if !filepath.IsAbs(link) {
 			link = filepath.Join(filepath.Dir(target.Path), link)
@@ -244,10 +236,11 @@ func PlanCopyToLink(req LinkRequest, filesystem platform.FileSystem) (model.Plan
 	for _, target := range req.Targets {
 		change := model.PlanChange{Action: "replace_copy", RootID: target.RootID, RootLabel: target.RootLabel, Source: req.SourcePath, Target: target.Path}
 		info, err := filesystem.Lstat(target.Path)
+		_, isLink := linkTargetOf(filesystem, target.Path)
 		switch {
 		case err != nil:
 			return model.Plan{}, fmt.Errorf("target copy is missing: %s", target.Path)
-		case info.Mode()&iofs.ModeSymlink != 0:
+		case isLink:
 			return model.Plan{}, fmt.Errorf("target is already a link: %s", target.Path)
 		case !info.IsDir():
 			return model.Plan{}, fmt.Errorf("target is not a directory copy: %s", target.Path)
