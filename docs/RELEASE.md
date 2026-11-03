@@ -61,7 +61,7 @@ The build must run on a machine with the platform toolchain available:
 The app version lives in `cmd/larder/service.go`:
 
 ```go
-var Version = "0.0.10"
+var Version = "0.0.11"
 ```
 
 The public release tag and the in-app version must match.

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.0.11
+
+### Skills
+
+- Add SkillHub as a discovery and installation source alongside skills.sh.
+- Add an "All sources" view that searches both catalogs, merges duplicate Skills and keeps provenance.
+- Add SkillHub categories, pagination and load more.
+- Add a detail sheet with SKILL.md preview, file browsing and a resizable panel.
+- Add an install dialog with SKILL.md preview and source/version/install metadata.
+- Add version update detection and a snapshot-backed SkillHub update flow.
+- Preserve local Skill modifications when merging upstream updates.
+- Show when a Skill is already installed from the other catalog.
+- Improve SkillHub request retries, avatar loading, image fallbacks and detail request race safety.
+
+### Fixes
+
+- Fix catalog install names containing invalid Windows path characters.
+- Remove the security audit block from the Skill update dialog.
+
+
 ## 0.0.10
 
 ### Hotfix

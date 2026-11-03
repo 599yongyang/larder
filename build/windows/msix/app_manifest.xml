@@ -10,7 +10,7 @@
   <Identity 
     Name="io.github.599yongyang.larder"
     Publisher="CN=Larder contributors"
-    Version="0.0.10.0"
+    Version="0.0.11.0"
     ProcessorArchitecture="arm64" />
   
   <Properties>
