@@ -1,20 +1,20 @@
 {
   "schemaVersion": 1,
-  "version": "0.0.9",
+  "version": "0.0.10",
   "channel": "stable",
-  "name": "Larder 0.0.9",
-  "notes": "Larder 0.0.9",
-  "publishedAt": "2026-11-03T01:57:22Z",
+  "name": "Larder 0.0.10",
+  "notes": "Larder 0.0.10",
+  "publishedAt": "2026-11-03T03:03:40Z",
   "artifacts": [
     {
-      "url": "https://github.com/599yongyang/larder/releases/download/v0.0.9/Larder-darwin-arm64.zip",
+      "url": "https://github.com/599yongyang/larder/releases/download/v0.0.10/Larder-darwin-arm64.zip",
       "filename": "Larder-darwin-arm64.zip",
       "filetype": "zip",
-      "size": 7859776,
+      "size": 7863912,
       "platform": "darwin",
       "arch": "arm64",
       "digestAlgo": "sha256",
-      "digest": "/JK69wznwaCR6iOwjpHgBR47X8/Mqfr8KBlXAQzw4+Y="
+      "digest": "ivZ6hzeDpPN5zzKhykC3O4vC22zPWi184jzXn8qRAbM="
     }
   ]
 }
